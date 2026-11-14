@@ -9,7 +9,7 @@ export default function Logistics() {
         <h2 className="heading">Venue</h2>
         <p>San Luis Obispo High School, San Luis Obispo, CA</p>
         <h2 className="heading">Schedule</h2>
-        <p>The conference schedule will be posted once the date is confirmed.</p>
+        <p>SLOMUN will be held on April 3, 2027. The full conference schedule will be posted soon.</p>
         <h2 className="heading">More Information</h2>
         <p>Parking, food, and other details will be posted closer to the conference.</p>
       </div>
