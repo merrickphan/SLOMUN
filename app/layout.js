@@ -9,13 +9,12 @@ export const metadata = {
   icons: { icon: '/images/crest.png' },
 };
 
-// Skip the intro (and show hero content immediately) if it already played this
-// visit or the visitor prefers reduced motion. Runs before paint to avoid a flash.
+// The intro plays on every full page load of the home page. Skip it (and show
+// hero content immediately) only for visitors who prefer reduced motion.
+// Runs before paint to avoid a flash.
 const introScript = `
 try {
-  var seen = sessionStorage.getItem('slomun-intro') === '1';
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (seen || reduce) document.documentElement.dataset.intro = 'done';
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.dataset.intro = 'done';
 } catch (e) { document.documentElement.dataset.intro = 'done'; }
 `;
 

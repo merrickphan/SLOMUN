@@ -17,9 +17,6 @@ export default function Intro() {
     const t1 = setTimeout(() => setPhase('lift'), 1700);
     const t2 = setTimeout(() => {
       root.dataset.intro = 'done';
-      try {
-        sessionStorage.setItem('slomun-intro', '1');
-      } catch (e) {}
       document.body.style.overflow = '';
     }, 2300);
     const t3 = setTimeout(() => setPhase('gone'), 2600);

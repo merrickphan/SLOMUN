@@ -38,7 +38,7 @@ Figma frames `Intro / 1 Load` through `Intro / 5 Home` (prototype flow "Site int
 3. The nav drops in and the eyebrow and title rise in (0.6s, ease-out).
 4. The date, Register button, and tagline rise in (0.6s, ease-out).
 
-Show once per visit and skip it for users with `prefers-reduced-motion`.
+Plays on every load of the home page; skipped for users with `prefers-reduced-motion`.
 
 ## Development
 
