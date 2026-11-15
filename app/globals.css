@@ -428,7 +428,7 @@ a.tile-link:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3p
 .card-link-active:hover { background: var(--yellow); }
 
 /* Committee detail page */
-.facts { display: grid; grid-template-columns: repeat(4, 1fr); margin: 16px 0 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.facts { display: grid; grid-template-columns: repeat(4, 1fr); margin: 16px auto 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
 .fact { padding: 24px 20px; min-width: 0; }
 .fact + .fact { border-left: 1px solid var(--line); }
 .fact dt { font-family: var(--caps); font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-600); margin-bottom: 8px; }
