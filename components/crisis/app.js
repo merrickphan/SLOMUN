@@ -31,12 +31,12 @@ const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.on
 function ringPath(ctx, rings) { ctx.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? ctx.lineTo(tx(x), ty(y)) : ctx.moveTo(tx(x), ty(y))); ctx.closePath(); } }
 
 // Whole-world texture painted in the same style as the Europe map, so the globe reads as one surface.
-const WW = 4096, WH = 2048;
+const WW = 4096, WH = 2048; // the whole world; Europe gets its own sharper patch
 const PAL = ['#C9A44A', '#5FAE6A', '#B06A9E', '#5E8FC9', '#C97A4A', '#7FA84A', '#9A6FC0', '#4FA6A0', '#C05A5A', '#8E9A4A'];
 function worldColor(n) { if (POWERS[ownerOf(n)] || NEUTRALS[n]) return colorOf(n); let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PAL[h % PAL.length]; }
 function paintWorld(canvas, dark) {
   const ctx = canvas.getContext('2d'); const X = (lon) => (lon + 180) / 360 * WW, Y = (lat) => (90 - lat) / 180 * WH;
-  ctx.filter = 'saturate(1.6) contrast(1.12)'; ctx.drawImage(imgs.world, 0, 0, WW, WH); ctx.filter = 'none';
+  ctx.filter = 'saturate(1.15) contrast(1.06) brightness(0.96)'; ctx.drawImage(imgs.world, 0, 0, WW, WH); ctx.filter = 'none';
   const sea = document.createElement('canvas'); sea.width = WW; sea.height = WH; const s = sea.getContext('2d');
   s.fillStyle = '#0D1A3E'; s.fillRect(0, 0, WW, WH); s.globalCompositeOperation = 'destination-in'; s.drawImage(imgs.wwater, 0, 0, WW, WH);
   ctx.globalAlpha = 0.95; ctx.drawImage(sea, 0, 0); ctx.globalAlpha = 1;
@@ -69,7 +69,7 @@ function paintTexture(canvas, imgs, sel) {
   ctx.setTransform(TEXK, 0, 0, TEXK, 0, 0);
   ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.imageSmoothingQuality = 'high';
   // Bright daytime ground.
-  ctx.filter = 'saturate(1.6) contrast(1.12)';
+  ctx.filter = 'saturate(1.15) contrast(1.06) brightness(0.96)';
   ctx.drawImage(imgs.marble, 0, 0, TW, TH);
   ctx.filter = 'none';
   // Deep blue sea, using the water mask.
@@ -290,6 +290,112 @@ function makeFigure(u) {
   return root;
 }
 
+
+/* ---------- Map features: 3D props for trenches, bunkers, factories and more ---------- */
+const FEAT = S.FEATURES;
+let FEATS = [];
+let SHOW_FEAT = (() => { try { return localStorage.getItem('crisis-feat') !== 'off'; } catch { return true; } })();
+const ghostCache = {}, ruinCache = {};
+const ghost = (m) => ghostCache[m.uuid] || (ghostCache[m.uuid] = Object.assign(m.clone(), { transparent: true, opacity: 0.42, depthWrite: false }));
+const ruin = (m) => ruinCache[m.uuid] || (ruinCache[m.uuid] = (() => { const r = m.clone(); r.color = m.color.clone().multiplyScalar(0.32); return r; })());
+const C = { dirt: 0x6E5A3C, dark: 0x3A3024, sand: 0xB8A47A, conc: 0x9A9C96, conc2: 0x7C7E78, steel: 0x3C4044, wood: 0x8A6A44, roof: 0x7A3E30, brick: 0x9A5A40, tar: 0x2E3034, white: 0xE8E4D8, canvas: 0x8E8A5E, tank: 0xB4B0A4, water: 0x2E4A66 };
+function cone(r, h, seg, hex, x, y, z, parent, rx = 0, ry = 0, rz = 0) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), mat(hex)); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); parent.add(m); return m; }
+// Each builder makes one piece in figurine units (about 2.6 long along z for line pieces). Emitters are smoke or fire spots.
+const PROP = {
+  trench(g, st) {
+    for (const [z, r] of [[-0.9, 0.5], [0, -0.5], [0.9, 0.5]]) {
+      const s = new THREE.Group(); s.position.z = z; s.rotation.y = r; g.add(s);
+      box(0.42, 0.06, 1.0, C.dark, 0, 0.03, 0, s); box(0.12, 0.2, 1.0, C.dirt, -0.27, 0.1, 0, s); box(0.12, 0.2, 1.0, C.dirt, 0.27, 0.1, 0, s);
+      for (let i = 0; i < 4; i++) box(0.16, 0.1, 0.22, C.sand, -0.37, 0.24, -0.36 + i * 0.24, s);
+    }
+  },
+  fort(g) {
+    box(1.0, 0.5, 0.9, C.conc, 0, 0.25, 0, g); box(1.1, 0.12, 1.0, C.conc2, 0, 0.56, 0, g); box(0.6, 0.08, 0.04, C.tar, 0, 0.36, -0.46, g);
+    cyl(0.04, 0.04, 0.5, 6, C.steel, 0, 0.36, -0.6, g, Math.PI / 2);
+    for (const z of [-1.0, 1.0]) for (const x of [-0.35, 0, 0.35]) cone(0.13, 0.26, 4, C.conc2, x + (z > 0 ? 0.17 : 0), 0.13, z, g);
+  },
+  wire(g) {
+    for (let i = -2; i <= 2; i++) { const z = i * 0.5; box(0.04, 0.42, 0.04, C.wood, 0, 0.21, z, g); box(0.02, 0.5, 0.02, C.steel, 0, 0.22, z + 0.25, g, 0.9); box(0.02, 0.5, 0.02, C.steel, 0, 0.22, z + 0.25, g, -0.9); }
+    box(0.015, 0.015, 2.1, C.steel, 0, 0.36, 0, g); box(0.015, 0.015, 2.1, C.steel, 0, 0.18, 0, g);
+  },
+  mines(g) {
+    const d = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.05, 0.04, 20), mat(C.dirt)); d.position.y = 0.02; g.add(d);
+    for (const [x, z] of [[-0.5, -0.3], [0.2, -0.55], [0.55, 0.1], [-0.15, 0.35], [0.3, 0.6], [-0.6, 0.45]]) cyl(0.09, 0.1, 0.05, 8, C.steel, x, 0.06, z, g);
+    for (const [x, z] of [[-0.85, -0.5], [0.85, 0.5]]) { box(0.04, 0.55, 0.04, C.wood, x, 0.28, z, g); box(0.02, 0.16, 0.24, 0xC23A2E, x, 0.48, z + 0.12, g); }
+  },
+  flak(g) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.14, 6, 14), mat(C.sand)); ring.rotation.x = Math.PI / 2; ring.position.y = 0.12; g.add(ring);
+    box(0.4, 0.2, 0.5, C.steel, 0, 0.2, 0, g); cyl(0.05, 0.06, 1.0, 6, C.steel, 0, 0.62, -0.25, g, -0.75);
+  },
+  factory(g, st, em) {
+    box(1.8, 0.6, 1.1, C.brick, 0, 0.3, 0, g);
+    for (let i = 0; i < 3; i++) box(0.6, 0.06, 0.62, C.roof, -0.6 + i * 0.6, 0.72, 0, g, 0, 0, 0.5);
+    for (const x of [-0.55, 0.15]) { cyl(0.11, 0.14, 1.5, 8, C.brick, x, 0.75, 0.45, g); em.push({ x, y: 1.55, z: 0.45, type: st === 'ruined' ? 'black' : 'smoke' }); }
+  },
+  airfield(g) {
+    box(0.6, 0.03, 2.8, C.tar, 0, 0.015, 0, g); for (let i = -2; i <= 2; i++) box(0.06, 0.035, 0.24, C.white, 0, 0.02, i * 0.5, g);
+    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.8, 10, 1, false, 0, Math.PI), mat(C.conc2)); h.rotation.set(0, 0, Math.PI / 2); h.rotation.order = 'ZYX'; h.position.set(0.85, 0, 0.6); h.rotateX(Math.PI / 2); g.add(h);
+    for (const z of [-0.7, -0.1]) { const p = plane('Germany', C.conc2); p.scale.setScalar(0.32); p.position.set(0.8, 0.08, z); p.rotation.y = 1.4; g.add(p); }
+  },
+  oil(g, st, em) {
+    for (const [x, z] of [[-0.5, -0.4], [0.45, 0.3]]) {
+      for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(0.04, 1.3, 0.04, C.steel, x + a * 0.14, 0.62, z + b * 0.14, g, b * 0.1, 0, -a * 0.1);
+      box(0.06, 0.06, 0.4, C.steel, x, 1.2, z, g); if (st === 'ruined') em.push({ x, y: 0.4, z, type: 'fire' }, { x, y: 0.8, z, type: 'black' });
+    }
+    for (const [x, z] of [[0.55, -0.55], [-0.45, 0.6]]) cyl(0.28, 0.28, 0.4, 14, C.tank, x, 0.2, z, g);
+  },
+  port(g) {
+    box(0.5, 0.12, 2.4, C.conc2, 0, 0.06, 0, g); box(0.9, 0.12, 0.4, C.conc2, 0.45, 0.06, 0.9, g);
+    box(0.7, 0.45, 0.9, C.brick, -0.65, 0.22, -0.3, g); box(0.76, 0.08, 0.96, C.roof, -0.65, 0.48, -0.3, g);
+    box(0.08, 1.3, 0.08, 0xC8A030, 0.1, 0.7, 0.2, g); box(0.07, 0.07, 1.1, 0xC8A030, 0.1, 1.3, 0.55, g); box(0.02, 0.5, 0.02, C.steel, 0.1, 1.05, 1.05, g);
+  },
+  bridge(g, st) {
+    const gap = st === 'ruined';
+    for (const z of [-1.0, 1.0]) box(0.5, 0.1, 0.9, C.conc, 0, 0.42, z * (gap ? 1.05 : 0.6), g, gap ? z * 0.25 : 0);
+    if (!gap) box(0.5, 0.1, 0.6, C.conc, 0, 0.42, 0, g);
+    for (const z of [-0.6, 0.6]) box(0.36, 0.42, 0.18, C.conc2, 0, 0.2, z, g);
+    box(0.6, 0.02, 2.6, C.water, 0, 0.01, 0, g, 0, 1.57);
+  },
+  camp(g, st, em) {
+    for (const [x, z] of [[-0.45, -0.3], [0.4, -0.35], [0, 0.45]]) cone(0.36, 0.5, 4, C.canvas, x, 0.25, z, g, 0, 0.78);
+    box(0.04, 1.1, 0.04, C.wood, 0.6, 0.55, 0.5, g); box(0.02, 0.24, 0.4, 0xC23A2E, 0.6, 0.98, 0.7, g);
+    em.push({ x: 0, y: 0.08, z: -0.05, type: 'camp' });
+  },
+  fire(g, st, em) { em.push({ x: 0, y: 0.1, z: 0, type: 'fire' }, { x: 0.3, y: 0.1, z: 0.2, type: 'fire' }, { x: 0, y: 0.5, z: 0, type: 'black' }); },
+};
+function scaffold(g) {
+  const b = new THREE.Box3().setFromObject(g); if (b.isEmpty()) return; const s = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3()); const h = s.y + 0.25;
+  for (const [a, d] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(0.05, h, 0.05, 0xC9A060, c.x + a * s.x / 2, h / 2, c.z + d * s.z / 2, g);
+  for (const d of [-1, 1]) { box(s.x, 0.04, 0.04, 0xC9A060, c.x, h, c.z + d * s.z / 2, g); box(0.04, 0.04, s.z, 0xC9A060, c.x + d * s.x / 2, h, c.z, g); }
+}
+const featState = (f) => f.ruined ? 'ruined' : f.ready > (STATE?.update?.no ?? 0) ? 'building' : 'ready';
+function makeProp(f, emitters) {
+  const st = featState(f); const root = new THREE.Group(); const em = [];
+  PROP[f.kind]?.(root, st, em);
+  if (st === 'building') scaffold(root);
+  if (st === 'ruined') { root.children.forEach((c, i) => { c.rotation.z += (i % 3 - 1) * 0.35; c.position.y -= 0.05; }); if (!em.some((e) => e.type === 'black')) em.push({ x: 0, y: 0.4, z: 0, type: 'black' }, { x: 0.1, y: 0.15, z: 0, type: 'fire' }); }
+  if (st === 'building') em.length = 0;
+  bakeFigure(root, null);
+  root.traverse((o) => { if (o.isMesh) { o.material = st === 'building' ? ghost(o.material) : st === 'ruined' ? ruin(o.material) : o.material; o.userData.featId = f.id; } });
+  root.userData.em = em;
+  return root;
+}
+const FICON = {
+  trench: '<path d="M3 15l4-5 4 5 4-5 4 5"/>', fort: '<path d="M4 17h14v-6l-3-3H7l-3 3z"/><path d="M8 13h6"/>', wire: '<path d="M4 6l14 10M4 16L18 6M3 11h16"/>',
+  mines: '<circle cx="11" cy="12" r="4"/><path d="M11 4v3M11 17v3M3 12h3M16 12h3"/>', flak: '<path d="M5 18h12M8 18l2-5 6-8"/>', factory: '<path d="M3 18V9l5 3V9l5 3V5h3v13z"/>',
+  airfield: '<path d="M11 3v16M4 11l7 2 7-2M8 18h6"/>', oil: '<path d="M7 19l4-15 4 15M8 14h6M9 9h4"/>', port: '<circle cx="11" cy="5" r="2"/><path d="M11 7v12M5 13a6 6 0 0 0 12 0M8 10h6"/>',
+  bridge: '<path d="M2 9h18M4 9v8M18 9v8M6 17a5 5 0 0 1 10 0"/>', camp: '<path d="M3 18L11 5l8 13zM11 18v-5"/>', fire: '<path d="M11 3c4 4 6 7 6 10a6 6 0 0 1-12 0c0-2 1-4 3-5 0 2 1 3 2 3 0-3 0-5 1-8z"/>',
+};
+const fIcon = (k) => `<svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${FICON[k] || ''}</svg>`;
+const modText = (m) => m ? ` · ${m > 0 ? '+' : ''}${m} defense` : '';
+function featTitle(f) {
+  const st = featState(f);
+  return `${f.label} · ${POWERS[f.owner]?.label || f.owner}${modText(f.ruined ? 0 : f.mod)}${st === 'building' ? ` · being built, ready after Update ${f.ready}` : st === 'ruined' ? ' · destroyed' : ''}${f.public ? '' : ' · secret'}`;
+}
+// Smoke and fire: one point cloud each, animated a few times a second while visible.
+const SMOKE_VS = 'attribute float aSize; attribute float aAlpha; varying float vA; varying vec3 vC; attribute vec3 color; uniform float uScale; void main(){ vA = aAlpha; vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix * mv; }';
+const SMOKE_FS = 'varying float vA; varying vec3 vC; void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d); if (r > 0.5) discard; float a = vA * smoothstep(0.5, 0.1, r); gl_FragColor = vec4(vC, a); }';
+
 /* ---------- Flags (simplified, 1939) ---------- */
 const STAR = (cx, cy, r, fill) => { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.42 : r; d += (i ? 'L' : 'M') + (cx + rr * Math.cos(a)).toFixed(2) + ',' + (cy + rr * Math.sin(a)).toFixed(2); } return `<path d="${d}Z" fill="${fill}"/>`; };
 const FLAG_SVG = {
@@ -349,6 +455,7 @@ class Globe {
   constructor(stage, overlay, opts) {
     this.stage = stage; this.ov = overlay; this.opts = opts;
     this.view = { lon: opts.lon ?? 15, lat: (opts.lat ?? 49) + 2.5, dist: opts.dist ?? 1.42, heading: 0, tilt: 0.42 }; this.home = { ...this.view };
+    if (process.env.NODE_ENV !== 'production') window.__globe = this; // lets local tests aim the camera
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setClearColor(0x05070d);
@@ -364,10 +471,11 @@ class Globe {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Draw only when something changed. The clouds drift too slowly to need more than a few frames a second,
     // and on-map labels only need repositioning when the camera or units move.
-    let lastCloud = -1e9;
+    let lastCloud = -1e9, lastFx = -1e9;
     const loop = (t = 0) => {
       let cloudOnly = false;
       if (this.clouds && !reduce && t - lastCloud > 200) { this.clouds.rotation.y = t * 0.000004; lastCloud = t; cloudOnly = !this.dirty; }
+      if (this.fx && SHOW_FEAT && !reduce && this.view.dist < 2.4 && t - lastFx > 66 && !document.hidden) { this.stepFx(t); lastFx = t; cloudOnly = cloudOnly || !this.dirty; }
       if (this.dirty || cloudOnly) { this.render(!cloudOnly); this.dirty = false; }
       this.raf = requestAnimationFrame(loop);
     }; loop();
@@ -402,13 +510,85 @@ class Globe {
     this.clouds = new THREE.Mesh(new THREE.SphereGeometry(1.012, 128, 96), new THREE.MeshLambertMaterial({ color: 0xffffff, alphaMap: ca, transparent: true, opacity: 0.32, depthWrite: false }));
     this.scene.add(this.clouds);
     this.stage.querySelector('.loading')?.remove();
-    this.addUnits(); this.addLights(); this.buildOverlay(); this.addPins(); this.dirty = true;
+    this.addUnits(); this.addLights(); this.buildOverlay(); this.addPins(); this.addProps(); this.dirty = true;
+  }
+  addProps() {
+    if (this.propGroup) { this.scene.remove(this.propGroup); this.propGroup.traverse((o) => o.isMesh && o.geometry.dispose()); }
+    this.propGroup = new THREE.Group(); this.propGroup.visible = SHOW_FEAT; this.scene.add(this.propGroup);
+    const emit = []; const SPACING = 0.85;
+    for (const f of FEATS) {
+      const line = f.to && FEAT[f.kind]?.line; const pts = [];
+      if (line) { const d = Math.hypot(f.to[0] - f.at[0], f.to[1] - f.at[1]); const n = Math.max(1, Math.min(14, Math.round(d / SPACING))); for (let i = 0; i < n; i++) { const t = (i + 0.5) / n; pts.push([f.at[0] + (f.to[0] - f.at[0]) * t, f.at[1] + (f.to[1] - f.at[1]) * t]); } }
+      else pts.push(f.at);
+      for (const [lo, la] of pts) {
+        const pr = makeProp(f); pr.userData.heading = line ? 0 : 0.6; this.place(pr, lo, la); pr.scale.setScalar(line ? 0.0078 : 0.0095);
+        if (line) { const n = pr.position.clone().normalize(); const d = toVec(f.to[0], f.to[1], 1).sub(toVec(f.at[0], f.at[1], 1)); d.addScaledVector(n, -d.dot(n)).normalize(); const vz = new THREE.Vector3(0, 0, 1).applyQuaternion(pr.quaternion); pr.rotateY(Math.atan2(n.dot(vz.clone().cross(d)), vz.dot(d))); }
+        this.propGroup.add(pr); pr.updateMatrixWorld(true);
+        const east = new THREE.Vector3(-Math.sin(lo * D2R), 0, -Math.cos(lo * D2R));
+        for (const e of pr.userData.em) emit.push({ type: e.type, pos: new THREE.Vector3(e.x, e.y, e.z).applyMatrix4(pr.matrixWorld), n: pr.position.clone().normalize(), east });
+      }
+    }
+    this.setEmitters(emit); this.addFeatTags(); this.dirty = true;
+  }
+  setEmitters(list) {
+    if (this.fx) { this.scene.remove(this.fx.pts); this.fx.pts.geometry.dispose(); this.fx = null; }
+    if (!list.length) return;
+    const PER = 10, N = list.length * PER; const g = new THREE.BufferGeometry();
+    for (const [k, n] of [['position', 3], ['color', 3], ['aSize', 1], ['aAlpha', 1]]) g.setAttribute(k, new THREE.BufferAttribute(new Float32Array(N * n), n));
+    const m = new THREE.ShaderMaterial({ uniforms: { uScale: { value: this.fxScale || 600 } }, vertexShader: SMOKE_VS, fragmentShader: SMOKE_FS, transparent: true, depthWrite: false });
+    const pts = new THREE.Points(g, m); pts.frustumCulled = false; pts.visible = SHOW_FEAT; pts.renderOrder = 2; this.scene.add(pts);
+    this.fx = { pts, list, PER }; this.stepFx(performance.now());
+  }
+  stepFx(t) {
+    const { pts, list, PER } = this.fx; const A = pts.geometry.attributes; const T = t / 1000, k = 0.0095; const v = new THREE.Vector3();
+    pts.material.uniforms.uScale.value = this.fxScale || 600;
+    list.forEach((e, i) => {
+      const fire = e.type === 'fire' || e.type === 'camp', small = e.type === 'camp';
+      for (let j = 0; j < PER; j++) {
+        const ix = i * PER + j; const ph = (T * (fire ? 0.9 : 0.28) + j / PER + i * 0.137) % 1; const wob = Math.sin((j + 1) * 12.9898 + i) * 0.35;
+        const rise = fire ? (small ? 0.35 : 0.8) * ph : 3.2 * ph, drift = ph * ph * (fire ? 0.2 : 1.6);
+        v.copy(e.pos).addScaledVector(e.n, rise * k).addScaledVector(e.east, (drift + wob * ph) * k);
+        A.position.setXYZ(ix, v.x, v.y, v.z);
+        if (fire) { A.aSize.setX(ix, (small ? 0.25 : 0.6) * (1.1 - ph) * k); A.aAlpha.setX(ix, 0.95 * (1 - ph)); A.color.setXYZ(ix, 1, 0.85 - ph * 0.6, 0.35 - ph * 0.3); }
+        else { const black = e.type === 'black'; A.aSize.setX(ix, (0.45 + ph * 1.7) * k); A.aAlpha.setX(ix, (black ? 0.7 : 0.5) * (1 - ph) * Math.min(1, ph * 5)); const c = black ? 0.13 + ph * 0.2 : 0.78 + ph * 0.1; A.color.setXYZ(ix, c, c, c * 1.02); }
+      }
+    });
+    A.position.needsUpdate = A.aSize.needsUpdate = A.aAlpha.needsUpdate = A.color.needsUpdate = true;
+  }
+  addFeatTags() {
+    if (!this.ov) return;
+    this.items = (this.items || []).filter((it) => { if (it.kind === 'feat') { it.el.remove(); return false; } return true; });
+    for (const f of FEATS) {
+      const st = featState(f); const d = document.createElement('button'); d.type = 'button'; d.className = `feat ${st}${f.public ? '' : ' secret'}`; d.hidden = !SHOW_FEAT;
+      d.title = featTitle(f); d.setAttribute('aria-label', featTitle(f)); d.style.setProperty('--fc', POWERS[f.owner]?.color || '#999');
+      d.innerHTML = `${fIcon(f.kind)}<span>${esc(f.label)}${st === 'building' ? ` · Update ${f.ready}` : ''}</span>`;
+      d.addEventListener('click', (e) => { e.stopPropagation(); if (this.opts.onFeature) this.opts.onFeature(f.id); else toast(featTitle(f)); });
+      const at = f.to && FEAT[f.kind]?.line ? [(f.at[0] + f.to[0]) / 2, (f.at[1] + f.to[1]) / 2] : f.at;
+      this.ov.appendChild(d); this.items.push({ el: d, lon: at[0], lat: at[1], kind: 'feat' });
+    }
+    this.dirty = true;
+  }
+  setFeatVisible(on) {
+    if (this.propGroup) this.propGroup.visible = on; if (this.fx) this.fx.pts.visible = on;
+    (this.items || []).forEach((it) => { if (it.kind === 'feat') it.el.hidden = !on; }); this.dirty = true;
+  }
+  // Draw the room's eye to something new: a pulse, and a short glide if it is off screen.
+  pulse(at, label) {
+    const d = document.createElement('div'); d.className = 'pulse'; d.innerHTML = `<i></i><b>${esc(label)}</b>`; this.ov.appendChild(d);
+    const it = { el: d, lon: at[0], lat: at[1], kind: 'pulse' }; this.items.push(it); this.dirty = true;
+    setTimeout(() => { d.remove(); this.items = this.items.filter((x) => x !== it); }, 6000);
+    const p = this.project(at[0], at[1]); const off = !p.ok || p.x < 60 || p.y < 60 || p.x > this._w - 60 || p.y > this._h - 60;
+    if (off && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const v = this.view, from = { lon: v.lon, lat: v.lat }, to = { lon: at[0], lat: at[1] + 2.5 }; let dl = to.lon - from.lon; if (dl > 180) dl -= 360; if (dl < -180) dl += 360; const t0 = performance.now();
+      const step = (now) => { let k = Math.min(1, (now - t0) / 1600); k = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; v.lon = from.lon + dl * k; v.lat = from.lat + (to.lat - from.lat) * k; this.dirty = true; if (k < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    }
   }
   addLights() {
     // Glowing city lights: additive sprites in each country's color, with a white-hot core.
     const tex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
       gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.18)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, 64, 64); g.fillStyle = '#fff'; g.fillRect(22, 22, 20, 20); return new THREE.CanvasTexture(c); })();
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const core = g.createRadialGradient(32, 32, 0, 32, 32, 11); core.addColorStop(0, '#fff'); core.addColorStop(0.6, 'rgba(255,255,255,0.9)'); core.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = core; g.beginPath(); g.arc(32, 32, 11, 0, Math.PI * 2); g.fill(); return new THREE.CanvasTexture(c); })();
     const seen = (lo, la, o) => !this.opts.fog || ALLIES.includes(ownerOf(o)) || AGENTS.some(a => { const c = CAPITAL[a.target]; return c && Math.hypot(c[0] - lo, c[1] - la) < 2.4; });
     const make = (pts, size) => {
       const pos = [], col = []; const c = new THREE.Color();
@@ -498,6 +678,7 @@ class Globe {
   resize() {
     const w = this.stage.clientWidth, h = this.stage.clientHeight; if (!w || !h) return;
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.dirty = true;
+    this.fxScale = h * this.renderer.getPixelRatio() / (2 * Math.tan(this.camera.fov * D2R / 2));
   }
   placeCamera() {
     // Orbit camera: look at a point on the surface from a set height, heading and tilt.
@@ -548,9 +729,10 @@ class Globe {
     if (!this.items) return;
     this._w = this.stage.clientWidth; this._h = this.stage.clientHeight;
     const zoom = Math.min(2.2, 0.42 / Math.max(0.04, this.view.dist - 1) ); const w = this._w; const k = Math.max(0.7, Math.min(1.6, w / 1200)) * zoom;
-    const SHIFT = { lbl: 'translate(-50%, -50%)', city: 'translate(6px, -100%)', tok: 'translate(-50%, -50%)', pin: 'translate(-50%, -100%)' };
+    const SHIFT = { lbl: 'translate(-50%, -50%)', city: 'translate(6px, -100%)', tok: 'translate(-50%, -50%)', pin: 'translate(-50%, -100%)', feat: 'translate(-50%, -50%)', pulse: 'translate(-50%, -50%)' };
+    const bigFeat = zoom > 1.05; if (bigFeat !== this._bigFeat) { this._bigFeat = bigFeat; this.ov.classList.toggle('feat-big', bigFeat); }
     for (const it of this.items) {
-      const p = this.project(it.lon, it.lat, it.kind === 'tok' ? (it.air ? 0.026 : 0.019) : 0);
+      const p = this.project(it.lon, it.lat, it.kind === 'tok' ? (it.air ? 0.026 : 0.019) : it.kind === 'feat' ? 0.012 : 0);
       let show = p.ok;
       if (show && it.kind === 'city' && zoom < 0.85 && !['London', 'Paris', 'Berlin', 'Warsaw', 'Rome', 'Moscow'].includes(it.el.textContent)) show = false;
       if (show !== it._show) { it.el.style.display = show ? '' : 'none'; it._show = show; }
@@ -608,7 +790,7 @@ let toastTimer;
 function toast(msg) { const t = $('toast'); if (!t) return; t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3200); }
 function initials(name) { return name.replace(/"[^"]*"/g, '').split(/\s+/).filter((w) => /^[A-ZÉÓŁ]/.test(w)).map((w) => w[0]).join('').slice(0, 2); }
 const opt = (arr, sel) => arr.map((d) => `<option${d === sel ? ' selected' : ''}>${esc(d)}</option>`).join('');
-const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="reset" aria-label="Reset view">FIT</button></div>`;
+const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button" data-z="feat" class="featbtn" aria-pressed="${SHOW_FEAT}" aria-label="Show map features" title="Show map features (trenches, bunkers, factories)">${fIcon('fort')}</button><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="reset" aria-label="Reset view">FIT</button></div>`;
 const DATECARD = `<div class="date glass num"><span class="date-line"></span><small class="countdown">Next crisis update in <b>15:00</b></small></div>`;
 
 function skeleton(p) {
@@ -684,6 +866,7 @@ function skeleton(p) {
             <button type="submit" class="dbtn gold">Publish to the room</button>
           </form></div>
         <div class="spanel"><h2>Make something happen</h2><p class="formnote">For events nobody asked for: Hitler's orders, neutral countries, natural disasters, consequences of earlier plans.</p><div id="free-fx">${fxEditor('free', true, 'Effects')}</div><button type="button" class="dbtn gold" id="free-apply">Apply now</button></div>
+        <div class="spanel"><h2>Map features and scheduled events</h2><div id="featlist"></div></div>
         <div class="spanel"><h2>Messages</h2><p class="formnote">Every private message between delegates. Reply as a character with "Message delegates as a character" above.</p><div class="reqs" id="staff-msgs"></div></div>
         <div class="spanel"><h2>Projector</h2><div id="proj"></div>
           <div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button><button type="button" class="dbtn" id="clear-arrows">Clear map markers</button></div>
@@ -732,17 +915,24 @@ function applyState(v) {
   STATE = v; VER = v.version; UNITS = v.units || [];
   const arrowSig = JSON.stringify([v.arrows || [], v.control || {}]); const arrowsChanged = arrowSig !== JSON.stringify([LIVE_ARROWS, CONTROL]); LIVE_ARROWS = v.arrows || []; CONTROL = v.control || {};
   const markSig = JSON.stringify(v.markers || []); const marksChanged = markSig !== JSON.stringify(MARKERS); MARKERS = v.markers || []; RECON = v.recon || [];
+  const fsig = JSON.stringify([v.features || [], v.update?.no]); const featsChanged = fsig !== featSig; featSig = fsig;
+  const prevFeat = new Set(FEATS.map((f) => f.id)); FEATS = v.features || [];
   ORDER.forEach((c) => { if (v.treasury?.[c] != null) POWERS[c].treasury = v.treasury[c]; });
   if (VIEW === 'delegate' && v.me) { MEE = v.me; ME = v.me.country; ALLIES = v.allies; AGENTS = v.agents || []; }
   renderCommon(first);
   if (marksChanged && !first) [mapGlobe, delGlobe].forEach((g) => g && g.addPins());
+  if (featsChanged && !first) {
+    [mapGlobe, delGlobe].forEach((g) => g && g.addProps());
+    const fresh = FEATS.filter((f) => !prevFeat.has(f.id)).slice(0, 2);
+    if (mapGlobe && !EDIT) fresh.forEach((f) => mapGlobe.pulse(f.at, f.label)); if (delGlobe) fresh.forEach((f) => delGlobe.pulse(f.at, f.label));
+  }
   if (VIEW === 'map') { renderSel(); if (EDIT) renderEdit(); $('pend-count').textContent = v.pending ?? (v.queue || []).filter((q) => q.status === 'pending').length; renderFloor(); mapGlobe?.sync(prev); if (arrowsChanged && mapGlobe && !first) { paintTexture(patchCanvas, imgs, selected.type === 'country' ? selected.id : null); mapGlobe.refreshTexture(); } }
   if (VIEW === 'delegate') renderDelegate(first, prev);
   if (VIEW === 'staff') renderStaff();
 }
 
 /* ---------- Shared pieces ---------- */
-let wireSig = '';
+let wireSig = '', featSig = '';
 function renderCommon(first) {
   const s = STATE;
   $('treasuries').innerHTML = ORDER.map((n) => { const p = POWERS[n]; return `<button type="button" class="chip num" data-c="${n}">${flag(n)}<b>$${p.treasury}M</b><small>${p.short}</small></button>`; }).join('');
@@ -764,12 +954,19 @@ function showFlash(f) {
 }
 
 /* ---------- Projector ---------- */
+const traitText = (u) => (u.traits || []).map((t) => `${esc(t.label)} ${t.mod >= 0 ? '+' : ''}${t.mod}`).join(', ');
 function renderSel() {
   const box = $('selpanel'); if (!box) return;
+  if (selected.type === 'feature') {
+    const f = FEATS.find((x) => x.id === selected.id); if (!f) { selected = { type: 'country', id: 'Poland' }; return renderSel(); }
+    const st = featState(f);
+    box.innerHTML = `<div class="badge flagbadge featbadge" style="--fc:${POWERS[f.owner]?.color || '#999'}">${fIcon(f.kind)}</div><div><div class="sel-title">${esc(f.label)}</div><div class="sel-sub">${esc(POWERS[f.owner]?.label || f.owner)} · ${FEAT[f.kind]?.name || ''}</div><div class="stats"><div><span>Status</span> ${st === 'building' ? `Being built, ready after Update ${f.ready}` : st === 'ruined' ? 'Destroyed' : 'Ready'}</div>${f.mod && !f.ruined ? `<div><span>In battle</span> <b class="num">${f.mod > 0 ? '+' : ''}${Math.round(f.mod * S.MOD_STEP * 100)}%</b> for ${esc(POWERS[f.owner]?.label || f.owner)} defending here</div>` : ''}</div></div>`;
+    return;
+  }
   if (selected.type === 'unit') {
     const u = UNITS.find((x) => x.id === selected.id); if (!u) { selected = { type: 'country', id: 'Poland' }; return renderSel(); }
     const p = POWERS[u.owner]; const K = { fleet: ['NAV', 'Naval force', 'capital ships'], army: ['INF', 'Infantry', 'divisions'], armor: ['ARM', 'Armor', u.owner === 'USSR' || u.owner === 'Poland' ? 'brigades' : 'divisions'], air: ['AIR', 'Air force', `(about ${u.str * 100} aircraft)`] }[u.kind];
-    box.innerHTML = `<div class="badge flagbadge">${flag(u.owner)}<em>${K[0]}</em></div><div><div class="sel-title">${esc(u.name)}</div><div class="sel-sub">${p.label} · ${K[1]}</div><div class="stats"><div><span>Strength</span> <b class="num">${u.str} ${K[2]}</b></div><div><span>Orders</span> ${esc(u.note)}</div></div></div>`;
+    box.innerHTML = `<div class="badge flagbadge">${flag(u.owner)}<em>${K[0]}</em></div><div><div class="sel-title">${esc(u.name)}</div><div class="sel-sub">${p.label} · ${K[1]}</div><div class="stats"><div><span>Strength</span> <b class="num">${u.str} ${K[2]}</b></div>${u.traits?.length ? `<div><span>Traits</span> ${traitText(u)}</div>` : ''}<div><span>Orders</span> ${esc(u.note)}</div></div></div>`;
     return;
   }
   const name = selected.id; const owner = ownerOf(name); const p = POWERS[owner];
@@ -803,12 +1000,12 @@ const ICON = {
   build: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 27V14l7 4v-4l7 4v-4l7 4v9z"/><path d="M24 14V5h3v9"/></svg>',
   propaganda: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M5 13v6h4l10 6V7L9 13z"/><path d="M23 11c2 1.5 2 8.5 0 10M26 8c3.5 3 3.5 13 0 16"/></svg>',
 };
+// One open box for any plan, plus quick forms for the common moves the app can carry out by itself.
 const ACTIONS = [
-  { id: 'fleet', label: 'Move forces' }, { id: 'spy', label: 'Send spy' }, { id: 'money', label: 'Send money' },
-  { id: 'build', label: 'Build forces' }, { id: 'op', label: 'Fund operation' }, { id: 'propaganda', label: 'Propaganda' },
-  { id: 'secret', label: 'Crisis note' }, { id: 'press', label: 'Press release' }, { id: 'treaty', label: 'Propose treaty' },
+  { id: 'secret', label: 'Write a plan' }, { id: 'fleet', label: 'Move forces' }, { id: 'build', label: 'Build forces' }, { id: 'spy', label: 'Send a spy' },
+  { id: 'money', label: 'Send money' }, { id: 'op', label: 'Operation' }, { id: 'treaty', label: 'Treaty' }, { id: 'press', label: 'Press release' },
 ];
-let action = 'fleet', visibility = 'private', pickedForce = null, drafting = false, fogSig = '', pickLoc = null, followParent = null;
+let action = 'secret', visibility = 'private', pickedForce = null, drafting = false, fogSig = '', pickLoc = null, followParent = null;
 const myUnits = () => UNITS.filter((x) => x.owner === ME && MEE.commands.includes(x.kind));
 const TO = () => ORDER.filter((n) => n !== ME).map((n) => POWERS[n].label).concat(['Romania', 'Turkey', 'Belgium', 'Netherlands']);
 
@@ -861,8 +1058,8 @@ function pickForce(id) {
   showTab('act'); renderTiles(); renderForm();
 }
 function renderTiles() {
-  $('tiles').innerHTML = ACTIONS.map((a) => `<button type="button" class="tile" data-a="${a.id}" aria-pressed="${a.id === action}">${ICON[a.id]}<span>${a.label}</span></button>`).join('');
-  document.querySelectorAll('.tile').forEach((b) => b.addEventListener('click', () => { action = b.dataset.a; setPick(null); renderTiles(); renderForm(); }));
+  $('tiles').innerHTML = `<div class="quick" role="group" aria-label="Kind of request">${ACTIONS.map((a) => `<button type="button" class="qchip${a.id === 'secret' ? ' main' : ''}" data-a="${a.id}" aria-pressed="${a.id === action}">${a.label}</button>`).join('')}</div>`;
+  $('tiles').querySelectorAll('.qchip').forEach((b) => b.addEventListener('click', () => { action = b.dataset.a; setPick(null); renderTiles(); renderForm(); }));
 }
 const locBlock = (required, note) => `<div class="${pickLoc ? 'picked' : 'pickprompt'}">${pickLoc ? `<div style="grid-column:1/3"><b>${esc(pickLoc.where)}</b><span>Location chosen. Click the map again to change it.</span></div><button type="button" class="unpick" aria-label="Clear location">✕</button>` : `${required ? 'Click your own territory on the map to choose where to build.' : (note ? 'Optional: click the map if your plan happens somewhere specific.' : 'Optional: click the map to mark where the operation happens.')}<span>${required ? 'Ships must be built on a coast. Crisis staff check the location.' : (note ? 'Crisis staff will see the spot you mark.' : 'Air reconnaissance reveals enemy units around the spot you pick.')}</span>`}</div>`;
 // Update only the location box so the rest of the form keeps what the delegate already chose.
@@ -891,9 +1088,9 @@ function renderForm() {
   if (action === 'op') body = `<div id="f-loc">${LOC(false)}</div><label for="f-op">Operation<select id="f-op">${opt(['Naval blockade', 'Escort convoys', 'Air reconnaissance', 'Evacuate civilians', 'Other (describe below)'])}</select></label><label for="f-cost">Budget ($ millions)<input id="f-cost" type="number" min="1" max="9999" value="20"></label><label for="f-text">Details<textarea id="f-text" maxlength="1200" placeholder="Where, when and how."></textarea></label>`;
   if (action === 'propaganda') body = `<label for="f-aud">Audience<select id="f-aud">${opt(['People at home', 'Neutral countries', 'People in Germany', 'People in Britain', 'People in France', 'People in Italy', 'People in the Soviet Union', 'The United States', 'Japan'])}</select></label><label for="f-text">Message<textarea id="f-text" maxlength="1200" placeholder="What do you want them to believe?"></textarea></label>`;
   if (action === 'treaty') body = `<label for="f-with">Treaty with<select id="f-with">${ORDER.filter((k) => k !== ME).map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select></label>`;
-  if (action === 'secret') body = `${followParent ? `<div class="picked"><div style="grid-column:1/3"><b>Follow-up</b><span>${esc((STATE.queue.find((q) => q.id === followParent) || {}).title || '')}</span></div><button type="button" class="unfollow unpick" aria-label="Stop following up">✕</button></div>` : ''}<p class="formnote">Any plan your character could carry out: bribes, sabotage, secret talks, coups, propaganda, anything feasible. Be specific about who, where, how and with what. Crisis staff decide what happens.</p>`;
-  if (['secret', 'press', 'treaty'].includes(action)) body += `<label for="f-text">${{ secret: 'Your plan', press: 'Statement', treaty: 'Terms' }[action]}<textarea id="f-text" maxlength="1200" placeholder="${{ secret: 'For example: Quietly pay Romanian oil officials to delay shipments to Germany, using contacts in Bucharest.', press: 'What do you want to announce?', treaty: 'Who is the treaty with, and what does each side agree to?' }[action]}"></textarea></label>`;
-  if (action === 'secret') body += `<label for="f-cost">Budget, if any ($ millions)<input id="f-cost" type="number" min="0" max="9999" value="0"></label><div id="f-loc">${locBlock(false, true)}</div>`;
+  if (action === 'secret') body = `${followParent ? `<div class="picked"><div style="grid-column:1/3"><b>Follow-up</b><span>${esc((STATE.queue.find((q) => q.id === followParent) || {}).title || '')}</span></div><button type="button" class="unfollow unpick" aria-label="Stop following up">✕</button></div>` : ''}`;
+  if (['secret', 'press', 'treaty'].includes(action)) body += `<label for="f-text" class="${action === 'secret' ? 'bigask' : ''}">${{ secret: 'What do you want to do?', press: 'Statement', treaty: 'Terms' }[action]}<textarea id="f-text" maxlength="1200"${action === 'secret' ? ' rows="6"' : ''} placeholder="${{ secret: 'Anything your character could really do. For example: Dig a trench and bunker line along the Westwall from Aachen to Saarbrücken, using 20,000 workers from the Todt Organization.', press: 'What do you want to announce?', treaty: 'Who is the treaty with, and what does each side agree to?' }[action]}"></textarea></label>`;
+  if (action === 'secret') body += `<p class="formnote">Say who does it, where, how, and with what. Crisis staff decide what happens and can put it on the map: trenches, bunkers, factories, sabotage, new units.</p><label for="f-cost">Budget, if any ($ millions)<input id="f-cost" type="number" min="0" max="9999" value="0"></label><div id="f-loc">${locBlock(false, true)}</div>`;
   const forced = action === 'spy' ? 'private' : action === 'press' ? 'public' : null; const vis = forced || visibility;
   f.innerHTML = body + (forced ? '' : `<div class="vis" role="group" aria-label="Who can see this"><button type="button" data-v="private" aria-pressed="${vis === 'private'}">Private</button><button type="button" data-v="public" aria-pressed="${vis === 'public'}">Public</button></div>`) + `<button class="send" type="submit">${action === 'spy' ? 'Send agent' : 'Send to crisis staff'}</button>`;
   f.querySelectorAll('.vis button').forEach((b) => b.addEventListener('click', () => { visibility = b.dataset.v; f.querySelectorAll('.vis button').forEach((x) => x.setAttribute('aria-pressed', x === b)); }));
@@ -947,7 +1144,8 @@ function renderPortfolio() {
   $('p-port').innerHTML = `
     <div class="sec"><h3>Your powers</h3><ul class="plist">${r.commands.map((k) => `<li>${POWER_TEXT[k]}</li>`).join('')}${ALWAYS.map((a) => `<li>${a}</li>`).join('')}</ul></div>
     <div class="sec"><h3>Your assets</h3><ul class="plist">
-      ${units.length ? units.map((u) => `<li>${esc(u.name)}<small>${KIND_NAME[u.kind]} · strength ${u.str} · ${esc(u.note)}</small></li>`).join('') : '<li>No forces on the map</li>'}
+      ${units.length ? units.map((u) => `<li>${esc(u.name)}<small>${KIND_NAME[u.kind]} · strength ${u.str}${u.traits?.length ? ' · ' + traitText(u) : ''} · ${esc(u.note)}</small></li>`).join('') : '<li>No forces on the map</li>'}
+      ${FEATS.filter((f) => f.owner === ME).map((f) => `<li>${esc(f.label)}<small>${esc(featTitle(f).split(' · ').slice(2).join(' · ') || 'Ready')}</small></li>`).join('')}
       <li>$${POWERS[ME].treasury}M national treasury<small>Shared with the other ${POWERS[ME].label} commanders</small></li>
       <li>${SPECIAL[ME] || "Your government's contacts"}</li>${(STATE.assets || []).map((x) => `<li>${esc(x.text)}<small>Granted by crisis staff after update ${x.update}</small></li>`).join('')}</ul></div>
     <div class="sec"><h3>Not in your portfolio</h3><ul class="plist no">
@@ -1013,6 +1211,12 @@ function showTab(t) { $('t-' + t).classList.remove('ping'); ['act', 'dir', 'port
 let confirmKill = null;
 function placeAt(lon, lat) {
   if (!placing) return false;
+  if (placing.mode === 'feat') {
+    const at = [+lon.toFixed(3), +lat.toFixed(3)];
+    if (FEAT[placing.data.kind]?.line && !placing.at) { placing.at = at; renderPlacebar(); return true; }
+    const d = placing.data, a0 = placing.at || at, a2 = placing.at ? at : null; placing = null; renderPlacebar();
+    act({ type: 'feature.add', ...d, at: a0, ...(a2 ? { at2: a2 } : {}) }); return true;
+  }
   const pl = placing; placing = null; renderPlacebar();
   if (pl.mode === 'move') act({ type: 'unit.move', id: pl.id, at: [lon, lat], public: pl.public });
   if (pl.mode === 'add') act({ type: 'unit.add', ...pl.data, at: [lon, lat], public: pl.public });
@@ -1020,8 +1224,12 @@ function placeAt(lon, lat) {
 }
 function renderPlacebar() {
   const b = $('placebar'); if (!b) return; b.hidden = !placing;
-  if (placing) b.innerHTML = `Click the map where ${placing.mode === 'add' ? 'the new unit should go' : 'the unit should move'} (${placing.public ? 'shown on the projector' : 'secret'}). <button type="button" class="dbtn" id="place-cancel">Cancel</button>`;
+  if (placing?.mode === 'feat') {
+    const line = FEAT[placing.data.kind]?.line;
+    b.innerHTML = `${!line ? 'Click the map where it goes.' : placing.at ? 'Now click where the line ends.' : 'Click where the line starts.'} <button type="button" class="dbtn" id="place-cancel">Cancel</button>${line && placing.at ? ' <button type="button" class="dbtn" id="place-one">Just that one spot</button>' : ''}`;
+  } else if (placing) b.innerHTML = `Click the map where ${placing.mode === 'add' ? 'the new unit should go' : 'the unit should move'} (${placing.public ? 'shown on the projector' : 'secret'}). <button type="button" class="dbtn" id="place-cancel">Cancel</button>`;
   $('place-cancel')?.addEventListener('click', () => { placing = null; renderPlacebar(); });
+  $('place-one')?.addEventListener('click', () => { const d = placing.data, at = placing.at; placing = null; renderPlacebar(); act({ type: 'feature.add', ...d, at }); });
 }
 function renderEdit() {
   const box = $('editcard'); if (!box || !STATE) return;
@@ -1036,6 +1244,10 @@ function renderEdit() {
       <div class="row"><button type="button" class="dbtn gold" data-e="move-pub">Move on projector</button><button type="button" class="dbtn green" data-e="move-sec">Move secretly</button></div>
       <div class="row"><button type="button" class="dbtn red" data-e="kill">${confirmKill === u.id ? 'Click again to confirm' : u.kind === 'fleet' ? 'Sink' : u.kind === 'air' ? 'Shoot down' : 'Destroy'}</button>${secret ? '<button type="button" class="dbtn" data-e="reveal">Reveal on projector</button>' : ''}</div>`;
     }
+  } else if (selected.type === 'feature') {
+    const f = FEATS.find((x) => x.id === selected.id);
+    if (f) html += `<h3>${fIcon(f.kind)} ${esc(f.label)}</h3><p class="formnote">${esc(featTitle(f))}</p>
+      <div class="row">${f.ruined ? '<button type="button" class="dbtn green" data-fe="repair">Repair</button>' : '<button type="button" class="dbtn red" data-fe="ruin">Destroy</button>'}${featState(f) === 'building' ? '<button type="button" class="dbtn gold" data-fe="finish">Finish now</button>' : ''}<button type="button" class="dbtn" data-fe="remove">Remove from map</button></div>`;
   } else if (selected.region && REGION[selected.region]) {
     const r = REGION[selected.region]; const c = ctrlOf(r); const zone = REGIONS.filter((x) => x.country === r.country && x.zone === r.zone);
     html += `<h3>${esc(r.name)}</h3><p class="formnote">${esc(r.country)} · ${r.zone.toLowerCase()} zone (${zone.length} regions) · held by ${POWERS[c]?.label || c}</p>
@@ -1045,15 +1257,25 @@ function renderEdit() {
   html += `<details class="addunit"><summary>Add a new unit</summary>
     <div class="row"><select id="a-owner">${ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select><select id="a-kind">${KINDS.map((k) => `<option value="${k}">${KIND_NAME[k]}</option>`).join('')}</select></div>
     <div class="row"><input type="text" id="a-name" placeholder="Name, e.g. 2nd Armored Division" maxlength="60"><input type="number" id="a-str" min="1" max="99" value="5" style="width:64px" aria-label="Strength"></div>
-    <div class="row"><button type="button" class="dbtn gold" data-e="add-pub">Place on projector</button><button type="button" class="dbtn green" data-e="add-sec">Place secretly</button></div></details>`;
-  const open = box.querySelector('details')?.open; box.innerHTML = html; if (open) box.querySelector('details').open = true;
+    <div class="row"><button type="button" class="dbtn gold" data-e="add-pub">Place on projector</button><button type="button" class="dbtn green" data-e="add-sec">Place secretly</button></div></details>
+    <details class="addfeat"><summary>Add a map feature</summary>${featForm('n')}
+    <div class="row"><button type="button" class="dbtn gold" data-e="feat-pub">Place on projector</button><button type="button" class="dbtn green" data-e="feat-sec">Place secretly</button></div></details>`;
+  const open = [...box.querySelectorAll('details')].map((d) => d.open); box.innerHTML = html; box.querySelectorAll('details').forEach((d, i) => { if (open[i]) d.open = true; });
 }
+// Shared feature fields for the map editor.
+function featForm(p) {
+  return `<div class="row"><select id="${p}-fkind">${Object.entries(FEAT).map(([k, v]) => `<option value="${k}">${v.name}${v.line ? ' (line)' : ''}</option>`).join('')}</select><select id="${p}-fowner">${ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select></div>
+    <div class="row"><input type="text" id="${p}-flabel" maxlength="50" placeholder="Name, e.g. Siegfried Line trenches"><label class="formnote">Defense <input type="number" id="${p}-fmod" min="-4" max="4" placeholder="auto" style="width:64px"></label></div>
+    <div class="row"><label class="formnote">Ready <select id="${p}-fturns"><option value="0">Now</option><option value="1">After the next update</option><option value="2">In 2 updates</option><option value="3">In 3 updates</option></select></label></div>`;
+}
+const readFeat = (p) => ({ kind: $(p + '-fkind').value, owner: $(p + '-fowner').value, label: $(p + '-flabel').value, mod: $(p + '-fmod').value, turns: $(p + '-fturns').value });
 function ownerOptions(sel) {
   const minor = [...new Set(REGIONS.map((r) => r.country))].filter((c) => !POWERS[c] && !OWNER[c]);
   return ORDER.map((k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${POWERS[k].label}</option>`).join('') + minor.map((c) => `<option value="${esc(c)}"${c === sel ? ' selected' : ''}>${esc(c)}</option>`).join('');
 }
 function bindEdit() {
   $('editcard').addEventListener('click', (e) => {
+    const fe = e.target.closest('[data-fe]'); if (fe) { act({ type: 'feature.edit', id: selected.id, action: fe.dataset.fe }); if (fe.dataset.fe === 'remove') selected = { type: 'country', id: 'Poland' }; return; }
     const b = e.target.closest('[data-e]'); if (!b) return; const k = b.dataset.e;
     if (['str', 'move-pub', 'move-sec', 'kill', 'reveal'].includes(k)) {
       const id = selected.id;
@@ -1066,6 +1288,7 @@ function bindEdit() {
       const r = REGION[selected.region]; const ids = k === 'zone' ? REGIONS.filter((x) => x.country === r.country && x.zone === r.zone).map((x) => x.id) : [r.id];
       act({ type: 'region.set', ids, owner: $('e-owner').value });
     }
+    if (k === 'feat-pub' || k === 'feat-sec') { placing = { mode: 'feat', data: { ...readFeat('n'), public: k === 'feat-pub' } }; renderPlacebar(); return; }
     if (k === 'add-pub' || k === 'add-sec') {
       placing = { mode: 'add', public: k === 'add-pub', data: { owner: $('a-owner').value, kind: $('a-kind').value, name: $('a-name').value, str: $('a-str').value } }; renderPlacebar();
     }
@@ -1074,10 +1297,10 @@ function bindEdit() {
 
 
 /* ---------- Effects toolkit (staff): make anything happen ---------- */
-const FX_TYPES = { money: 'Change money', strength: 'Change unit strength', destroy: 'Destroy a unit', move: 'Move a unit', unit: 'Create a unit', region: 'Change who holds regions', intel: 'Send an intel report', wire: 'Post a news headline', marker: 'Place a map marker', asset: 'Grant a new asset or power', message: 'Message delegates as a character' };
+const FX_TYPES = { feature: 'Build or place a map feature (trenches, bunkers, factory…)', 'feature.edit': 'Destroy, repair or remove a map feature', trait: 'Give a unit a trait (veteran, low on fuel…)', money: 'Change money', strength: 'Change unit strength', destroy: 'Destroy a unit', move: 'Move a unit', unit: 'Create a unit', region: 'Change who holds regions', intel: 'Send an intel report', wire: 'Post a news headline', marker: 'Place a map marker', asset: 'Grant a new asset or power', message: 'Message delegates as a character' };
 const countrySel = (cls, sel) => `<select data-f="${cls}">${ORDER.map((k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${POWERS[k].label}</option>`).join('')}</select>`;
 const unitSel = () => `<select data-f="unit">${unitOptions()}</select>`;
-const placeSel = () => `<select data-f="to">${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<optgroup label="${esc(c)}">${REGIONS.filter((r) => r.country === c).map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>`).join('')}<optgroup label="Seas">${Object.keys(S.SEAS).map((k) => `<option>${esc(k)}</option>`).join('')}</optgroup></select>`;
+const placeSel = (key = 'to', first = '') => `<select data-f="${key}">${first}${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<optgroup label="${esc(c)}">${REGIONS.filter((r) => r.country === c).map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>`).join('')}<optgroup label="Seas">${Object.keys(S.SEAS).map((k) => `<option>${esc(k)}</option>`).join('')}</optgroup></select>`;
 const pubBox = (on = true) => `<label class="check"><input type="checkbox" data-f="public"${on ? ' checked' : ''}> Public</label>`;
 const delegateSel = (multi) => `<select data-f="${multi ? 'to' : 'name'}"${multi ? ' multiple size="4"' : ''}>${ROSTER.map((r) => `<option>${esc(r.name)}</option>`).join('')}</select>`;
 function fxRow(t, ctx = {}) {
@@ -1093,12 +1316,25 @@ function fxRow(t, ctx = {}) {
     marker: () => `<input type="text" data-f="label" placeholder="Label, e.g. Oil fields sabotaged">${countrySel('owner', ctx.country)}<span class="formnote">at</span>${placeSel()}${pubBox()}`,
     asset: () => `${delegateSel(false)}<input type="text" data-f="text" placeholder="e.g. Controls a network of agents in Bucharest" style="flex:1">`,
     message: () => `<input type="text" data-f="from" placeholder="From, e.g. Adolf Hitler">${delegateSel(true)}<textarea data-f="text" placeholder="Message"></textarea>`,
+    feature: () => `<select data-f="kind">${Object.entries(FEAT).map(([k, v]) => `<option value="${k}">${v.name}${v.line ? ' (line)' : ''}</option>`).join('')}</select><input type="text" data-f="label" maxlength="50" placeholder="Name, e.g. Westwall trenches">${countrySel('owner', ctx.country)}
+      <span class="formnote">at</span>${placeSel('to', ctx.here ? '<option value="@here" selected>Where the delegate marked</option>' : '')}<span class="formnote">line to</span>${placeSel('to2', '<option value="" selected>No line (one spot)</option>')}
+      <label class="formnote">Defense <input type="number" data-f="mod" min="-4" max="4" placeholder="auto" style="width:60px"></label><label class="formnote">Ready <select data-f="turns"><option value="0">Now</option><option value="1">After next update</option><option value="2">In 2 updates</option><option value="3">In 3 updates</option></select></label>${pubBox(ctx.vis !== 'private')}`,
+    'feature.edit': () => `<select data-f="id">${FEATS.map((f) => `<option value="${f.id}">${esc(f.label)} · ${esc(POWERS[f.owner]?.short || f.owner)}${f.ruined ? ' (destroyed)' : ''}</option>`).join('') || '<option value="">No features on the map yet</option>'}</select><select data-f="action"><option value="ruin">Destroy</option><option value="repair">Repair</option><option value="finish">Finish building now</option><option value="remove">Remove from map</option></select>${pubBox()}`,
+    trait: () => `${unitSel()}<select data-f="action"><option value="add">Add trait</option><option value="clear">Clear all traits</option></select><input type="text" data-f="label" maxlength="40" placeholder="e.g. Winter gear, Low on fuel, Veteran"><label class="formnote">Battle bonus <input type="number" data-f="mod" min="-4" max="4" value="1" style="width:60px"></label>`,
   }[t];
   return `<div class="fx-row" data-t="${t}"><b>${FX_TYPES[t]}</b><div class="row">${f()}</div><button type="button" class="dbtn fx-del" aria-label="Remove this effect">✕</button></div>`;
 }
 function fxEditor(key, open = false, label = 'Add effects (optional)') {
   return `<details class="fx" data-fx="${key}"${open ? ' open' : ''}><summary>${label}</summary><div class="fx-rows"></div>
-    <div class="row"><select class="fx-type" aria-label="Effect type">${Object.entries(FX_TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><button type="button" class="dbtn fx-add">Add effect</button></div></details>`;
+    <div class="row"><select class="fx-type" aria-label="Effect type">${Object.entries(FX_TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><button type="button" class="dbtn fx-add">Add effect</button>
+    <label class="formnote fx-whenl">Effects happen <select class="fx-when"><option value="0">now</option><option value="1">at the next crisis update</option><option value="2">in 2 updates</option><option value="3">in 3 updates</option></select></label></div>
+    <p class="formnote">Each +1 defense or battle bonus is worth +${Math.round(S.MOD_STEP * 100)}% in the battle calculator.</p></details>`;
+}
+const readWhen = (box) => +(box?.querySelector('.fx-when')?.value || 0);
+// Re-rendering a list must not wipe effects staff are halfway through writing.
+function keepFx(root, fn) {
+  const saved = {}; root.querySelectorAll('.fx[data-fx]').forEach((n) => { if (n.querySelector('.fx-row') || n.open) saved[n.dataset.fx] = n; });
+  fn(); root.querySelectorAll('.fx[data-fx]').forEach((n) => { const o = saved[n.dataset.fx]; if (o) n.replaceWith(o); });
 }
 function readFx(box) {
   if (!box) return [];
@@ -1117,7 +1353,7 @@ function readFx(box) {
 function bindFx(root) {
   root.addEventListener('click', (e) => {
     const add = e.target.closest('.fx-add'), del = e.target.closest('.fx-del');
-    if (add) { const box = add.closest('.fx'); const country = box.dataset.country; box.querySelector('.fx-rows').insertAdjacentHTML('beforeend', fxRow(box.querySelector('.fx-type').value, { country })); }
+    if (add) { const box = add.closest('.fx'); const { country, here, vis } = box.dataset; box.querySelector('.fx-rows').insertAdjacentHTML('beforeend', fxRow(box.querySelector('.fx-type').value, { country, here: here === '1', vis })); }
     if (del) del.closest('.fx-row').remove();
   });
 }
@@ -1145,7 +1381,7 @@ function renderForces() {
   const box = $('forces'); if (!box) return;
   const list = STATE.units.filter((u) => !fCountry || u.owner === fCountry);
   keepInputs(box, () => {
-    box.innerHTML = `<div class="codes-wrap"><table class="codes"><thead><tr><th>Unit</th><th>Type</th><th>Strength</th><th></th></tr></thead><tbody>${list.map((u) => `<tr><td>${flag(u.owner)} ${esc(u.name)}${!u.shown ? ' <span class="pill private">hidden</span>' : ''}${u.basis ? `<br><small class="formnote" style="color:var(--warn)">${esc(u.basis)}</small>` : ''}</td><td>${KIND_NAME[u.kind]}</td>
+    box.innerHTML = `<div class="codes-wrap"><table class="codes"><thead><tr><th>Unit</th><th>Type</th><th>Strength</th><th></th></tr></thead><tbody>${list.map((u) => `<tr><td>${flag(u.owner)} ${esc(u.name)}${!u.shown ? ' <span class="pill private">hidden</span>' : ''}${u.traits?.length ? `<br><small class="formnote">Traits: ${traitText(u)}</small>` : ''}${u.basis ? `<br><small class="formnote" style="color:var(--warn)">${esc(u.basis)}</small>` : ''}</td><td>${KIND_NAME[u.kind]}</td>
       <td><input type="number" id="fs-${u.id}" min="1" max="99" value="${u.str}" style="width:60px"> <button type="button" class="dbtn" data-fs="${u.id}">Save</button></td>
       <td><button type="button" class="dbtn red" data-fk="${u.id}">${confirmKill === u.id ? 'Confirm' : u.kind === 'fleet' ? 'Sink' : u.kind === 'air' ? 'Shoot down' : 'Destroy'}</button></td></tr>`).join('')}</tbody></table></div>`;
   });
@@ -1166,7 +1402,14 @@ const TIERS = [
   { min: 0.8, name: 'Stalemate', win: false, att: 0.2, def: 0.2 },
   { min: 0, name: 'Attack fails', win: false, att: 0.35, def: 0.1 },
 ];
-let battleRoll = null;
+let battleRoll = null; const battleOff = new Set();
+// Distance in degrees from a unit to a feature (a point, or a line between two points).
+function featDist(f, at) {
+  if (!f.to) return Math.hypot(f.at[0] - at[0], f.at[1] - at[1]);
+  const [x1, y1] = f.at, [x2, y2] = f.to, dx = x2 - x1, dy = y2 - y1; const t = Math.max(0, Math.min(1, ((at[0] - x1) * dx + (at[1] - y1) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(x1 + t * dx - at[0], y1 + t * dy - at[1]);
+}
+const traitMul = (u) => Math.max(0.25, 1 + S.MOD_STEP * (u.traits || []).reduce((a, t) => a + (+t.mod || 0), 0));
 function unitOptions() { if (!STATE) return ''; return ORDER.map((c) => { const us = STATE.units.filter((u) => u.owner === c); return us.length ? `<optgroup label="${POWERS[c].label}">${us.map((u) => `<option value="${u.id}">${esc(u.name)} (${u.str})</option>`).join('')}</optgroup>` : ''; }).join(''); }
 function renderBattleShell() {
   $('battle').innerHTML = `<div class="bgrid">
@@ -1178,23 +1421,28 @@ function renderBattleShell() {
       <label class="check"><input type="checkbox" id="m-asup"> Good supply plan +25%</label>
       <label>Plan quality <input type="range" id="m-aplan" min="0" max="50" step="5" value="0"> <span id="m-aplan-v">+0%</span></label></div>
     <div class="mods"><b>Defender bonuses</b>
-      <label class="check"><input type="checkbox" id="m-fort"> Fortified line or rough terrain +50%</label>
+      <label class="check"><input type="checkbox" id="m-fort"> Rough terrain or river +50%</label>
       <label class="check"><input type="checkbox" id="m-dair"> Air or naval support +25%</label>
       <label class="check"><input type="checkbox" id="m-dsup"> Good supply plan +25%</label>
       <label>Plan quality <input type="range" id="m-dplan" min="0" max="50" step="5" value="0"> <span id="m-dplan-v">+0%</span></label></div></div>
     <div class="row"><label class="check"><input type="checkbox" id="m-roll"> Roll a die for luck (1 = one result worse, 6 = one result better)</label><button type="button" class="dbtn" id="b-reroll">Roll again</button></div>
     <div id="b-result"></div>`;
   const recompute = () => { $('m-aplan-v').textContent = `+${$('m-aplan').value}%`; $('m-dplan-v').textContent = `+${$('m-dplan').value}%`; renderBattleResult(); };
-  $('battle').addEventListener('input', recompute); $('battle').addEventListener('change', recompute);
+  $('battle').addEventListener('input', recompute); $('battle').addEventListener('change', (e) => { const id = e.target.dataset?.bf; if (id) { if (e.target.checked) battleOff.delete(id); else battleOff.add(id); } recompute(); });
   $('b-reroll').addEventListener('click', () => { battleRoll = 1 + Math.floor(Math.random() * 6); $('m-roll').checked = true; renderBattleResult(); });
 }
 function renderBattleResult() {
   const pick = (id) => [...$(id).selectedOptions].map((o) => STATE.units.find((u) => u.id === o.value)).filter(Boolean);
   const att = pick('b-att'), def = pick('b-def'); const box = $('b-result');
   if (!att.length || !def.length) { box.innerHTML = '<p class="formnote">Pick at least one attacking and one defending unit. Hold Ctrl (or Cmd) to pick several.</p>'; return; }
-  const on = (id) => $(id).checked; const sum = (l) => l.reduce((a, u) => a + u.str, 0);
+  const on = (id) => $(id).checked; const sum = (l) => l.reduce((a, u) => a + u.str * traitMul(u), 0);
+  const aOwner0 = att[0].owner, dOwner0 = def[0].owner; const dSide = S.alliesOf(dOwner0);
+  // Map features near the defenders count for them automatically (staff can untick any).
+  const feats = FEATS.filter((f) => featState(f) === 'ready' && f.mod && f.owner !== aOwner0 && (f.owner === dOwner0 || dSide.includes(f.owner)) && def.some((u) => featDist(f, u.at) < 1.4));
+  const featMod = feats.filter((f) => !battleOff.has(f.id)).reduce((a, f) => a + f.mod, 0);
   const aMul = 1 + (on('m-surprise') ? 0.25 : 0) + (on('m-aair') ? 0.25 : 0) + (on('m-asup') ? 0.25 : 0) + +$('m-aplan').value / 100;
-  const dMul = 1 + (on('m-fort') ? 0.5 : 0) + (on('m-dair') ? 0.25 : 0) + (on('m-dsup') ? 0.25 : 0) + +$('m-dplan').value / 100;
+  const dMul = Math.max(0.25, 1 + (on('m-fort') ? 0.5 : 0) + (on('m-dair') ? 0.25 : 0) + (on('m-dsup') ? 0.25 : 0) + +$('m-dplan').value / 100 + featMod * S.MOD_STEP);
+  const traitsUsed = [...att, ...def].filter((u) => u.traits?.length);
   const A = sum(att) * aMul, D = sum(def) * dMul, ratio = A / Math.max(0.1, D);
   let ti = TIERS.findIndex((t) => ratio >= t.min);
   if (on('m-roll')) { if (battleRoll == null) battleRoll = 1 + Math.floor(Math.random() * 6); if (battleRoll === 1) ti = Math.min(TIERS.length - 1, ti + 1); if (battleRoll === 6) ti = Math.max(0, ti - 1); }
@@ -1203,15 +1451,19 @@ function renderBattleResult() {
   const aOwner = att[0].owner, dOwner = def[0].owner;
   const head = `${POWERS[aOwner].label} attack on ${def.map((u) => u.name).join(' and ')}: ${t.name.toLowerCase().replace('attacker', POWERS[aOwner].label)}`;
   box.innerHTML = `<div class="verdict ${t.win ? 'win' : ti === 3 ? 'draw' : 'loss'}"><b>${t.name}</b><span>Attack ${A.toFixed(1)} vs defense ${D.toFixed(1)} · ratio ${ratio.toFixed(2)} : 1${on('m-roll') ? ` · die rolled ${battleRoll}` : ''}</span></div>
+    ${feats.length ? `<div class="mods"><b>Map features defending this area</b>${feats.map((f) => `<label class="check"><input type="checkbox" data-bf="${f.id}"${battleOff.has(f.id) ? '' : ' checked'}> ${esc(f.label)} ${f.mod > 0 ? '+' : ''}${Math.round(f.mod * S.MOD_STEP * 100)}%</label>`).join('')}</div>` : ''}
+    ${traitsUsed.length ? `<p class="formnote">Unit traits counted: ${traitsUsed.map((u) => `${esc(u.name)} (${traitText(u)})`).join('; ')}</p>` : ''}
     <p class="formnote">Suggested losses: attackers ${Math.round(t.att * 100)}%, defenders ${Math.round(t.def * 100)}%. Change any number before applying.</p>
     <table class="codes"><tbody>${att.map((u) => row(u, t.att)).join('')}${def.map((u) => row(u, t.def)).join('')}</tbody></table>
     ${t.win ? `<label class="formnote" for="b-regions">Regions the attacker takes (optional)</label><select id="b-regions" multiple size="5">${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<optgroup label="${esc(c)}">${REGIONS.filter((r) => r.country === c).map((r) => `<option value="${r.id}">${esc(r.name)} (${r.zone.toLowerCase()})</option>`).join('')}</optgroup>`).join('')}</select>` : ''}
+    ${t.win && feats.length ? `<label class="check"><input type="checkbox" id="b-ruin" checked> Destroy the defenses the attacker overran (${feats.map((f) => esc(f.label)).join(', ')})</label>` : ''}
     <label class="formnote" for="b-head">Headline for the news wire</label><input type="text" id="b-head" maxlength="160" value="${esc(head)}" style="width:100%">
     <div class="row"><button type="button" class="dbtn gold" id="b-apply">Apply result to the map</button></div>`;
   $('b-apply').addEventListener('click', async () => {
     const results = [...box.querySelectorAll('[data-bs]')].map((i) => ({ id: i.dataset.bs, str: i.value, destroy: box.querySelector(`[data-bk="${i.dataset.bs}"]`).checked }));
     const regions = $('b-regions') ? [...$('b-regions').selectedOptions].map((o) => o.value) : [];
-    if (await act({ type: 'battle.resolve', results, regions, regionOwner: aOwner, headline: $('b-head').value })) { battleRoll = null; renderBattleShell(); renderBattleResult(); }
+    const ruin = $('b-ruin')?.checked ? feats.map((f) => f.id) : [];
+    if (await act({ type: 'battle.resolve', results, regions, regionOwner: aOwner, headline: $('b-head').value, ruin })) { battleRoll = null; renderBattleShell(); renderBattleResult(); }
   });
 }
 
@@ -1253,16 +1505,16 @@ function renderStaff() {
   $('q-count').textContent = `${pending} pending`;
   const list = Q.filter((q) => (qFilter === 'all' || q.status === 'pending') && (!qCountry || q.country === qCountry));
   const qsig = JSON.stringify([qFilter, qCountry, list.map((q) => [q.id, q.status])]);
-  if (qsig !== queueSig) { queueSig = qsig; keepInputs($('queue'), () => {
+  if (qsig !== queueSig) { queueSig = qsig; keepFx($('queue'), () => keepInputs($('queue'), () => {
     $('queue').innerHTML = list.map((q) => `<div class="qcard${q.status !== 'pending' ? ' done' : ''}">
       <div class="qtop">${flag(q.country)}<b>${esc(q.from)}</b>${POWERS[q.country].label} · ${esc(q.time)}<span class="pill type">${q.type === 'fleet' ? 'move' : q.type}</span><span class="pill ${q.vis}">${q.vis}</span>${q.status !== 'pending' ? `<span class="pill ${q.status}">${esc(q.outcome || q.status)}</span>` : ''}</div>
       <div class="qtitle">${esc(q.title)}</div>${qDetail(q) ? `<div class="qdetail">${qDetail(q)}</div>` : ''}
-      ${q.status === 'pending' ? fxEditor(q.id).replace('class="fx"', `class="fx" data-country="${q.country}"`) : ''}${q.status === 'pending' ? `<textarea id="r-${q.id}" maxlength="500" aria-label="Reply to ${esc(q.from)}" placeholder="Reply to the delegate (optional). A default reply is used if empty."></textarea><div class="qbtns">${qButtons(q)}</div>` : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b>${q.effects ? `<br>Effects: ${q.effects.map(esc).join(', ')}` : ''}</div>`}
+      ${q.status === 'pending' ? fxEditor(q.id).replace('class="fx"', `class="fx" data-country="${q.country}" data-vis="${q.vis}" data-here="${q.detail?.at ? 1 : 0}"`) : ''}${q.status === 'pending' ? `<textarea id="r-${q.id}" maxlength="500" aria-label="Reply to ${esc(q.from)}" placeholder="Reply to the delegate (optional). A default reply is used if empty."></textarea><div class="qbtns">${qButtons(q)}</div>` : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b>${q.effects ? `<br>Effects: ${q.effects.map(esc).join(', ')}` : ''}</div>`}
     </div>`).join('') || '<p class="formnote">Nothing waiting. New requests appear here a second or two after delegates send them.</p>';
-  }); }
+  })); }
   const csig = JSON.stringify((STATE.directives || []).map((d) => [d.id, d.status, d.signed.length, (d.carried || []).length]));
-  if (csig !== chairSig) { chairSig = csig; keepInputs($('chair'), renderChair); }
-  renderProj(); renderStaffMessages(); renderTerritory(); renderForces(); refreshBattleLists();
+  if (csig !== chairSig) { chairSig = csig; keepFx($('chair'), () => keepInputs($('chair'), renderChair)); }
+  renderProj(); renderStaffMessages(); renderTerritory(); renderForces(); refreshBattleLists(); renderFeatList();
   const cd = $('cu-date'); if (cd && !cd.value && document.activeElement !== cd) cd.value = STATE.update?.date || '';
 }
 function renderChair() {
@@ -1276,6 +1528,13 @@ function renderChair() {
     ${d.status === 'floor' ? `<div class="votes"><label>For <input type="number" min="0" id="vf-${d.id}" value="0"></label><label>Against <input type="number" min="0" id="va-${d.id}" value="0"></label><button type="button" class="dbtn gold" data-ch="vote" data-d="${d.id}">Record placard vote</button></div>` : ''}
   </div>`).join('') || '<p class="formnote">No directives yet. They appear here once delegates send them for signatures.</p>';
 }
+let flSig = '';
+function renderFeatList() {
+  const sc = STATE.scheduled || []; const sig = JSON.stringify([FEATS, sc, STATE.update.no]); if (sig === flSig) return; flSig = sig;
+  $('featlist').innerHTML = (FEATS.length ? `<div class="codes-wrap"><table class="codes"><tbody>${FEATS.slice().reverse().map((f) => { const st = featState(f); return `<tr><td>${flag(f.owner)} <b>${esc(f.label)}</b><br><small class="formnote">${FEAT[f.kind]?.name}${modText(f.ruined ? 0 : f.mod)} · ${st === 'building' ? `ready after Update ${f.ready}` : st}${f.public ? '' : ' · secret'}</small></td>
+    <td class="qbtns">${f.ruined ? `<button type="button" class="dbtn green" data-fl="repair" data-id="${f.id}">Repair</button>` : `<button type="button" class="dbtn red" data-fl="ruin" data-id="${f.id}">Destroy</button>`}${st === 'building' ? `<button type="button" class="dbtn gold" data-fl="finish" data-id="${f.id}">Finish now</button>` : ''}<button type="button" class="dbtn" data-fl="remove" data-id="${f.id}">Remove</button></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="formnote">No map features yet. Add them as effects when approving a plan, or place them in the map editor.</p>')
+    + (sc.length ? `<h3 class="formnote" style="margin-top:10px">Scheduled</h3>${sc.map((x) => `<div class="projrow"><div><b>Update ${x.due}</b> ${esc(x.note || 'Staff event')}<br><small class="formnote">${x.effects.map((e) => esc(FX_TYPES[e.type] || e.type)).join(', ')}</small></div><button type="button" class="dbtn red" data-cancel="${x.id}">Cancel</button></div>`).join('')}` : '');
+}
 let msgSig = '';
 function renderStaffMessages() {
   const M = STATE.messages || []; const sig = M.length + ':' + (M[M.length - 1]?.id || ''); if (sig === msgSig) return; msgSig = sig;
@@ -1287,16 +1546,17 @@ function renderProj() {
     ${hidden.map((u) => `<div class="projrow"><div><b>${esc(u.name)}</b>${POWERS[u.owner].label} · moved secretly</div><button type="button" class="dbtn gold" data-reveal="${u.id}">Reveal on projector</button></div>`).join('') || '<p class="formnote">No hidden moves right now.</p>'}`;
 }
 function bindStaff() {
-  $('queue').addEventListener('click', (e) => { const b = e.target.closest('[data-dec]'); if (!b) return; b.disabled = true; act({ type: 'decide', id: b.dataset.q, dec: b.dataset.dec, reply: $('r-' + b.dataset.q)?.value || '', effects: readFx(b.closest('.qcard').querySelector('.fx')) }).then(() => { b.disabled = false; }); });
+  $('queue').addEventListener('click', (e) => { const b = e.target.closest('[data-dec]'); if (!b) return; b.disabled = true; act({ type: 'decide', id: b.dataset.q, dec: b.dataset.dec, reply: $('r-' + b.dataset.q)?.value || '', effects: readFx(b.closest('.qcard').querySelector('.fx')), when: readWhen(b.closest('.qcard').querySelector('.fx')) }).then(() => { b.disabled = false; }); });
   bindFx($('view-staff-root'));
   $('chair').addEventListener('click', (e) => {
     const b = e.target.closest('[data-ch]'); if (!b) return; const id = b.dataset.d;
     if (b.dataset.ch === 'floor') act({ type: 'chair.floor', id });
     if (b.dataset.ch === 'back') act({ type: 'chair.back', id });
-    if (b.dataset.ch === 'carry') { const fx = readFx(b.closest('.chair-row').querySelector('.fx')); if (!fx.length) { toast('Add at least one effect first.'); return; } act({ type: 'effects.apply', directive: id, effects: fx }).then((ok) => { if (ok) chairSig = ''; }); }
+    if (b.dataset.ch === 'carry') { const fx = readFx(b.closest('.chair-row').querySelector('.fx')); if (!fx.length) { toast('Add at least one effect first.'); return; } act({ type: 'effects.apply', directive: id, effects: fx, when: readWhen(b.closest('.chair-row').querySelector('.fx')) }).then((ok) => { if (ok) chairSig = ''; }); }
     if (b.dataset.ch === 'vote') act({ type: 'chair.vote', id, for: $('vf-' + id).value, against: $('va-' + id).value });
   });
   $('proj').addEventListener('click', (e) => { const b = e.target.closest('[data-reveal]'); if (b) act({ type: 'reveal', unitId: b.dataset.reveal }); });
+  $('featlist').addEventListener('click', (e) => { const b = e.target.closest('[data-fl]'), c = e.target.closest('[data-cancel]'); if (b) act({ type: 'feature.edit', id: b.dataset.id, action: b.dataset.fl }); if (c) act({ type: 'schedule.cancel', id: c.dataset.cancel }); });
   document.querySelectorAll('[data-qf]').forEach((b) => b.addEventListener('click', () => { qFilter = b.dataset.qf; document.querySelectorAll('[data-qf]').forEach((x) => x.setAttribute('aria-pressed', x === b)); renderStaff(); }));
   $('q-country').addEventListener('change', (e) => { qCountry = e.target.value; renderStaff(); });
   $('cu-form').addEventListener('submit', async (e) => {
@@ -1307,7 +1567,7 @@ function bindStaff() {
   $('replay-flash').addEventListener('click', () => act({ type: 'flash' }));
   $('cd-restart').addEventListener('click', () => act({ type: 'countdown', minutes: 15 }));
   $('clear-arrows').addEventListener('click', () => act({ type: 'arrows.clear' }));
-  $('free-apply').addEventListener('click', async () => { const box = $('free-fx').querySelector('.fx'); const fx = readFx(box); if (!fx.length) { toast('Add at least one effect first.'); return; } if (await act({ type: 'effects.apply', effects: fx })) box.querySelector('.fx-rows').innerHTML = ''; });
+  $('free-apply').addEventListener('click', async () => { const box = $('free-fx').querySelector('.fx'); const fx = readFx(box); if (!fx.length) { toast('Add at least one effect first.'); return; } if (await act({ type: 'effects.apply', effects: fx, when: readWhen(box) })) box.querySelector('.fx-rows').innerHTML = ''; });
   $('load-demo').addEventListener('click', () => act({ type: 'game.demo' }));
   $('reset-game').addEventListener('click', () => act({ type: 'game.reset', confirm: $('reset-confirm').value.trim().toUpperCase() }));
 }
@@ -1327,6 +1587,7 @@ export function start(root, props) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('breaking').hidden = true; });
   document.querySelectorAll('.zoom').forEach((z) => z.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return; const g = z.dataset.g === 'map' ? mapGlobe : delGlobe; if (!g) return;
+    if (b.dataset.z === 'feat') { SHOW_FEAT = !SHOW_FEAT; try { localStorage.setItem('crisis-feat', SHOW_FEAT ? 'on' : 'off'); } catch {} b.setAttribute('aria-pressed', SHOW_FEAT); g.setFeatVisible(SHOW_FEAT); return; }
     if (b.dataset.z === 'in') g.view.dist = Math.max(1.05, 1 + (g.view.dist - 1) * 0.72);
     if (b.dataset.z === 'out') g.view.dist = Math.min(3.6, 1 + (g.view.dist - 1) * 1.38);
     if (b.dataset.z === 'reset') Object.assign(g.view, g.home);
@@ -1356,14 +1617,14 @@ export function start(root, props) {
     try {
       const [geo, marble, water, topo, world, wwater, clouds] = await Promise.all([
         fetch('/crisis/geo.json').then((r) => r.json()).then(async (g) => { RSHAPE = await fetch('/crisis/regions.json').then((r) => r.json()); return g; }),
-        ...['marble.jpg', 'water.png', 'topo.jpg', 'world.jpg', 'wwater.png', 'clouds.jpg'].map((f) => loadImg('/crisis/' + f)),
+        ...['marble.webp', 'water.png', 'topo.jpg', 'world.webp', 'wwater.png', 'clouds.jpg'].map((f) => loadImg('/crisis/' + f)),
       ]);
       A = geo; imgs = { marble, water, topo, world, wwater, clouds }; await first;
       if (stopped) return;
       if (VIEW === 'map') {
         BASE_CACHE = document.createElement('canvas'); BASE_CACHE.ready = false;
         patchCanvas = document.createElement('canvas'); patchCanvas.width = TW * TEXK; patchCanvas.height = TH * TEXK; paintTexture(patchCanvas, imgs, selected.id);
-        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat)), onUnit: (id) => select('unit', id), onGround: EDIT ? placeAt : null });
+        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat)), onUnit: (id) => select('unit', id), onFeature: (id) => select('feature', id), onGround: EDIT ? placeAt : null });
         mapGlobe.setTextures(world, patchCanvas, topo);
       } else {
         fogCanvas = document.createElement('canvas'); fogCanvas.width = TW * TEXK; fogCanvas.height = TH * TEXK; paintFog(fogCanvas);

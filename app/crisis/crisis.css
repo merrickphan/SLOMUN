@@ -245,7 +245,7 @@ button { cursor: pointer; }
 .myres b { display: block; font-size: 17px; }
 .myres span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .side h2 { font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); margin: 0 0 8px; }
-.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tiles { display: block; margin-bottom: 8px; }
 .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px 4px; min-height: 74px; border-radius: 5px; border: 1px solid var(--line); background: rgba(255,255,255,.04); font-weight: 600; font-size: 13px; line-height: 1.1; text-align: center; }
 .tile:hover { border-color: rgba(245,194,27,.6); }
 .tile[aria-pressed="true"] { background: var(--gold); color: #15110A; border-color: var(--gold); }
@@ -374,3 +374,34 @@ button { cursor: pointer; }
 .msg small { white-space: pre-wrap; }
 .tabs { display: grid !important; grid-template-columns: repeat(3, 1fr); }
 .tabs button { flex: none; }
+
+/* Map features: tags over 3D props */
+.overlay .feat, .overlay .pulse { position: absolute; left: 0; top: 0; will-change: transform; }
+.feat { display: flex; align-items: center; gap: 4px; padding: 2px; border-radius: 4px; border: 1px solid var(--fc, #999); background: rgba(14,16,20,.82); color: #fff; font: 600 11px/1.1 inherit; cursor: pointer; pointer-events: auto; white-space: nowrap; }
+.feat svg { width: 14px; height: 14px; flex: none; }
+.feat span { display: none; padding-right: 4px; }
+.feat-big .feat span { display: inline; }
+.feat:hover span, .feat:focus-visible span { display: inline; }
+.feat.building { border-style: dashed; color: #F5C21B; }
+.feat.ruined { color: #FF8A6A; border-color: #8A3A2A; opacity: .9; }
+.feat.secret { border-style: dotted; }
+.feat[hidden], .tok[hidden] { display: none !important; }
+.featbadge { background: rgba(14,16,20,.9); border: 2px solid var(--fc, #999); color: #fff; display: grid; place-items: center; }
+.featbadge svg { width: 30px; height: 30px; }
+.zoom .featbtn svg { width: 18px; height: 18px; }
+.zoom .featbtn[aria-pressed="false"] { opacity: .45; }
+.pulse { pointer-events: none; display: grid; place-items: center; }
+.pulse i { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--gold); animation: pulse 1.4s ease-out 4; }
+.pulse b { position: absolute; top: 22px; white-space: nowrap; background: var(--gold); color: #15110A; font-size: 12px; padding: 2px 6px; border-radius: 3px; }
+@keyframes pulse { from { transform: scale(.6); opacity: 1; } to { transform: scale(3.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pulse i { animation: none; } }
+/* Delegate request form: one open box plus quick forms */
+.quick { display: flex; flex-wrap: wrap; gap: 5px; }
+.qchip { padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-weight: 600; font-size: 12px; }
+.qchip:hover { border-color: rgba(245,194,27,.6); color: var(--text); }
+.qchip[aria-pressed="true"] { background: rgba(255,255,255,.12); color: var(--text); border-color: rgba(255,255,255,.35); }
+.qchip.main[aria-pressed="true"] { background: var(--gold); color: #15110A; border-color: var(--gold); }
+.bigask { font-size: 15px; font-weight: 700; }
+.bigask textarea { min-height: 120px; font-weight: 400; }
+.fx-whenl { margin-left: auto; }
+.addfeat { margin-top: 8px; }

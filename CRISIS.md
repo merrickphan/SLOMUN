@@ -68,7 +68,31 @@ Then open `http://localhost:3000/crisis`. In development the codes are `STAFF-00
   - grant a delegate a new asset or power
   - message delegates as a character such as Hitler or Stalin
 - **Make something happen:** applies the same effects at any time, for events nobody asked for.
+- **Timing:** every set of effects can happen now, at the next crisis update, or 2 or 3 updates later. Scheduled effects are listed under **Map features and scheduled events**, where staff can cancel them.
 - **Arrows:** movement arrows are turned off. Units still glide to their new positions.
+
+## Map features and unit traits
+
+These turn free-form plans into things that show on the map and count in battles.
+
+- **Map features** are 3D props on the globe:
+  - trenches, bunkers and barbed wire (each can run as a line between two spots)
+  - minefields, anti-aircraft guns, factories, airfields, oil fields, ports, bridges, partisan camps and fires
+- **Each feature has a defense value.** Trenches +1, bunkers +2, wire +1, minefields +1, anti-aircraft guns +1 by default. Each +1 is worth +25% for the side defending near it.
+- **The battle calculator adds features automatically** when they sit within about 1.4° of the defending units. Staff can untick any of them. A winning attacker can overrun them, which marks them destroyed.
+- **Build time:** a feature can be ready now or after 1 to 3 crisis updates. Until then it shows as a see-through model with scaffolding. When it finishes, the wire announces it if it is public.
+- **Destroyed features** turn dark, with fire and smoke. Oil fields burn.
+- **Secret features** are only seen by the owner's side, until enemy units, planes, recon or agents get close.
+- **Unit traits** (for example "Winter gear +1", "Low on fuel −1", "Veteran +1") change that unit's strength in the battle calculator by 25% per point.
+- **Where staff add them:**
+  - as an effect when approving a plan ("Where the delegate marked" uses the spot the delegate clicked);
+  - in **Make something happen**;
+  - in the **map editor**, by clicking the map (two clicks for a line).
+- **Delegates** see features as small icons when zoomed out and full models when zoomed in. Hovering an icon explains it. The button above the zoom controls hides all features.
+
+## Delegate requests
+
+The Actions tab opens on one box: **What do you want to do?** Delegates write any feasible plan there, with an optional budget and map spot. Small buttons above it open quick forms for the moves the app can carry out by itself: move forces, build forces, send a spy, send money, an operation, a treaty or a press release.
 
 ## Testing plan
 
@@ -161,4 +185,10 @@ Each country's starting treasury is its **1938 military spending** in millions o
 | Poland | $152M |
 | Finland | $27M |
 
-**Costs are still game values.** Build costs ($12M per infantry division, $8M per tank battalion, $6M per fighter squadron, $15M per destroyer flotilla) are not historical. Staff should judge whether they feel right against these budgets.
+**Costs are still game values.** Build costs ($40M per infantry division, $90M per armored division, $60M per 100 aircraft, $75M per capital ship) are not historical. Staff should judge whether they feel right against these budgets.
+
+## Map imagery
+
+- The ground is NASA Blue Marble Next Generation (August 2004), public domain. The Europe patch is cut from the 21,600-pixel original.
+- Coastlines and lakes come from Natural Earth (public domain).
+- Fixed in the 1938 border data: the Smyrna (İzmir) area is Turkish, not Greek, and Jutland's center no longer sits in Greenland.
