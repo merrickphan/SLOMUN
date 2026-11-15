@@ -20,18 +20,18 @@ export function Button({ href, children, variant = 'gold', arrow = true, ...rest
   return <button className={cls} {...rest}>{inner}</button>;
 }
 
-export function PageBanner({ title, image }) {
+export function PageBanner({ title, image, position }) {
   return (
-    <div className="banner" style={{ backgroundImage: `linear-gradient(rgba(0,0,0,.66), rgba(0,0,0,.66)), url(${image})` }}>
+    <div className="banner" style={{ backgroundImage: `linear-gradient(rgba(0,0,0,.66), rgba(0,0,0,.66)), url(${image})`, ...(position ? { backgroundPosition: position } : {}) }}>
       <h1>{title}</h1>
     </div>
   );
 }
 
-export function Page({ title, image, children }) {
+export function Page({ title, image, position, children }) {
   return (
     <div className="page">
-      <PageBanner title={title} image={image} />
+      <PageBanner title={title} image={image} position={position} />
       {children}
     </div>
   );

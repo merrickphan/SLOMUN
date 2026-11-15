@@ -28,7 +28,7 @@ export default async function CommitteePage({ params }) {
   ];
 
   return (
-    <Page title={c.name} image={c.image}>
+    <Page title={c.name} image={c.banner || c.image} position={c.bannerPosition}>
       <dl className="facts">
         {facts.map(([label, value]) => (
           <div className="fact" key={label}>
