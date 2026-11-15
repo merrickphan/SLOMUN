@@ -840,7 +840,7 @@ function pickGround(lon, lat) {
   const kind = action === 'build' ? BUILD_KIND[$('f-btype')?.value] : null;
   if (action === 'build' && kind !== 'fleet' && holder !== ME) { toast(`You can only build on territory ${POWERS[ME].label} holds.`); return true; }
   const where = rg ? rg.name : country ? (LABEL_TEXT[country] || country) : 'open sea';
-  setPick({ at: [+lon.toFixed(3), +lat.toFixed(3)], where }); renderForm(); return true;
+  setPick({ at: [+lon.toFixed(3), +lat.toFixed(3)], where }); renderLoc(); return true;
 }
 function pickForce(id) {
   const u = UNITS.find((x) => x.id === id); if (!u) return;
@@ -852,6 +852,13 @@ function pickForce(id) {
 function renderTiles() {
   $('tiles').innerHTML = ACTIONS.map((a) => `<button type="button" class="tile" data-a="${a.id}" aria-pressed="${a.id === action}">${ICON[a.id]}<span>${a.label}</span></button>`).join('');
   document.querySelectorAll('.tile').forEach((b) => b.addEventListener('click', () => { action = b.dataset.a; setPick(null); renderTiles(); renderForm(); }));
+}
+const locBlock = (required) => `<div class="${pickLoc ? 'picked' : 'pickprompt'}">${pickLoc ? `<div style="grid-column:1/3"><b>${esc(pickLoc.where)}</b><span>Location chosen. Click the map again to change it.</span></div><button type="button" class="unpick" aria-label="Clear location">✕</button>` : `${required ? 'Click your own territory on the map to choose where to build.' : 'Optional: click the map to mark where the operation happens.'}<span>${required ? 'Ships must be built on a coast. Crisis staff check the location.' : 'Air reconnaissance reveals enemy units around the spot you pick.'}</span>`}</div>`;
+// Update only the location box so the rest of the form keeps what the delegate already chose.
+function renderLoc() {
+  const box = $('f-loc'); if (!box) return renderForm();
+  box.innerHTML = locBlock(action === 'build');
+  box.querySelector('.unpick')?.addEventListener('click', () => { setPick(null); renderLoc(); });
 }
 function renderForm() {
   const f = $('form'); let body = '';
@@ -868,16 +875,17 @@ function renderForm() {
     <label for="f-text">Plan (optional)<textarea id="f-text" maxlength="1200" placeholder="Anything specific your agent should do."></textarea></label>
     <p class="formnote">Spy missions are always private. Crisis staff decide if your agent succeeds, fails, or gets caught.</p>`;
   if (action === 'money') body = `<label for="f-to">Send to<select id="f-to">${opt(TO())}</select></label><label for="f-amt">Amount ($ millions)<input id="f-amt" type="number" min="1" max="9999" value="10"></label><label for="f-text">Purpose (optional)<textarea id="f-text" maxlength="1200"></textarea></label>`;
-  const LOC = (required) => `<div class="${pickLoc ? 'picked' : 'pickprompt'}">${pickLoc ? `<div style="grid-column:1/3"><b>${esc(pickLoc.where)}</b><span>Location chosen. Click the map again to change it.</span></div><button type="button" class="unpick" aria-label="Clear location">✕</button>` : `${required ? 'Click your own territory on the map to choose where to build.' : 'Optional: click the map to mark where the operation happens.'}<span>${required ? 'Ships must be built on a coast. Crisis staff check the location.' : 'Air reconnaissance reveals enemy units around the spot you pick.'}</span>`}</div>`;
-  if (action === 'build') body = `${LOC(true)}<label for="f-btype">What to build<select id="f-btype">${opt(Object.keys(BUILD))}</select></label><label for="f-bqty">How many<input id="f-bqty" type="number" min="1" max="10" value="1"></label><p class="formnote" id="f-bcost"></p>`;
-  if (action === 'op') body = `${LOC(false)}<label for="f-op">Operation<select id="f-op">${opt(['Naval blockade', 'Escort convoys', 'Air reconnaissance', 'Evacuate civilians', 'Other (describe below)'])}</select></label><label for="f-cost">Budget ($ millions)<input id="f-cost" type="number" min="1" max="9999" value="20"></label><label for="f-text">Details<textarea id="f-text" maxlength="1200" placeholder="Where, when and how."></textarea></label>`;
+  const LOC = locBlock;
+  if (action === 'build') body = `<div id="f-loc">${LOC(true)}</div><label for="f-btype">What to build<select id="f-btype">${opt(Object.keys(BUILD))}</select></label><label for="f-bqty">How many<input id="f-bqty" type="number" min="1" max="10" value="1"></label><p class="formnote" id="f-bcost"></p>`;
+  if (action === 'op') body = `<div id="f-loc">${LOC(false)}</div><label for="f-op">Operation<select id="f-op">${opt(['Naval blockade', 'Escort convoys', 'Air reconnaissance', 'Evacuate civilians', 'Other (describe below)'])}</select></label><label for="f-cost">Budget ($ millions)<input id="f-cost" type="number" min="1" max="9999" value="20"></label><label for="f-text">Details<textarea id="f-text" maxlength="1200" placeholder="Where, when and how."></textarea></label>`;
   if (action === 'propaganda') body = `<label for="f-aud">Audience<select id="f-aud">${opt(['People at home', 'Neutral countries', 'People in Germany', 'People in Britain', 'People in France', 'People in Italy', 'People in the Soviet Union', 'The United States', 'Japan'])}</select></label><label for="f-text">Message<textarea id="f-text" maxlength="1200" placeholder="What do you want them to believe?"></textarea></label>`;
   if (action === 'treaty') body = `<label for="f-with">Treaty with<select id="f-with">${ORDER.filter((k) => k !== ME).map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select></label>`;
   if (['secret', 'press', 'treaty'].includes(action)) body += `<label for="f-text">${{ secret: 'Directive', press: 'Statement', treaty: 'Terms' }[action]}<textarea id="f-text" maxlength="1200" placeholder="${{ secret: 'Describe what you want to happen and how.', press: 'What do you want to announce?', treaty: 'Who is the treaty with, and what does each side agree to?' }[action]}"></textarea></label>`;
   const forced = action === 'spy' ? 'private' : action === 'press' ? 'public' : null; const vis = forced || visibility;
   f.innerHTML = body + (forced ? '' : `<div class="vis" role="group" aria-label="Who can see this"><button type="button" data-v="private" aria-pressed="${vis === 'private'}">Private</button><button type="button" data-v="public" aria-pressed="${vis === 'public'}">Public</button></div>`) + `<button class="send" type="submit">${action === 'spy' ? 'Send agent' : 'Send to crisis staff'}</button>`;
   f.querySelectorAll('.vis button').forEach((b) => b.addEventListener('click', () => { visibility = b.dataset.v; f.querySelectorAll('.vis button').forEach((x) => x.setAttribute('aria-pressed', x === b)); }));
-  f.querySelector('.picked .unpick')?.addEventListener('click', () => { if (['build', 'op'].includes(action)) { setPick(null); renderForm(); return; } pickedForce = null; if (delGlobe) { delGlobe.selectedUnit = null; delGlobe.markSelected(null); } renderForm(); });
+  f.querySelector('#f-loc .unpick')?.addEventListener('click', () => { setPick(null); renderLoc(); });
+  f.querySelector('.picked:not(#f-loc .picked) .unpick')?.addEventListener('click', () => { pickedForce = null; if (delGlobe) { delGlobe.selectedUnit = null; delGlobe.markSelected(null); } renderForm(); });
   if (action === 'build') { const upd = () => { const c = BUILD[f.querySelector('#f-btype').value] * (+f.querySelector('#f-bqty').value || 0); f.querySelector('#f-bcost').textContent = `Cost: $${c}M of your $${POWERS[ME].treasury}M treasury. Each counts as 1 strength.`; }; f.querySelector('#f-btype').addEventListener('change', upd); f.querySelector('#f-bqty').addEventListener('input', upd); upd(); }
 }
 function summary() {
