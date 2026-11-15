@@ -1652,6 +1652,8 @@ const qSpot = (q) => q.detail?.at || (q.type === 'fleet' && STATE.units.find((u)
 async function decideQ(q, ok, btn) {
   const card = btn.closest('.qcard'); const reply = ($('r-' + q.id)?.value || '').trim(); const box = card.querySelector('.fx');
   const manual = readFx(box); const key = ok ? q.id : 'r' + q.id;
+  // Don't approve on an empty plan just because the assistant hasn't answered yet.
+  if (!q.ai && !manual.length && !reply && PROPS_AI === 'claude' && !aiErr[q.id]) { toast('The assistant is still reading this request. Give it a few seconds, or add effects by hand.'); return; }
   let b = (ok ? q.ai?.approve : q.ai?.reject) || { effects: [], headline: null, flash: null, reply: '' };
   b = { ...b, effects: keptEffects(key, b) };
   card.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = true));
