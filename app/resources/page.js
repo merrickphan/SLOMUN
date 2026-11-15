@@ -5,7 +5,7 @@ export const metadata = { title: 'Delegate Resources | SLOMUN' };
 const guides = [
   ['SOCHUM', 'Modern Slavery and Human Trafficking'],
   ['CRISPR & Genetic Engineering Ethics', 'Crisis Committee'],
-  ['Early WWII (Europe)', 'Crisis Committee'],
+  ['Early WWII', 'Crisis Committee'],
   ['Modern AGI Emergency Summit', 'Crisis Committee', '/guides/modern-agi-emergency-summit.pdf'],
 ];
 

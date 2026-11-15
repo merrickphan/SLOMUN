@@ -17,7 +17,7 @@ export default function About() {
         </p>
         <p>
           The second session of SLOMUN features four committees: the Social, Humanitarian &amp; Cultural Committee
-          (SOCHUM), CRISPR &amp; Genetic Engineering Ethics, Early WWII (Europe), and the Modern AGI Emergency Summit.
+          (SOCHUM), CRISPR &amp; Genetic Engineering Ethics, Early WWII, and the Modern AGI Emergency Summit.
         </p>
       </div>
       <hr />

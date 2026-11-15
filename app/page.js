@@ -26,7 +26,7 @@ export default function Home() {
           It is our honor to welcome you to the second session of San Luis Obispo Model United Nations, hosted at San
           Luis Obispo High School. This session features four committees: the Social, Humanitarian &amp; Cultural
           Committee on Modern Slavery and Human Trafficking, and three crisis committees on CRISPR &amp; Genetic
-          Engineering Ethics, Early WWII (Europe), and a Modern AGI Emergency Summit.
+          Engineering Ethics, Early WWII, and a Modern AGI Emergency Summit.
         </p>
         <div className="letter">
           <div className="letter-text">
