@@ -443,3 +443,44 @@ button { cursor: pointer; }
 .wgroup.alliance > span { color: #8BE09A; }
 /* Keep the delegate screen to one window on laptops so the war bar and news wire stay visible. */
 @media (min-width: 901px) { .crisis-root:has(.dview) { height: 100dvh; } .dview { min-height: 0; overflow: hidden; } .dview .dlayout .stage { min-height: 0; } }
+
+/* Staff screen = the map: request drawer on the left, tools along the top, pop-ups */
+.staffmap .stoolbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 12px; background: #2A2D33; border-bottom: 1px solid var(--line); }
+.staffmap .stoolbar .dbtn { display: inline-flex; gap: 6px; align-items: center; }
+.staffmap .stage { min-height: calc(100vh - 140px); }
+.staffmap .queuecard, .staffmap .update, .staffmap .selcard, .staffmap .hint { display: none; }
+.staffmap .floorcard { top: auto; bottom: 64px; right: 70px; }
+.staffmap .date { left: calc(50% + 200px); }
+.sdrawer { position: absolute; left: 0; top: 0; bottom: 0; width: min(430px, 44%); z-index: 6; display: flex; flex-direction: column; background: rgba(36,39,45,.96); border-right: 1px solid var(--line); transition: transform .2s ease; }
+.sdrawer.shut { transform: translateX(calc(-100% + 44px)); }
+.sdrawer.shut .sdbody, .sdrawer.shut .shead > :not(#sd-toggle) { visibility: hidden; }
+.sdrawer .shead { display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.sdrawer .shead h2 { margin: 0; font-size: 18px; }
+.sdrawer #sd-toggle { order: 9; margin-left: auto; padding: 2px 10px; font-size: 18px; }
+.sdrawer.has #sd-toggle { background: var(--gold); color: #15110A; }
+.sdrawer .sdbody { overflow-y: auto; padding: 10px; flex: 1; }
+.sdrawer .aibox { grid-template-columns: 1fr; }
+.sdrawer .qcard { margin-bottom: 10px; }
+.dbtn.small { padding: 2px 8px; font-size: 12px; margin-top: 4px; }
+.staffmap .editcard { top: 12px; right: 64px; width: min(340px, 34%); max-height: calc(100% - 90px); }
+.editcard[hidden] { display: none; }
+.ecard-x { position: absolute; top: 8px; right: 8px; background: transparent; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+.editcard details { border-top: 1px solid var(--line); padding-top: 6px; }
+.editcard summary { cursor: pointer; font-weight: 700; color: var(--gold); font-size: 13px; }
+.editcard .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+.btray { position: absolute; left: 50%; bottom: 14px; transform: translateX(-30%); z-index: 6; display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; max-width: 60%; flex-wrap: wrap; }
+.btray[hidden] { display: none; }
+.btray .fl { width: 18px; height: 12px; display: inline-block; vertical-align: -1px; }
+.smodal { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; }
+.smodal[hidden] { display: none; }
+.mbox { background: #2E3138; border: 1px solid var(--line); border-radius: 8px; width: min(560px, 100%); max-height: calc(100vh - 40px); display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+.mbox.wide { width: min(900px, 100%); }
+.mbox header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.mbox header h2 { margin: 0; font-size: 20px; }
+.mbody { overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.update-now { font-size: 13px; color: var(--muted); padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; }
+.update-now b { color: var(--text); }
+.update-now .card-title { display: block; }
+.stoolbar .count, .shead .count { background: var(--gold); color: #15110A; border-radius: 999px; padding: 0 6px; font-size: 11px; }
+@media print { .smodal:not(#m-codes), .topbar, .staffmap > :not(#m-codes) { display: none !important; } #m-codes { position: static; background: none; } #m-codes .mbox { box-shadow: none; max-height: none; } }
+@media (max-width: 760px) { .sdrawer { width: 100%; } .staffmap .editcard { width: calc(100% - 24px); right: 12px; } }
