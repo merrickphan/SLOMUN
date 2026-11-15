@@ -103,3 +103,38 @@ Fill as many of the 22 seats as possible with volunteers and run 45 to 60 minute
 1. Reset the game (type RESET).
 2. Print and cut the access code cards.
 3. Open the staff screen and the projector before delegates arrive.
+
+## Starting forces and sources
+
+Strength units:
+- **Armies and armor:** divisions. Soviet and Polish armor counts brigades.
+- **Fleets:** capital ships (battleships, battlecruisers, pocket battleships and aircraft carriers).
+- **Air forces:** hundreds of front-line aircraft.
+
+The figures in `lib/crisis/scenario.js` come from these sources:
+
+| Force | Figure | Source |
+|---|---|---|
+| German Army Groups North and South, panzer and light divisions | 18 / 24 / 10 divisions | [ww2-weapons.com: German orders of battle, 1 September 1939](https://ww2-weapons.com/german-orders-of-battle-for-september-1-1939) |
+| Luftwaffe | about 1,000 fighters and 1,050 bombers | Britannica, "Forces and resources of the European combatants, 1939" |
+| Polish armies, motorized brigades, air force | per-army divisions; 2 motorized brigades; about 400 aircraft | [Wikipedia: Polish army order of battle in 1939](https://en.wikipedia.org/wiki/Polish_army_order_of_battle_in_1939); [historyofwar.org](https://www.historyofwar.org/articles/campaign_poland_1939_2.html) |
+| French Northeast Front | about 85 divisions | [Axis History Forum](https://forum.axishistory.com/viewtopic.php?p=1426272) (sources differ) |
+| Army of the Alps | about 175,000 men | [Wikipedia: Army of the Alps (France)](https://en.wikipedia.org/wiki/Army_of_the_Alps_(France)) |
+| Armée de l'Air | 634 fighters, 463 bombers | [Britannica: French Air Force](https://www.britannica.com/topic/French-Air-Force) |
+| RAF | 1,911 first-line aircraft | [Official history, RAF 1939–1945 Vol. I](https://ibiblio.org/hyperwar/UN/UK/UK-RAF-I/UK-RAF-I-V.html) |
+| Royal Navy | 15 battleships and battlecruisers, 7 carriers | [Naval History Net](https://www.naval-history.net/WW2CampaignRoyalNavy.htm) |
+| Italian army and air force | 73 divisions judged feasible; 1,190 of 2,586 aircraft operational | [Military history of Italy during WWII](https://en.wikipedia.org/wiki/Military_history_of_Italy_during_World_War_II); [militaryhistoryvisualized.com](https://militaryhistoryvisualized.com/tag/1939) |
+| Soviet invasion force | 33+ divisions, 9 tank brigades, about 3,300 aircraft | [Soviet order of battle for the invasion of Poland](https://www.wikiwand.com/en/articles/Soviet_order_of_battle_for_invasion_of_Poland_in_1939) |
+| US Battle Force, Army Air Corps | 12 battleships and 5 carriers; about 800 first-line aircraft | [Wikipedia: Battle Fleet](https://en.wikipedia.org/wiki/Battle_Fleet); [Air & Space Forces Magazine](https://www.airandspaceforces.com/article/1007wwii/) |
+| Kwantung Army, China Expeditionary Army | 6 divisions; 23 divisions and 28 brigades | [weaponsandwarfare.com](https://weaponsandwarfare.com/?p=6652) |
+
+**Still estimates.** Each of these units has a staff note on the staff screen:
+- German Army Group C
+- the split of British ships between the Home and Mediterranean fleets
+- the Regia Marina
+- the split of Soviet divisions between districts
+- the US Atlantic Squadron
+- Japan's Combined Fleet and Naval Air Service
+- Finland
+
+Treasuries are still placeholders.

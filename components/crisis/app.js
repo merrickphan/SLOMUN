@@ -751,7 +751,7 @@ function renderSel() {
   const box = $('selpanel'); if (!box) return;
   if (selected.type === 'unit') {
     const u = UNITS.find((x) => x.id === selected.id); if (!u) { selected = { type: 'country', id: 'Poland' }; return renderSel(); }
-    const p = POWERS[u.owner]; const K = { fleet: ['NAV', 'Naval force', 'squadrons'], army: ['INF', 'Infantry', 'divisions'], armor: ['ARM', 'Armor', 'divisions'], air: ['AIR', 'Air force', 'air groups'] }[u.kind];
+    const p = POWERS[u.owner]; const K = { fleet: ['NAV', 'Naval force', 'capital ships'], army: ['INF', 'Infantry', 'divisions'], armor: ['ARM', 'Armor', u.owner === 'USSR' || u.owner === 'Poland' ? 'brigades' : 'divisions'], air: ['AIR', 'Air force', `(about ${u.str * 100} aircraft)`] }[u.kind];
     box.innerHTML = `<div class="badge flagbadge">${flag(u.owner)}<em>${K[0]}</em></div><div><div class="sel-title">${esc(u.name)}</div><div class="sel-sub">${p.label} · ${K[1]}</div><div class="stats"><div><span>Strength</span> <b class="num">${u.str} ${K[2]}</b></div><div><span>Orders</span> ${esc(u.note)}</div></div></div>`;
     return;
   }
@@ -974,7 +974,7 @@ function renderEdit() {
     const u = UNITS.find((x) => x.id === selected.id);
     if (u) {
       const secret = !u.shown || u.shown[0] !== u.at[0] || u.shown[1] !== u.at[1];
-      html += `<h3>${flag(u.owner)} ${esc(u.name)}</h3><p class="formnote">${POWERS[u.owner].label} · ${KIND_NAME[u.kind]}${secret ? ' · <b style="color:var(--warn)">projector shows an old position</b>' : ''}</p>
+      html += `<h3>${flag(u.owner)} ${esc(u.name)}</h3><p class="formnote">${POWERS[u.owner].label} · ${KIND_NAME[u.kind]}${secret ? ' · <b style="color:var(--warn)">projector shows an old position</b>' : ''}</p>${u.basis ? `<p class="formnote" style="color:var(--warn)">Staff note: ${esc(u.basis)}</p>` : ''}
       <div class="row"><label class="formnote" for="e-str">Strength</label><input type="number" id="e-str" min="1" max="99" value="${u.str}" style="width:70px"><button type="button" class="dbtn" data-e="str">Save</button></div>
       <div class="row"><button type="button" class="dbtn gold" data-e="move-pub">Move on projector</button><button type="button" class="dbtn green" data-e="move-sec">Move secretly</button></div>
       <div class="row"><button type="button" class="dbtn red" data-e="kill">${confirmKill === u.id ? 'Click again to confirm' : u.kind === 'fleet' ? 'Sink' : u.kind === 'air' ? 'Shoot down' : 'Destroy'}</button>${secret ? '<button type="button" class="dbtn" data-e="reveal">Reveal on projector</button>' : ''}</div>`;
@@ -1038,7 +1038,7 @@ function renderForces() {
   const box = $('forces'); if (!box) return;
   const list = STATE.units.filter((u) => !fCountry || u.owner === fCountry);
   keepInputs(box, () => {
-    box.innerHTML = `<div class="codes-wrap"><table class="codes"><thead><tr><th>Unit</th><th>Type</th><th>Strength</th><th></th></tr></thead><tbody>${list.map((u) => `<tr><td>${flag(u.owner)} ${esc(u.name)}${!u.shown ? ' <span class="pill private">hidden</span>' : ''}</td><td>${KIND_NAME[u.kind]}</td>
+    box.innerHTML = `<div class="codes-wrap"><table class="codes"><thead><tr><th>Unit</th><th>Type</th><th>Strength</th><th></th></tr></thead><tbody>${list.map((u) => `<tr><td>${flag(u.owner)} ${esc(u.name)}${!u.shown ? ' <span class="pill private">hidden</span>' : ''}${u.basis ? `<br><small class="formnote" style="color:var(--warn)">${esc(u.basis)}</small>` : ''}</td><td>${KIND_NAME[u.kind]}</td>
       <td><input type="number" id="fs-${u.id}" min="1" max="99" value="${u.str}" style="width:60px"> <button type="button" class="dbtn" data-fs="${u.id}">Save</button></td>
       <td><button type="button" class="dbtn red" data-fk="${u.id}">${confirmKill === u.id ? 'Confirm' : u.kind === 'fleet' ? 'Sink' : u.kind === 'air' ? 'Shoot down' : 'Destroy'}</button></td></tr>`).join('')}</tbody></table></div>`;
   });
