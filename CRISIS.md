@@ -58,7 +58,7 @@ Then open `http://localhost:3000/crisis`. In development the codes are `STAFF-00
 
 - Approving a move draws an arrow from the unit's old position to its new one, in the moving country's color.
 - A secret move draws a **dashed** arrow that only that side's laptops see. Revealing the move turns it solid on the projector.
-- Arrows fade one crisis update after they appear. The opening invasion arrows clear after Crisis Update 3.
+- Arrows fade one crisis update after they appear.
 - **Clear all arrows** on the staff screen removes every arrow at once.
 - Arrows are only drawn over the detailed Europe map, not the Pacific.
 
