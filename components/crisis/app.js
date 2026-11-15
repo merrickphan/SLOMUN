@@ -1350,7 +1350,7 @@ function bindEdit() {
 
 
 /* ---------- Effects toolkit (staff): make anything happen ---------- */
-const FX_TYPES = { agent: 'Place or remove a spy', feature: 'Build or place a map feature (trenches, bunkers, factory…)', 'feature.edit': 'Destroy, repair or remove a map feature', trait: 'Give a unit a trait (veteran, low on fuel…)', money: 'Change money', strength: 'Change unit strength', destroy: 'Destroy a unit', move: 'Move a unit', unit: 'Create a unit', region: 'Change who holds regions', intel: 'Send an intel report', wire: 'Post a news headline', marker: 'Place a map marker', asset: 'Grant a new asset or power', message: 'Message delegates as a character' };
+const FX_TYPES = { agent: 'Place or remove a spy', reveal: "Let a country see another's forces", feature: 'Build or place a map feature (trenches, bunkers, factory…)', 'feature.edit': 'Destroy, repair or remove a map feature', trait: 'Give a unit a trait (veteran, low on fuel…)', money: 'Change money', strength: 'Change unit strength', destroy: 'Destroy a unit', move: 'Move a unit', unit: 'Create a unit', region: 'Change who holds regions', intel: 'Send an intel report', wire: 'Post a news headline', marker: 'Place a map marker', asset: 'Grant a new asset or power', message: 'Message delegates as a character' };
 const countrySel = (cls, sel) => `<select data-f="${cls}">${ORDER.map((k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${POWERS[k].label}</option>`).join('')}</select>`;
 const unitSel = () => `<select data-f="unit">${unitOptions()}</select>`;
 const placeSel = (key = 'to', first = '') => `<select data-f="${key}">${first}${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<optgroup label="${esc(c)}">${REGIONS.filter((r) => r.country === c).map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>`).join('')}<optgroup label="Seas">${Object.keys(S.SEAS).map((k) => `<option>${esc(k)}</option>`).join('')}</optgroup></select>`;
@@ -1373,6 +1373,7 @@ function fxRow(t, ctx = {}) {
       <span class="formnote">at</span>${placeSel('to', ctx.here ? '<option value="@here" selected>Where the delegate marked</option>' : '')}<span class="formnote">line to</span>${placeSel('to2', '<option value="" selected>No line (one spot)</option>')}
       <label class="formnote">Defense <input type="number" data-f="mod" min="-4" max="4" placeholder="auto" style="width:60px"></label><label class="formnote">Ready <select data-f="turns"><option value="0">Now</option><option value="1">After next update</option><option value="2">In 2 updates</option><option value="3">In 3 updates</option></select></label>${pubBox(ctx.vis !== 'private')}`,
     'feature.edit': () => `<select data-f="id">${FEATS.map((f) => `<option value="${f.id}">${esc(f.label)} · ${esc(POWERS[f.owner]?.short || f.owner)}${f.ruined ? ' (destroyed)' : ''}</option>`).join('') || '<option value="">No features on the map yet</option>'}</select><select data-f="action"><option value="ruin">Destroy</option><option value="repair">Repair</option><option value="finish">Finish building now</option><option value="remove">Remove from map</option></select>${pubBox()}`,
+    reveal: () => `${countrySel('country', ctx.country)}<span class="formnote">can see all forces of</span>${countrySel('other')}<input type="text" data-f="text" maxlength="80" placeholder="How, e.g. Reported by agents in London">`,
     agent: () => `${delegateSel(false)}<select data-f="action"><option value="add">places an agent in</option><option value="remove">loses their agent in</option></select><select data-f="target">${Object.keys(CAPITAL).map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select><input type="text" data-f="mission" maxlength="80" placeholder="Mission, e.g. Watch the navy at Kiel">`,
     trait: () => `${unitSel()}<select data-f="action"><option value="add">Add trait</option><option value="clear">Clear all traits</option></select><input type="text" data-f="label" maxlength="40" placeholder="e.g. Winter gear, Low on fuel, Veteran"><label class="formnote">Battle bonus <input type="number" data-f="mod" min="-4" max="4" value="1" style="width:60px"></label>`,
   }[t];
@@ -1533,7 +1534,7 @@ async function assist(body) {
 // Ask for suggestions on anything new, two at a time. Results are saved on the server, so every staff screen shares them.
 function pumpAssistant() {
   if (!STATE) return;
-  const want = [...STATE.queue.filter((q) => q.status === 'pending' && !q.ai).map((q) => ({ kind: 'request', id: q.id })),
+  const want = [...STATE.queue.filter((q) => q.status === 'pending' && (!q.ai || q.ai.v !== S.AI_VERSION)).map((q) => ({ kind: 'request', id: q.id })),
     ...(STATE.directives || []).filter((d) => d.status === 'passed' && !d.carried && !d.ai).map((d) => ({ kind: 'directive', id: d.id }))];
   for (const w of want) {
     if (aiBusy >= 2) break; if (aiAsked[w.id] && Date.now() - aiAsked[w.id] < 50000) continue;
@@ -1562,6 +1563,7 @@ function effText(e) {
     case 'trait': return e.action === 'clear' ? `${uName(e.unit)}: traits cleared` : `${uName(e.unit)}: ${e.label} ${+e.mod >= 0 ? '+' : ''}${e.mod}`;
     case 'relation': return `${pl(e.country)} and ${pl(e.other)}: ${e.status === 'peace' || e.status === 'none' ? 'peace' : (S.RELATION_NAME[e.status] || e.status).toLowerCase()}`;
     case 'status': return `${pl(e.country)}: ${e.action === 'clear' ? 'no longer ' : ''}${e.label}`;
+    case 'reveal': return `${pl(e.country)} can see ${e.ids?.length ? e.ids.map(uName).join(', ') : `all ${pl(e.other)} forces`}`;
     case 'agent': return e.action === 'remove' ? `${e.name || 'The sender'}'s agent in ${pl(e.target)} removed` : `Agent for ${e.name || 'the sender'} in ${pl(e.target)}: ${e.mission || ''}`;
     case 'battle': return `Battle (rolled): ${(e.attackers || []).map(uName).join(', ')} attack ${(e.defenders || []).map(uName).join(', ')}${e.ids?.length ? `, taking ${e.ids.map((id) => REGION[id]?.name || id).join(', ')} if they win` : ''}`;
   }
@@ -1576,7 +1578,7 @@ function planList(key, b, editable) {
 }
 const keptEffects = (key, b) => (b?.effects || []).filter((_, i) => !(aiOff[key] || new Set()).has(i));
 function aiBlock(q) {
-  if (!q.ai) return `<div class="aibox wait">${aiErr[q.id] ? `${esc(aiErr[q.id])} <button type="button" class="dbtn" data-retry="${q.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading this request…'}</div>`;
+  if (!q.ai || q.ai.v !== S.AI_VERSION) return `<div class="aibox wait">${aiErr[q.id] ? `${esc(aiErr[q.id])} <button type="button" class="dbtn" data-retry="${q.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading this request…'}</div>`;
   const A = planList(q.id, q.ai.approve, true), R = planList('r' + q.id, q.ai.reject, false);
   return `<div class="aibox"><div><b>If approved</b><ul>${A || '<li class="none">Reply only, nothing changes on the map.</li>'}</ul></div><div><b>If rejected</b><ul>${R || '<li class="none">Nothing happens.</li>'}</ul></div>${q.ai.approve?.staff_note ? `<small>${esc(q.ai.approve.staff_note)}</small>` : ''}</div>`;
 }
@@ -1614,7 +1616,7 @@ function renderStaff() {
   const dn = (STATE.directives || []).filter((d) => d.status === 'chair' || (d.status === 'passed' && !d.carried)).length; $('stc-dir').textContent = dn; $('stc-dir').hidden = !dn;
   $('ai-mode').textContent = PROPS_AI === 'claude' ? 'Claude suggests what each request does. Drop any effect with ✕, write a reply to change the outcome, or add your own effects. You can undo the last decision for 10 minutes.' : 'Keyword matching only (no ANTHROPIC_API_KEY). Wars, peace and alliances are detected; add other effects by hand.';
   const list = Q.filter((q) => (qFilter === 'all' || q.status === 'pending') && (!qCountry || q.country === qCountry));
-  const qsig = JSON.stringify([qFilter, qCountry, list.map((q) => [q.id, q.status, !!q.ai, aiErr[q.id] || '', [...(aiOff[q.id] || [])]])]);
+  const qsig = JSON.stringify([qFilter, qCountry, list.map((q) => [q.id, q.status, q.ai?.v || 0, aiErr[q.id] || '', [...(aiOff[q.id] || [])]])]);
   if (qsig !== queueSig) { queueSig = qsig; keepFx($('queue'), () => keepInputs($('queue'), () => {
     $('queue').innerHTML = list.map((q) => `<div class="qcard${q.status !== 'pending' ? ' done' : ''}" data-q="${q.id}">
       <div class="qtop">${flag(q.country)}<b>${esc(q.from)}</b>${POWERS[q.country].label} · ${esc(q.time)}<span class="pill type">${TYPE_PILL[q.type] || q.type}</span><span class="pill ${q.vis}">${q.vis}</span>${q.status !== 'pending' ? `<span class="pill ${q.status}">${esc(q.outcome || q.status)}</span>` : ''}</div>
@@ -1660,7 +1662,7 @@ async function decideQ(q, ok, btn) {
   const card = btn.closest('.qcard'); const reply = ($('r-' + q.id)?.value || '').trim(); const box = card.querySelector('.fx');
   const manual = readFx(box); const key = ok ? q.id : 'r' + q.id;
   // Don't approve on an empty plan just because the assistant hasn't answered yet.
-  if (!q.ai && !manual.length && !reply && PROPS_AI === 'claude' && !aiErr[q.id]) { toast('The assistant is still reading this request. Give it a few seconds, or add effects by hand.'); return; }
+  if ((!q.ai || q.ai.v !== S.AI_VERSION) && !manual.length && !reply && !aiErr[q.id]) { toast('The assistant is still reading this request. Give it a few seconds, or add effects by hand.'); return; }
   let b = (ok ? q.ai?.approve : q.ai?.reject) || { effects: [], headline: null, flash: null, reply: '' };
   b = { ...b, effects: keptEffects(key, b) };
   card.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = true));

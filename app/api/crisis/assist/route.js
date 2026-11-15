@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/crisis/session';
 import { load, mutate } from '@/lib/crisis/store';
-import { suggestRequest, decideRequest, carryDirective, describeEvent, aiMode } from '@/lib/crisis/ai';
+import { suggestRequest, decideRequest, carryDirective, describeEvent, aiMode, AI_VERSION } from '@/lib/crisis/ai';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -17,7 +17,7 @@ export async function POST(req) {
       const q = s.queue.find((x) => x.id === b.id); if (!q) return NextResponse.json({ error: 'That request no longer exists.' }, { status: 404 });
       if (b.decision) return NextResponse.json({ ok: true, mode: aiMode(), result: await decideRequest(s, q, b.decision === 'approve', String(b.reply || '').slice(0, 800)) });
       // Suggestions are stored on the request so every staff screen sees them, and computed once.
-      if (q.ai && !b.force) return NextResponse.json({ ok: true, mode: aiMode(), result: q.ai });
+      if (q.ai && q.ai.v === AI_VERSION && !b.force) return NextResponse.json({ ok: true, mode: aiMode(), result: q.ai });
       if (q.aiAt && Date.now() - q.aiAt < 45000 && !b.force) return NextResponse.json({ ok: true, pending: true });
       await mutate((n) => { const x = n.queue.find((y) => y.id === q.id); if (x) x.aiAt = Date.now(); });
       const result = await suggestRequest(s, q);

@@ -100,6 +100,7 @@ Staff no longer have to build effects by hand for most requests.
 
 - **Notes:** the Notes tab lets delegates pass private notes to any other delegates. Crisis staff can read every note in the Messages pop-up.
 - **Spies:** when a spy plan is approved, the assistant places an agent. Staff can also add one by hand with the "Place or remove a spy" effect. The sender sees the agent as a dark pin on their map, and it clears the fog around it so they can see nearby forces.
+- **What spies see:** an agent reveals anything within about 2.5° of it, and its target country's forces within about 10°. Staff can also show one country another's forces with the "Let a country see another's forces" effect, which the assistant uses for plans like "let me see their troops".
 - **Interception:** an agent in a country has an even chance of copying each note sent to or from that country's delegates. The copy appears in the spy owner's Notes tab marked "Intercepted by your agent". The sender is never told. Staff see who intercepted what.
 - **Recall or capture:** staff open Features and spies, then click **Recall**, or **Caught** to post an arrest headline.
 
