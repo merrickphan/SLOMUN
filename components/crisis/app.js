@@ -3,13 +3,13 @@
 import * as THREE from 'three';
 import * as S from '@/lib/crisis/scenario';
 
-const { LON0, LON1, LAT0, LAT1, OWNER, NEUTRALS, LABELS, SKIP_WORLD, LABEL_TEXT, ARROWS, CITIES, CAPITAL, CITY_OF, BUILD,
+const { LON0, LON1, LAT0, LAT1, OWNER, NEUTRALS, LABELS, SKIP_WORLD, LABEL_TEXT, CITIES, CAPITAL, CITY_OF, BUILD,
   KIND_NAME, DEST_BY_KIND, ROSTER, POWER_TEXT, ALWAYS, LIMITS_ALWAYS, SECRET, SPECIAL, SIGS_NEEDED, DSTATUS, ORDER, KINDS } = S;
 const POWERS = JSON.parse(JSON.stringify(S.POWERS));
 Object.values(POWERS).forEach((p) => (p.delegates = []));
 ROSTER.forEach((r) => POWERS[r.country]?.delegates.push(r.name));
 let A = { geo: {}, wgeo: {}, towns: [], wtowns: [], wsub: {}, wlabels: {} };
-let UNITS = [], ALLIES = [], AGENTS = [];
+let UNITS = [], ALLIES = [], AGENTS = [], LIVE_ARROWS = [];
 let imgs, patchCanvas, fogCanvas, mapGlobe, delGlobe;
 
 const ownerOf = (n) => OWNER[n] || A.wsub?.[n] || n;
@@ -96,14 +96,16 @@ function paintTexture(canvas, imgs, sel) {
     ctx.strokeStyle = '#F5C21B'; ctx.lineWidth = 5; ctx.stroke();
   }
   // Offensive arrows.
-  for (const a of ARROWS) {
-    const p = a.map(([lo, la]) => [tx(lo), ty(la)]);
-    ctx.lineCap = 'round';
+  // Movement arrows from the server: in the moving side's color, dashed when only that side can see them.
+  for (const a of LIVE_ARROWS) {
+    const p = a.pts.map(([lo, la]) => [tx(lo), ty(la)]); const col = a.owner === 'Germany' ? '#FF5A46' : (POWERS[a.owner]?.color || '#FF5A46');
+    ctx.lineCap = 'round'; ctx.setLineDash([]);
     ctx.strokeStyle = 'rgba(15,15,10,0.7)'; ctx.lineWidth = 24; ctx.beginPath(); ctx.moveTo(...p[0]); ctx.quadraticCurveTo(...p[1], ...p[2]); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,90,70,0.95)'; ctx.lineWidth = 9; ctx.stroke();
+    if (!a.public) ctx.setLineDash([22, 16]);
+    ctx.strokeStyle = col; ctx.lineWidth = 9; ctx.stroke(); ctx.setLineDash([]);
     const ang = Math.atan2(p[2][1] - p[1][1], p[2][0] - p[1][0]);
     ctx.save(); ctx.translate(...p[2]); ctx.rotate(ang); ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(-8, -24); ctx.lineTo(-8, 24); ctx.closePath();
-    ctx.fillStyle = 'rgba(255,90,70,0.98)'; ctx.strokeStyle = 'rgba(15,15,10,0.8)'; ctx.lineWidth = 5; ctx.stroke(); ctx.fill(); ctx.restore();
+    ctx.fillStyle = col; ctx.strokeStyle = 'rgba(15,15,10,0.8)'; ctx.lineWidth = 5; ctx.stroke(); ctx.fill(); ctx.restore();
   }
   feather(canvas);
 }
@@ -591,7 +593,8 @@ function skeleton(p) {
             <button type="submit" class="dbtn gold">Publish to the room</button>
           </form></div>
         <div class="spanel"><h2>Projector</h2><div id="proj"></div>
-          <div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button></div></div>
+          <div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button><button type="button" class="dbtn" id="clear-arrows">Clear all arrows</button></div>
+          <p class="formnote">Approved moves draw an arrow automatically. Arrows fade after the next crisis update. Secret moves show as dashed arrows to that side only.</p></div>
         <div class="spanel"><h2>Access codes</h2>
           <p class="formnote">Print these and hand one to each delegate. The staff and projector codes are set in the Vercel project settings.</p>
           <div class="codes-wrap"><table class="codes"><thead><tr><th>Delegate</th><th>Country</th><th>Code</th></tr></thead><tbody>${(p.codes || []).map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(POWERS[c.country].label)}</td><td class="code">${esc(c.code)}</td></tr>`).join('')}</tbody></table></div></div>
@@ -635,10 +638,11 @@ function applyState(v) {
   if (!v) return;
   const first = !STATE; const prev = STATE ? Object.fromEntries(UNITS.map((u) => [u.id, u])) : null;
   STATE = v; VER = v.version; UNITS = v.units || [];
+  const arrowSig = JSON.stringify(v.arrows || []); const arrowsChanged = arrowSig !== JSON.stringify(LIVE_ARROWS); LIVE_ARROWS = v.arrows || [];
   ORDER.forEach((c) => { if (v.treasury?.[c] != null) POWERS[c].treasury = v.treasury[c]; });
   if (VIEW === 'delegate' && v.me) { MEE = v.me; ME = v.me.country; ALLIES = v.allies; AGENTS = v.agents || []; }
   renderCommon(first);
-  if (VIEW === 'map') { renderSel(); $('pend-count').textContent = v.pending ?? 0; renderFloor(); mapGlobe?.sync(prev); }
+  if (VIEW === 'map') { renderSel(); $('pend-count').textContent = v.pending ?? 0; renderFloor(); mapGlobe?.sync(prev); if (arrowsChanged && mapGlobe && !first) { paintTexture(patchCanvas, imgs, selected.type === 'country' ? selected.id : null); mapGlobe.refreshTexture(); } }
   if (VIEW === 'delegate') renderDelegate(first, prev);
   if (VIEW === 'staff') renderStaff();
 }
@@ -725,7 +729,7 @@ function renderDelegate(first, prev) {
   if (!first) renderPortfolio();
   if (delGlobe) {
     delGlobe.sync(prev);
-    const sig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS]);
+    const sig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS, LIVE_ARROWS]);
     if (sig !== fogSig) { fogSig = sig; repaintFog(); }
   }
 }
@@ -938,6 +942,7 @@ function bindStaff() {
   });
   $('replay-flash').addEventListener('click', () => act({ type: 'flash' }));
   $('cd-restart').addEventListener('click', () => act({ type: 'countdown', minutes: 15 }));
+  $('clear-arrows').addEventListener('click', () => act({ type: 'arrows.clear' }));
   $('load-demo').addEventListener('click', () => act({ type: 'game.demo' }));
   $('reset-game').addEventListener('click', () => act({ type: 'game.reset', confirm: $('reset-confirm').value.trim().toUpperCase() }));
 }
@@ -991,7 +996,7 @@ export function start(root, props) {
         const cap = { 'United Kingdom': [-0.13, 51.5], France: [2.35, 48.86], Poland: [21, 52.2], Germany: [13.4, 52.5], USSR: [37.6, 55.75], Italy: [12.5, 41.9], Finland: [24.9, 60.2] }[ME] || [15, 50];
         const home = ME === 'United States' ? { lon: -70, lat: 34.5, dist: 2.9 } : ME === 'Japan' ? { lon: 128, lat: 38.5, dist: 2.1 } : { lon: cap[0], lat: cap[1] + 1.5, dist: 1.75 };
         delGlobe = new Globe($('stage-del'), $('ov-del'), { fog: true, pins: true, lon: home.lon, lat: home.lat - 2.5, dist: home.dist, onUnit: (id) => pickForce(id) });
-        delGlobe.setTextures(world, fogCanvas, topo); fogSig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS]);
+        delGlobe.setTextures(world, fogCanvas, topo); fogSig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS, LIVE_ARROWS]);
       }
     } catch (e) {
       document.querySelectorAll('.loading').forEach((l) => (l.textContent = 'The 3D map could not load. Reload the page, or try another browser.'));
