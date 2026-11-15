@@ -953,7 +953,7 @@ export function start(root, props) {
   root.innerHTML = skeleton(props);
   let stopped = false, timer, failures = 0;
   $('logout').addEventListener('click', async () => { await fetch('/api/crisis/logout', { method: 'POST' }); location.href = '/crisis'; });
-  $('view-as')?.addEventListener('change', (e) => { if (e.target.value) window.open('/crisis/delegate?as=' + encodeURIComponent(e.target.value), '_blank'); e.target.value = ''; });
+  $('view-as')?.addEventListener('change', (e) => { if (e.target.value) location.href = '/crisis/delegate?as=' + encodeURIComponent(e.target.value); });
   $('fs-btn')?.addEventListener('click', () => { document.documentElement.requestFullscreen?.().catch(() => toast('Full screen is not available here. Use the browser menu instead.')); });
   $('breaking').addEventListener('click', () => ($('breaking').hidden = true));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('breaking').hidden = true; });
