@@ -16,6 +16,7 @@ export async function GET(req) {
     if (sp.get('v') && +sp.get('v') === s.version) return NextResponse.json({ version: s.version, unchanged: true, now: Date.now() }, { headers: H });
     return NextResponse.json(viewFor(s, sess, as), { headers: H });
   } catch (e) {
+    console.error('[crisis]', e.message);
     return NextResponse.json({ error: e.message }, { status: 503, headers: H });
   }
 }

@@ -1060,7 +1060,7 @@ const TIERS = [
   { min: 0, name: 'Attack fails', win: false, att: 0.35, def: 0.1 },
 ];
 let battleRoll = null;
-function unitOptions() { return ORDER.map((c) => { const us = STATE.units.filter((u) => u.owner === c); return us.length ? `<optgroup label="${POWERS[c].label}">${us.map((u) => `<option value="${u.id}">${esc(u.name)} (${u.str})</option>`).join('')}</optgroup>` : ''; }).join(''); }
+function unitOptions() { if (!STATE) return ''; return ORDER.map((c) => { const us = STATE.units.filter((u) => u.owner === c); return us.length ? `<optgroup label="${POWERS[c].label}">${us.map((u) => `<option value="${u.id}">${esc(u.name)} (${u.str})</option>`).join('')}</optgroup>` : ''; }).join(''); }
 function renderBattleShell() {
   $('battle').innerHTML = `<div class="bgrid">
     <label>Attackers<select id="b-att" multiple size="7">${unitOptions()}</select></label>
@@ -1219,7 +1219,7 @@ export function start(root, props) {
   const poll = async () => {
     if (stopped) return;
     try { await fetchState(); failures = 0; $('conn').className = 'conn'; $('conn').lastChild.textContent = 'Live'; }
-    catch { failures++; if (failures > 1) { $('conn').className = 'conn bad'; $('conn').lastChild.textContent = 'Reconnecting'; } }
+    catch (e) { failures++; if (failures > 1) { $('conn').className = 'conn bad'; $('conn').lastChild.textContent = 'Reconnecting'; $('conn').title = e.message; if (failures === 3 && ROLE === 'staff') toast('Server problem: ' + e.message); } }
     timer = setTimeout(poll, document.hidden ? 4000 : 1500);
   };
   const first = poll();

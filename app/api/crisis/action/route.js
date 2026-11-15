@@ -15,6 +15,7 @@ export async function POST(req) {
     const { state, result } = await mutate((s) => applyAction(s, sess, body));
     return NextResponse.json({ ok: true, message: result, view: viewFor(state, sess, as) });
   } catch (e) {
+    console.error('[crisis]', e.message);
     const status = e instanceof GameError ? 400 : 503;
     return NextResponse.json({ error: e.message }, { status });
   }
