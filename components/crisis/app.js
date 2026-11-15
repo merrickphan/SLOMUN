@@ -1580,7 +1580,7 @@ const keptEffects = (key, b) => (b?.effects || []).filter((_, i) => !(aiOff[key]
 function aiBlock(q) {
   if (!q.ai || q.ai.v !== S.AI_VERSION) return `<div class="aibox wait">${aiErr[q.id] ? `${esc(aiErr[q.id])} <button type="button" class="dbtn" data-retry="${q.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading this request…'}</div>`;
   const A = planList(q.id, q.ai.approve, true), R = planList('r' + q.id, q.ai.reject, false);
-  return `<div class="aibox"><div><b>If approved</b><ul>${A || '<li class="none">Reply only, nothing changes on the map.</li>'}</ul></div><div><b>If rejected</b><ul>${R || '<li class="none">Nothing happens.</li>'}</ul></div>${q.ai.approve?.staff_note ? `<small>${esc(q.ai.approve.staff_note)}</small>` : ''}</div>`;
+  return `<div class="aibox"><div><b>If approved</b><ul>${A || `<li class="none">${PROPS_AI === 'claude' ? 'Reply only, nothing changes on the map.' : '<b class="warn">Nothing will change.</b> Keyword mode only understands spies, sharing intel, wars and treaties. Add effects below, or set ANTHROPIC_API_KEY so Claude handles any plan.'}</li>`}</ul></div><div><b>If rejected</b><ul>${R || '<li class="none">Nothing happens.</li>'}</ul></div>${q.ai.approve?.staff_note ? `<small>${esc(q.ai.approve.staff_note)}</small>` : ''}</div>`;
 }
 let qFilter = 'pending', qCountry = '';
 function qDetail(q) {
