@@ -137,4 +137,20 @@ The figures in `lib/crisis/scenario.js` come from these sources:
 - Japan's Combined Fleet and Naval Air Service
 - Finland
 
-Treasuries are still placeholders.
+### Treasuries
+
+Each country's starting treasury is its **1938 military spending** in millions of US dollars, from the Correlates of War National Material Capabilities dataset (v6, `milex`, read from the [peacesciencer](https://github.com/svmiller/peacesciencer) package). The 1938 figures match the table in Paul Kennedy's *The Rise and Fall of the Great Powers*. 1938 is used because the dataset's 1939 entries are weakly sourced.
+
+| Country | Treasury |
+|---|---|
+| Germany | $7,415M |
+| Soviet Union | $5,430M |
+| United Kingdom | $1,864M |
+| Japan | $1,699M |
+| United States | $1,131M |
+| France | $919M |
+| Italy | $746M |
+| Poland | $152M |
+| Finland | $27M |
+
+**Costs are still game values.** Build costs ($12M per infantry division, $8M per tank battalion, $6M per fighter squadron, $15M per destroyer flotilla) are not historical. Staff should judge whether they feel right against these budgets.
