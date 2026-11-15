@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as S from '@/lib/crisis/scenario';
+import { REGIONS } from '@/lib/crisis/regions';
 
 const { LON0, LON1, LAT0, LAT1, OWNER, NEUTRALS, LABELS, SKIP_WORLD, LABEL_TEXT, CITIES, CAPITAL, CITY_OF, BUILD,
   KIND_NAME, DEST_BY_KIND, ROSTER, POWER_TEXT, ALWAYS, LIMITS_ALWAYS, SECRET, SPECIAL, SIGS_NEEDED, DSTATUS, ORDER, KINDS } = S;
@@ -10,7 +11,10 @@ const POWERS = JSON.parse(JSON.stringify(S.POWERS));
 Object.values(POWERS).forEach((p) => (p.delegates = []));
 ROSTER.forEach((r) => POWERS[r.country]?.delegates.push(r.name));
 let A = { geo: {}, wgeo: {}, towns: [], wtowns: [], wsub: {}, wlabels: {} };
-let UNITS = [], ALLIES = [], AGENTS = [], LIVE_ARROWS = [];
+let UNITS = [], ALLIES = [], AGENTS = [], LIVE_ARROWS = [], CONTROL = {}, RSHAPE = {};
+const REGION = Object.fromEntries(REGIONS.map((r) => [r.id, r]));
+const baseOwner = (r) => OWNER[r.country] || r.country;
+const ctrlOf = (r) => CONTROL[r.id] || baseOwner(r);
 let imgs, patchCanvas, fogCanvas, mapGlobe, delGlobe;
 
 const ownerOf = (n) => OWNER[n] || A.wsub?.[n] || n;
@@ -103,6 +107,17 @@ function paintTexture(canvas, imgs, sel) {
 }
 function paintOverlays(ctx, canvas, sel) {
   ctx.globalAlpha = 1; ctx.lineJoin = 'round';
+  // Occupied regions: stripes in the occupier's color, like wartime maps.
+  for (const [id, owner] of Object.entries(CONTROL)) {
+    const sh = RSHAPE[id]; if (!sh) continue; const col = POWERS[owner]?.color || NEUTRALS[owner] || '#999';
+    ctx.save(); ringPath(ctx, sh.r); ctx.clip('evenodd');
+    ctx.globalAlpha = 0.28; ctx.fillStyle = col; ctx.fillRect(0, 0, TW, TH); ctx.globalAlpha = 0.85; ctx.strokeStyle = col; ctx.lineWidth = 7;
+    const xs = sh.r.flat().map((p) => tx(p[0])), ys = sh.r.flat().map((p) => ty(p[1]));
+    const x0 = Math.min(...xs) - 200, x1 = Math.max(...xs) + 200, y0 = Math.min(...ys), y1 = Math.max(...ys);
+    for (let x = x0; x < x1; x += 22) { ctx.beginPath(); ctx.moveTo(x, y1 + 10); ctx.lineTo(x + (y1 - y0) + 20, y0 - 10); ctx.stroke(); }
+    ctx.restore();
+    ringPath(ctx, sh.r); ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(10,10,10,0.55)'; ctx.lineWidth = 3; ctx.setLineDash([10, 8]); ctx.stroke(); ctx.setLineDash([]);
+  }
   if (sel && A.geo[sel]) {
     ringPath(ctx, A.geo[sel].r);
     ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fill('evenodd');
@@ -322,6 +337,7 @@ function inRing(lon, lat, ring) {
   }
   return inside;
 }
+function regionAt(lon, lat) { for (const [id, g] of Object.entries(RSHAPE)) { let c = 0; for (const r of g.r) if (inRing(lon, lat, r)) c++; if (c % 2) return id; } return null; }
 function countryAt(lon, lat) {
   for (const [n, g] of Object.entries(A.geo)) { let c = 0; for (const r of g.r) if (inRing(lon, lat, r)) c++; if (c % 2) return n; }
   for (const [n, rings] of Object.entries(A.wgeo)) for (const r of rings) if (inRing(lon, lat, r)) return n;
@@ -438,8 +454,20 @@ class Globe {
     if (!this.figs) return;
     const ids = UNITS.map((u) => u.id).sort().join(), old = Object.keys(this.figs).sort().join();
     const changed = !prev || ids !== old || UNITS.some((u) => prev[u.id] && (prev[u.id].str !== u.str || prev[u.id].spotted !== u.spotted));
+    // Units that vanished were destroyed: sink or burst them before the rebuild drops them.
+    if (prev) for (const id of Object.keys(this.figs)) if (!UNITS.some((u) => u.id === id)) this.killFigure(id, prev[id]);
     if (changed) { this.rebuild(); this.markSelected(this.selectedUnit); }
     if (prev) for (const u of UNITS) { const p = prev[u.id]; if (p && (p.at[0] !== u.at[0] || p.at[1] !== u.at[1])) this.animateUnit(u.id, p.at, u.at); }
+  }
+  killFigure(id, u) {
+    const f = this.figs[id]; if (!f) return; this.unitGroup.remove(f); this.scene.add(f); delete this.figs[id];
+    if (u) {
+      const p = this.project(u.at[0], u.at[1], 0.01);
+      if (p.ok) { const b = document.createElement('div'); b.className = 'boom' + (u.kind === 'fleet' ? ' sink' : ''); b.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`; b.innerHTML = `<i></i><span>${u.kind === 'fleet' ? 'Sunk' : u.kind === 'air' ? 'Shot down' : 'Destroyed'}</span>`; this.ov.appendChild(b); setTimeout(() => b.remove(), 2600); }
+    }
+    const t0 = performance.now(), s0 = f.scale.x, n = f.position.clone().normalize(), p0 = f.position.clone();
+    const step = (now) => { const k = Math.min(1, (now - t0) / 1400); f.scale.setScalar(s0 * (1 - k)); f.position.copy(p0).addScaledVector(n, -0.004 * k); this.dirty = true; if (k < 1) requestAnimationFrame(step); else this.scene.remove(f); };
+    requestAnimationFrame(step);
   }
   rebuild() {
     if (this.unitGroup) this.scene.remove(this.unitGroup);
@@ -554,7 +582,7 @@ class Globe {
         const uh = this.unitGroup && ray.intersectObject(this.unitGroup, true)[0];
         if (uh && this.opts.onUnit) { this.opts.onUnit(uh.object.userData.unitId); drag = null; return; }
         const hit = ray.intersectObjects([this.patch, this.base])[0];
-        if (hit && this.opts.onCountry) { const p = hit.point.clone().normalize(); const lat = Math.asin(p.y) / D2R, lon = Math.atan2(-p.z, p.x) / D2R; const n = countryAt(lon, lat); if (n) this.opts.onCountry(n); }
+        if (hit) { const p = hit.point.clone().normalize(); const lat = Math.asin(p.y) / D2R, lon = Math.atan2(-p.z, p.x) / D2R; if (this.opts.onGround && this.opts.onGround(lon, lat)) { drag = null; return; } const n = countryAt(lon, lat); if (n && this.opts.onCountry) this.opts.onCountry(n, lon, lat); }
       }
       drag = null;
     });
@@ -566,7 +594,7 @@ class Globe {
 /* ====================================================================== */
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const $ = (id) => document.getElementById(id);
-let VIEW, ROLE, AS, STATE = null, VER = 0, SKEW = 0, lastFlashId, MEE = null, ME = null;
+let EDIT = false, placing = null, VIEW, ROLE, AS, STATE = null, VER = 0, SKEW = 0, lastFlashId, MEE = null, ME = null;
 let selected = { type: 'country', id: 'Poland' };
 let toastTimer;
 function toast(msg) { const t = $('toast'); if (!t) return; t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3200); }
@@ -577,10 +605,10 @@ const DATECARD = `<div class="date glass num"><span class="date-line"></span><sm
 
 function skeleton(p) {
   const nav = ROLE === 'staff'
-    ? `<a class="navlink${VIEW === 'staff' ? ' on' : ''}" href="/crisis/staff">Staff</a><a class="navlink${VIEW === 'map' ? ' on' : ''}" href="/crisis/map" target="_blank" rel="noopener">Projector</a>
+    ? `<a class="navlink${VIEW === 'staff' ? ' on' : ''}" href="/crisis/staff">Staff</a><a class="navlink${VIEW === 'map' && EDIT ? ' on' : ''}" href="/crisis/map?edit=1">Map editor</a><a class="navlink${VIEW === 'map' && !EDIT ? ' on' : ''}" href="/crisis/map" target="_blank" rel="noopener">Projector</a>
        <select class="navlink" id="view-as" aria-label="Preview a delegate's laptop"><option value="">Preview a delegate…</option>${ROSTER.map((r) => `<option${r.name === AS ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}</select>`
     : ROLE === 'projector' ? `<button type="button" class="navlink" id="fs-btn">Full screen</button>` : '';
-  const sub = VIEW === 'staff' ? 'Crisis staff' : VIEW === 'map' ? 'SLOMUN II crisis' : AS ? `Preview: ${esc(AS)} (read only)` : 'Delegate laptop';
+  const sub = VIEW === 'staff' ? 'Crisis staff' : EDIT ? 'Map editor (staff only: shows true positions)' : VIEW === 'map' ? 'SLOMUN II crisis' : AS ? `Preview: ${esc(AS)} (read only)` : 'Delegate laptop';
   const top = `<header class="topbar">
     <div class="brand"><img src="/images/crest.png" alt="SLOMUN crest"><div><b>Early WWII</b><span>${sub}</span></div></div>
     <div class="hud num" id="treasuries" aria-label="Treasuries"></div>
@@ -593,7 +621,7 @@ function skeleton(p) {
       <div class="queuecard glass"><b class="num" id="pend-count">0</b><span>Requests waiting<br>for crisis staff</span></div>
       <div class="floorcard glass" id="floorcard" hidden></div>
       <div class="update glass" id="update-card"></div>
-      <div class="selcard glass" id="selpanel" aria-live="polite"></div>
+      <div class="selcard glass" id="selpanel" aria-live="polite"></div>${EDIT ? '<div class="editcard" id="editcard"></div><div class="placebar" id="placebar" hidden></div>' : ''}
       <div class="hint glass">Left-drag to turn · right-drag to move · scroll to zoom</div>${ZOOM('map')}
     </div>
     <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div>
@@ -626,6 +654,9 @@ function skeleton(p) {
           <div class="seg small" role="group" aria-label="Filter requests"><button type="button" data-qf="pending" aria-pressed="true">Pending</button><button type="button" data-qf="all" aria-pressed="false">All</button></div>
           <select id="q-country" aria-label="Filter by country"><option value="">All countries</option>${ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select></div>
           <div id="queue" class="queue-list"></div></div>
+        <div class="spanel"><h2>Battle calculator</h2><div id="battle"></div></div>
+        <div class="spanel"><div class="shead"><h2>Territory</h2><select id="t-country" aria-label="Country">${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<option>${esc(c)}</option>`).join('')}</select></div><div id="territory"></div></div>
+        <div class="spanel"><div class="shead"><h2>Forces</h2><select id="f-country" aria-label="Country"><option value="">All countries</option>${ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select><a class="dbtn" href="/crisis/map?edit=1" style="margin-left:auto;text-decoration:none">Open map editor</a></div><div id="forces"></div></div>
       </div>
       <div class="scol">
         <div class="spanel"><h2>Directives (chair)</h2><div id="chair"></div></div>
@@ -661,7 +692,7 @@ function skeleton(p) {
 /* ---------- Server ---------- */
 async function fetchState() {
   const q = new URLSearchParams(); if (VER) q.set('v', VER);
-  if (AS) q.set('as', AS); else if (VIEW === 'map' && ROLE === 'staff') q.set('as', '@projector');
+  if (AS) q.set('as', AS); else if (VIEW === 'map' && ROLE === 'staff' && !EDIT) q.set('as', '@projector');
   const r = await fetch('/api/crisis/state?' + q, { cache: 'no-store' });
   if (r.status === 401) { location.href = '/crisis'; return; }
   const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Server error');
@@ -674,7 +705,7 @@ async function act(payload) {
     if (r.status === 401) { location.href = '/crisis'; return false; }
     const j = await r.json();
     if (!r.ok) { toast(j.error || 'That did not work. Try again.'); return false; }
-    if (j.view) { SKEW = j.view.now - Date.now(); applyState(VIEW === 'map' ? null : j.view); }
+    if (j.view) { SKEW = j.view.now - Date.now(); applyState(VIEW === 'map' && !EDIT ? null : j.view); }
     if (j.message) toast(j.message);
     return true;
   } catch { toast('Could not reach the server. Check the Wi-Fi and try again.'); return false; }
@@ -684,11 +715,11 @@ function applyState(v) {
   if (!v) return;
   const first = !STATE; const prev = STATE ? Object.fromEntries(UNITS.map((u) => [u.id, u])) : null;
   STATE = v; VER = v.version; UNITS = v.units || [];
-  const arrowSig = JSON.stringify(v.arrows || []); const arrowsChanged = arrowSig !== JSON.stringify(LIVE_ARROWS); LIVE_ARROWS = v.arrows || [];
+  const arrowSig = JSON.stringify([v.arrows || [], v.control || {}]); const arrowsChanged = arrowSig !== JSON.stringify([LIVE_ARROWS, CONTROL]); LIVE_ARROWS = v.arrows || []; CONTROL = v.control || {};
   ORDER.forEach((c) => { if (v.treasury?.[c] != null) POWERS[c].treasury = v.treasury[c]; });
   if (VIEW === 'delegate' && v.me) { MEE = v.me; ME = v.me.country; ALLIES = v.allies; AGENTS = v.agents || []; }
   renderCommon(first);
-  if (VIEW === 'map') { renderSel(); $('pend-count').textContent = v.pending ?? 0; renderFloor(); mapGlobe?.sync(prev); if (arrowsChanged && mapGlobe && !first) { paintTexture(patchCanvas, imgs, selected.type === 'country' ? selected.id : null); mapGlobe.refreshTexture(); } }
+  if (VIEW === 'map') { renderSel(); if (EDIT) renderEdit(); $('pend-count').textContent = v.pending ?? (v.queue || []).filter((q) => q.status === 'pending').length; renderFloor(); mapGlobe?.sync(prev); if (arrowsChanged && mapGlobe && !first) { paintTexture(patchCanvas, imgs, selected.type === 'country' ? selected.id : null); mapGlobe.refreshTexture(); } }
   if (VIEW === 'delegate') renderDelegate(first, prev);
   if (VIEW === 'staff') renderStaff();
 }
@@ -726,12 +757,14 @@ function renderSel() {
   }
   const name = selected.id; const owner = ownerOf(name); const p = POWERS[owner];
   const title = name === 'Czechoslovakia' ? 'Bohemia, Moravia and Slovakia' : (p && name === owner ? p.label : LABEL_TEXT[name] || name);
-  if (!p) { box.innerHTML = `<div class="badge" style="background:${colorOf(name)}">${initials(title)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill neutral">Neutral</span></div><div class="stats"><div><span>Controlled by</span> Crisis staff</div></div></div>`; return; }
+  if (!p) { const rg = selected.region && REGION[selected.region]; const rc = rg && ctrlOf(rg); box.innerHTML = `<div class="badge" style="background:${colorOf(name)}">${initials(title)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill neutral">Neutral</span></div><div class="stats"><div><span>Controlled by</span> Crisis staff</div>${rg ? `<div><span>Region</span> ${esc(rg.name)}${rc !== baseOwner(rg) ? ` · <b>held by ${POWERS[rc]?.label || rc}</b>` : ''}</div>` : ''}</div></div>`; return; }
+  const rg = selected.region && REGION[selected.region]; const rc = rg && ctrlOf(rg);
+  const regionLine = rg ? `<div><span>Region</span> ${esc(rg.name)} (${rg.zone.toLowerCase()})${rc !== baseOwner(rg) ? ` · <b>held by ${POWERS[rc]?.label || rc}</b>` : ''}</div>` : '';
   const sub = name !== owner ? `Controlled by ${p.label}` : '';
-  box.innerHTML = `<div class="badge flagbadge">${flag(name)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill ${p.side}">${p.side === 'war' ? 'At war' : 'Neutral'}</span>${sub ? ' · ' + sub : ''}</div><div class="stats"><div><span>Treasury</span> <b class="num">$${p.treasury}M</b></div><div><span>Forces</span> <b class="num">${UNITS.filter((u) => u.owner === owner).length}</b></div><div><span>Commanders</span> ${p.delegates.map(esc).join(', ') || 'Crisis staff'}</div></div></div>`;
+  box.innerHTML = `<div class="badge flagbadge">${flag(name)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill ${p.side}">${p.side === 'war' ? 'At war' : 'Neutral'}</span>${sub ? ' · ' + sub : ''}</div><div class="stats"><div><span>Treasury</span> <b class="num">$${p.treasury}M</b></div><div><span>Forces</span> <b class="num">${UNITS.filter((u) => u.owner === owner).length}</b></div><div><span>Commanders</span> ${p.delegates.map(esc).join(', ') || 'Crisis staff'}</div>${regionLine}</div></div>`;
 }
-function select(type, id) {
-  selected = { type, id };
+function select(type, id, region) {
+  selected = { type, id, region }; confirmKill = null; if (EDIT) setTimeout(renderEdit, 0);
   if (mapGlobe) { mapGlobe.selectedUnit = type === 'unit' ? id : null; mapGlobe.markSelected(mapGlobe.selectedUnit); paintTexture(patchCanvas, imgs, type === 'country' ? id : null); mapGlobe.refreshTexture(); }
   renderSel();
 }
@@ -775,7 +808,7 @@ function renderDelegate(first, prev) {
   if (!first) renderPortfolio();
   if (delGlobe) {
     delGlobe.sync(prev);
-    const sig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS, LIVE_ARROWS]);
+    const sig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS, LIVE_ARROWS, CONTROL]);
     if (sig !== fogSig) { fogSig = sig; repaintFog(); }
   }
 }
@@ -918,6 +951,163 @@ function bindDraft() {
 }
 function showTab(t) { ['act', 'dir', 'port', 'intel', 'req'].forEach((o) => { $('t-' + o).setAttribute('aria-selected', o === t); $('p-' + o).hidden = o !== t; }); }
 
+
+/* ---------- Map editor (staff) ---------- */
+let confirmKill = null;
+function placeAt(lon, lat) {
+  if (!placing) return false;
+  const pl = placing; placing = null; renderPlacebar();
+  if (pl.mode === 'move') act({ type: 'unit.move', id: pl.id, at: [lon, lat], public: pl.public });
+  if (pl.mode === 'add') act({ type: 'unit.add', ...pl.data, at: [lon, lat], public: pl.public });
+  return true;
+}
+function renderPlacebar() {
+  const b = $('placebar'); if (!b) return; b.hidden = !placing;
+  if (placing) b.innerHTML = `Click the map where ${placing.mode === 'add' ? 'the new unit should go' : 'the unit should move'} (${placing.public ? 'shown on the projector' : 'secret'}). <button type="button" class="dbtn" id="place-cancel">Cancel</button>`;
+  $('place-cancel')?.addEventListener('click', () => { placing = null; renderPlacebar(); });
+}
+function renderEdit() {
+  const box = $('editcard'); if (!box || !STATE) return;
+  if (box.contains(document.activeElement) && document.activeElement.tagName !== 'BUTTON') return; // don't wipe what staff are typing
+  let html = '';
+  if (selected.type === 'unit') {
+    const u = UNITS.find((x) => x.id === selected.id);
+    if (u) {
+      const secret = !u.shown || u.shown[0] !== u.at[0] || u.shown[1] !== u.at[1];
+      html += `<h3>${flag(u.owner)} ${esc(u.name)}</h3><p class="formnote">${POWERS[u.owner].label} · ${KIND_NAME[u.kind]}${secret ? ' · <b style="color:var(--warn)">projector shows an old position</b>' : ''}</p>
+      <div class="row"><label class="formnote" for="e-str">Strength</label><input type="number" id="e-str" min="1" max="99" value="${u.str}" style="width:70px"><button type="button" class="dbtn" data-e="str">Save</button></div>
+      <div class="row"><button type="button" class="dbtn gold" data-e="move-pub">Move on projector</button><button type="button" class="dbtn green" data-e="move-sec">Move secretly</button></div>
+      <div class="row"><button type="button" class="dbtn red" data-e="kill">${confirmKill === u.id ? 'Click again to confirm' : u.kind === 'fleet' ? 'Sink' : u.kind === 'air' ? 'Shoot down' : 'Destroy'}</button>${secret ? '<button type="button" class="dbtn" data-e="reveal">Reveal on projector</button>' : ''}</div>`;
+    }
+  } else if (selected.region && REGION[selected.region]) {
+    const r = REGION[selected.region]; const c = ctrlOf(r); const zone = REGIONS.filter((x) => x.country === r.country && x.zone === r.zone);
+    html += `<h3>${esc(r.name)}</h3><p class="formnote">${esc(r.country)} · ${r.zone.toLowerCase()} zone (${zone.length} regions) · held by ${POWERS[c]?.label || c}</p>
+      <div class="row"><select id="e-owner">${ownerOptions(c)}</select></div>
+      <div class="row"><button type="button" class="dbtn gold" data-e="region">Give this region</button>${zone.length > 1 ? '<button type="button" class="dbtn" data-e="zone">Give the whole zone</button>' : ''}</div>`;
+  } else html += `<p class="formnote">Click a unit to edit, move or destroy it. Click land to change who holds that region.</p>`;
+  html += `<details class="addunit"><summary>Add a new unit</summary>
+    <div class="row"><select id="a-owner">${ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select><select id="a-kind">${KINDS.map((k) => `<option value="${k}">${KIND_NAME[k]}</option>`).join('')}</select></div>
+    <div class="row"><input type="text" id="a-name" placeholder="Name, e.g. 2nd Armored Division" maxlength="60"><input type="number" id="a-str" min="1" max="99" value="5" style="width:64px" aria-label="Strength"></div>
+    <div class="row"><button type="button" class="dbtn gold" data-e="add-pub">Place on projector</button><button type="button" class="dbtn green" data-e="add-sec">Place secretly</button></div></details>`;
+  const open = box.querySelector('details')?.open; box.innerHTML = html; if (open) box.querySelector('details').open = true;
+}
+function ownerOptions(sel) {
+  const minor = [...new Set(REGIONS.map((r) => r.country))].filter((c) => !POWERS[c] && !OWNER[c]);
+  return ORDER.map((k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${POWERS[k].label}</option>`).join('') + minor.map((c) => `<option value="${esc(c)}"${c === sel ? ' selected' : ''}>${esc(c)}</option>`).join('');
+}
+function bindEdit() {
+  $('editcard').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-e]'); if (!b) return; const k = b.dataset.e;
+    if (['str', 'move-pub', 'move-sec', 'kill', 'reveal'].includes(k)) {
+      const id = selected.id;
+      if (k === 'str') act({ type: 'unit.edit', id, str: $('e-str').value });
+      if (k === 'move-pub' || k === 'move-sec') { placing = { mode: 'move', id, public: k === 'move-pub' }; renderPlacebar(); }
+      if (k === 'reveal') act({ type: 'reveal', unitId: id });
+      if (k === 'kill') { if (confirmKill === id) { confirmKill = null; act({ type: 'unit.destroy', id }); selected = { type: 'country', id: 'Poland' }; } else { confirmKill = id; renderEdit(); setTimeout(() => { if (confirmKill === id) { confirmKill = null; renderEdit(); } }, 4000); } }
+    }
+    if (k === 'region' || k === 'zone') {
+      const r = REGION[selected.region]; const ids = k === 'zone' ? REGIONS.filter((x) => x.country === r.country && x.zone === r.zone).map((x) => x.id) : [r.id];
+      act({ type: 'region.set', ids, owner: $('e-owner').value });
+    }
+    if (k === 'add-pub' || k === 'add-sec') {
+      placing = { mode: 'add', public: k === 'add-pub', data: { owner: $('a-owner').value, kind: $('a-kind').value, name: $('a-name').value, str: $('a-str').value } }; renderPlacebar();
+    }
+  });
+}
+
+/* ---------- Staff: territory, forces, battles ---------- */
+let tCountry = null, fCountry = '';
+function renderTerritory() {
+  const box = $('territory'); if (!box) return; tCountry = tCountry || $('t-country').value;
+  const list = REGIONS.filter((r) => r.country === tCountry); const zones = [...new Set(list.map((r) => r.zone))];
+  const checked = new Set([...box.querySelectorAll('input[data-r]:checked')].map((i) => i.dataset.r));
+  box.innerHTML = zones.map((z) => `<div class="zone"><label class="check zhead"><input type="checkbox" data-z="${esc(z)}"> <b>${esc(z)}</b></label>
+    ${list.filter((r) => r.zone === z).map((r) => { const c = ctrlOf(r); const occ = c !== baseOwner(r); return `<label class="check"><input type="checkbox" data-r="${r.id}"${checked.has(r.id) ? ' checked' : ''}> ${esc(r.name)} <span class="pill ${occ ? 'war' : 'neutral'}">${POWERS[c]?.short || c}</span></label>`; }).join('')}</div>`).join('') +
+    `<div class="row"><span class="formnote">Give selected to</span><select id="t-owner">${ownerOptions(POWERS[tCountry] ? tCountry : OWNER[tCountry] || tCountry)}</select><label class="check"><input type="checkbox" id="t-announce" checked> Announce on the wire</label><button type="button" class="dbtn gold" id="t-apply">Apply</button></div>`;
+}
+function bindTerritory() {
+  $('t-country').addEventListener('change', (e) => { tCountry = e.target.value; $('territory').innerHTML = ''; renderTerritory(); });
+  $('territory').addEventListener('change', (e) => { const z = e.target.dataset.z; if (z) $('territory').querySelectorAll('input[data-r]').forEach((i) => { if (REGION[i.dataset.r].zone === z) i.checked = e.target.checked; }); });
+  $('territory').addEventListener('click', async (e) => {
+    if (e.target.id !== 't-apply') return; const ids = [...$('territory').querySelectorAll('input[data-r]:checked')].map((i) => i.dataset.r);
+    if (!ids.length) { toast('Tick at least one region.'); return; }
+    if (await act({ type: 'region.set', ids, owner: $('t-owner').value, announce: $('t-announce').checked })) { $('territory').querySelectorAll('input:checked').forEach((i) => (i.checked = false)); }
+  });
+}
+function renderForces() {
+  const box = $('forces'); if (!box) return;
+  const list = STATE.units.filter((u) => !fCountry || u.owner === fCountry);
+  keepInputs(box, () => {
+    box.innerHTML = `<div class="codes-wrap"><table class="codes"><thead><tr><th>Unit</th><th>Type</th><th>Strength</th><th></th></tr></thead><tbody>${list.map((u) => `<tr><td>${flag(u.owner)} ${esc(u.name)}${!u.shown ? ' <span class="pill private">hidden</span>' : ''}</td><td>${KIND_NAME[u.kind]}</td>
+      <td><input type="number" id="fs-${u.id}" min="1" max="99" value="${u.str}" style="width:60px"> <button type="button" class="dbtn" data-fs="${u.id}">Save</button></td>
+      <td><button type="button" class="dbtn red" data-fk="${u.id}">${confirmKill === u.id ? 'Confirm' : u.kind === 'fleet' ? 'Sink' : u.kind === 'air' ? 'Shoot down' : 'Destroy'}</button></td></tr>`).join('')}</tbody></table></div>`;
+  });
+}
+function bindForces() {
+  $('f-country').addEventListener('change', (e) => { fCountry = e.target.value; $('forces').innerHTML = ''; renderForces(); });
+  $('forces').addEventListener('click', (e) => {
+    const s1 = e.target.closest('[data-fs]'), k = e.target.closest('[data-fk]');
+    if (s1) act({ type: 'unit.edit', id: s1.dataset.fs, str: $('fs-' + s1.dataset.fs).value });
+    if (k) { const id = k.dataset.fk; if (confirmKill === id) { confirmKill = null; act({ type: 'unit.destroy', id }); } else { confirmKill = id; renderForces(); setTimeout(() => { if (confirmKill === id) { confirmKill = null; renderForces(); } }, 4000); } }
+  });
+}
+// Battle calculator: strength times modifiers, compared as a ratio, read off a results table.
+const TIERS = [
+  { min: 3, name: 'Decisive attacker victory', win: true, att: 0.1, def: 0.6 },
+  { min: 2, name: 'Attacker victory', win: true, att: 0.15, def: 0.4 },
+  { min: 1.5, name: 'Costly attacker victory', win: true, att: 0.25, def: 0.35 },
+  { min: 0.8, name: 'Stalemate', win: false, att: 0.2, def: 0.2 },
+  { min: 0, name: 'Attack fails', win: false, att: 0.35, def: 0.1 },
+];
+let battleRoll = null;
+function unitOptions() { return ORDER.map((c) => { const us = STATE.units.filter((u) => u.owner === c); return us.length ? `<optgroup label="${POWERS[c].label}">${us.map((u) => `<option value="${u.id}">${esc(u.name)} (${u.str})</option>`).join('')}</optgroup>` : ''; }).join(''); }
+function renderBattleShell() {
+  $('battle').innerHTML = `<div class="bgrid">
+    <label>Attackers<select id="b-att" multiple size="7">${unitOptions()}</select></label>
+    <label>Defenders<select id="b-def" multiple size="7">${unitOptions()}</select></label></div>
+    <div class="bgrid"><div class="mods"><b>Attacker bonuses</b>
+      <label class="check"><input type="checkbox" id="m-surprise"> Surprise attack +25%</label>
+      <label class="check"><input type="checkbox" id="m-aair"> Air or naval support +25%</label>
+      <label class="check"><input type="checkbox" id="m-asup"> Good supply plan +25%</label>
+      <label>Plan quality <input type="range" id="m-aplan" min="0" max="50" step="5" value="0"> <span id="m-aplan-v">+0%</span></label></div>
+    <div class="mods"><b>Defender bonuses</b>
+      <label class="check"><input type="checkbox" id="m-fort"> Fortified line or rough terrain +50%</label>
+      <label class="check"><input type="checkbox" id="m-dair"> Air or naval support +25%</label>
+      <label class="check"><input type="checkbox" id="m-dsup"> Good supply plan +25%</label>
+      <label>Plan quality <input type="range" id="m-dplan" min="0" max="50" step="5" value="0"> <span id="m-dplan-v">+0%</span></label></div></div>
+    <div class="row"><label class="check"><input type="checkbox" id="m-roll"> Roll a die for luck (1 = one result worse, 6 = one result better)</label><button type="button" class="dbtn" id="b-reroll">Roll again</button></div>
+    <div id="b-result"></div>`;
+  const recompute = () => { $('m-aplan-v').textContent = `+${$('m-aplan').value}%`; $('m-dplan-v').textContent = `+${$('m-dplan').value}%`; renderBattleResult(); };
+  $('battle').addEventListener('input', recompute); $('battle').addEventListener('change', recompute);
+  $('b-reroll').addEventListener('click', () => { battleRoll = 1 + Math.floor(Math.random() * 6); $('m-roll').checked = true; renderBattleResult(); });
+}
+function renderBattleResult() {
+  const pick = (id) => [...$(id).selectedOptions].map((o) => STATE.units.find((u) => u.id === o.value)).filter(Boolean);
+  const att = pick('b-att'), def = pick('b-def'); const box = $('b-result');
+  if (!att.length || !def.length) { box.innerHTML = '<p class="formnote">Pick at least one attacking and one defending unit. Hold Ctrl (or Cmd) to pick several.</p>'; return; }
+  const on = (id) => $(id).checked; const sum = (l) => l.reduce((a, u) => a + u.str, 0);
+  const aMul = 1 + (on('m-surprise') ? 0.25 : 0) + (on('m-aair') ? 0.25 : 0) + (on('m-asup') ? 0.25 : 0) + +$('m-aplan').value / 100;
+  const dMul = 1 + (on('m-fort') ? 0.5 : 0) + (on('m-dair') ? 0.25 : 0) + (on('m-dsup') ? 0.25 : 0) + +$('m-dplan').value / 100;
+  const A = sum(att) * aMul, D = sum(def) * dMul, ratio = A / Math.max(0.1, D);
+  let ti = TIERS.findIndex((t) => ratio >= t.min);
+  if (on('m-roll')) { if (battleRoll == null) battleRoll = 1 + Math.floor(Math.random() * 6); if (battleRoll === 1) ti = Math.min(TIERS.length - 1, ti + 1); if (battleRoll === 6) ti = Math.max(0, ti - 1); }
+  const t = TIERS[ti]; const after = (u, frac) => Math.round(u.str * (1 - frac));
+  const row = (u, frac) => { const n = after(u, frac); return `<tr><td>${flag(u.owner)} ${esc(u.name)}</td><td class="num">${u.str} →</td><td><input type="number" min="1" max="99" data-bs="${u.id}" value="${Math.max(1, n)}" style="width:60px"></td><td><label class="check"><input type="checkbox" data-bk="${u.id}"${n < 2 ? ' checked' : ''}> ${u.kind === 'fleet' ? 'Sunk' : u.kind === 'air' ? 'Shot down' : 'Destroyed'}</label></td></tr>`; };
+  const aOwner = att[0].owner, dOwner = def[0].owner;
+  const head = `${POWERS[aOwner].label} attack on ${def.map((u) => u.name).join(' and ')}: ${t.name.toLowerCase().replace('attacker', POWERS[aOwner].label)}`;
+  box.innerHTML = `<div class="verdict ${t.win ? 'win' : ti === 3 ? 'draw' : 'loss'}"><b>${t.name}</b><span>Attack ${A.toFixed(1)} vs defense ${D.toFixed(1)} · ratio ${ratio.toFixed(2)} : 1${on('m-roll') ? ` · die rolled ${battleRoll}` : ''}</span></div>
+    <p class="formnote">Suggested losses: attackers ${Math.round(t.att * 100)}%, defenders ${Math.round(t.def * 100)}%. Change any number before applying.</p>
+    <table class="codes"><tbody>${att.map((u) => row(u, t.att)).join('')}${def.map((u) => row(u, t.def)).join('')}</tbody></table>
+    ${t.win ? `<label class="formnote" for="b-regions">Regions the attacker takes (optional)</label><select id="b-regions" multiple size="5">${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<optgroup label="${esc(c)}">${REGIONS.filter((r) => r.country === c).map((r) => `<option value="${r.id}">${esc(r.name)} (${r.zone.toLowerCase()})</option>`).join('')}</optgroup>`).join('')}</select>` : ''}
+    <label class="formnote" for="b-head">Headline for the news wire</label><input type="text" id="b-head" maxlength="160" value="${esc(head)}" style="width:100%">
+    <div class="row"><button type="button" class="dbtn gold" id="b-apply">Apply result to the map</button></div>`;
+  $('b-apply').addEventListener('click', async () => {
+    const results = [...box.querySelectorAll('[data-bs]')].map((i) => ({ id: i.dataset.bs, str: i.value, destroy: box.querySelector(`[data-bk="${i.dataset.bs}"]`).checked }));
+    const regions = $('b-regions') ? [...$('b-regions').selectedOptions].map((o) => o.value) : [];
+    if (await act({ type: 'battle.resolve', results, regions, regionOwner: aOwner, headline: $('b-head').value })) { battleRoll = null; renderBattleShell(); renderBattleResult(); }
+  });
+}
+
 /* ---------- Crisis staff ---------- */
 let qFilter = 'pending', qCountry = '';
 function qDetail(q) {
@@ -942,6 +1132,12 @@ function keepInputs(root, fn) {
   for (const [id, v] of Object.entries(vals)) { const t = document.getElementById(id); if (t && v) t.value = v; }
   if (focusId) { const t = document.getElementById(focusId); if (t) { t.focus(); if (sel) try { t.setSelectionRange(...sel); } catch {} } }
 }
+let unitSig = '';
+function refreshBattleLists() {
+  const sig = STATE.units.map((u) => u.id + ':' + u.str).join(); if (sig === unitSig || !$('b-att')) return; unitSig = sig;
+  for (const id of ['b-att', 'b-def']) { const sel = new Set([...$(id).selectedOptions].map((o) => o.value)); $(id).innerHTML = unitOptions(); [...$(id).options].forEach((o) => (o.selected = sel.has(o.value))); }
+  renderBattleResult();
+}
 function renderStaff() {
   const Q = STATE.queue || []; const pending = Q.filter((q) => q.status === 'pending').length;
   $('q-count').textContent = `${pending} pending`;
@@ -953,7 +1149,7 @@ function renderStaff() {
       ${q.status === 'pending' ? `<textarea id="r-${q.id}" maxlength="500" aria-label="Reply to ${esc(q.from)}" placeholder="Reply to the delegate (optional). A default reply is used if empty."></textarea><div class="qbtns">${qButtons(q)}</div>` : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b></div>`}
     </div>`).join('') || '<p class="formnote">Nothing waiting. New requests appear here a second or two after delegates send them.</p>';
   });
-  keepInputs($('chair'), renderChair); renderProj();
+  keepInputs($('chair'), renderChair); renderProj(); renderTerritory(); renderForces(); refreshBattleLists();
   const cd = $('cu-date'); if (cd && !cd.value && document.activeElement !== cd) cd.value = STATE.update?.date || '';
 }
 function renderChair() {
@@ -996,7 +1192,10 @@ function bindStaff() {
 /* ---------- Boot ---------- */
 export function start(root, props) {
   VIEW = props.view; ROLE = props.session.role; AS = props.as || null;
+  EDIT = VIEW === 'map' && ROLE === 'staff' && new URLSearchParams(location.search).get('edit') === '1';
   root.innerHTML = skeleton(props);
+  if (VIEW === 'staff') renderBattleShell();
+  if (EDIT) bindEdit();
   let stopped = false, timer, failures = 0;
   $('logout').addEventListener('click', async () => { await fetch('/api/crisis/logout', { method: 'POST' }); location.href = '/crisis'; });
   $('view-as')?.addEventListener('change', (e) => { if (e.target.value) location.href = '/crisis/delegate?as=' + encodeURIComponent(e.target.value); });
@@ -1014,7 +1213,7 @@ export function start(root, props) {
     ['act', 'dir', 'port', 'intel', 'req'].forEach((t) => $('t-' + t).addEventListener('click', () => showTab(t)));
     $('form').addEventListener('submit', submitAction);
   }
-  if (VIEW === 'staff') bindStaff();
+  if (VIEW === 'staff') { bindStaff(); bindTerritory(); bindForces(); }
   const cd = setInterval(tickCountdown, 1000);
 
   const poll = async () => {
@@ -1028,7 +1227,7 @@ export function start(root, props) {
   if (VIEW !== 'staff') (async () => {
     try {
       const [geo, marble, water, topo, world, wwater, clouds] = await Promise.all([
-        fetch('/crisis/geo.json').then((r) => r.json()),
+        fetch('/crisis/geo.json').then((r) => r.json()).then(async (g) => { RSHAPE = await fetch('/crisis/regions.json').then((r) => r.json()); return g; }),
         ...['marble.jpg', 'water.png', 'topo.jpg', 'world.jpg', 'wwater.png', 'clouds.jpg'].map((f) => loadImg('/crisis/' + f)),
       ]);
       A = geo; imgs = { marble, water, topo, world, wwater, clouds }; await first;
@@ -1036,14 +1235,14 @@ export function start(root, props) {
       if (VIEW === 'map') {
         BASE_CACHE = document.createElement('canvas'); BASE_CACHE.ready = false;
         patchCanvas = document.createElement('canvas'); patchCanvas.width = TW * TEXK; patchCanvas.height = TH * TEXK; paintTexture(patchCanvas, imgs, selected.id);
-        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n) => select('country', n), onUnit: (id) => select('unit', id) });
+        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat)), onUnit: (id) => select('unit', id), onGround: EDIT ? placeAt : null });
         mapGlobe.setTextures(world, patchCanvas, topo);
       } else {
         fogCanvas = document.createElement('canvas'); fogCanvas.width = TW * TEXK; fogCanvas.height = TH * TEXK; paintFog(fogCanvas);
         const cap = { 'United Kingdom': [-0.13, 51.5], France: [2.35, 48.86], Poland: [21, 52.2], Germany: [13.4, 52.5], USSR: [37.6, 55.75], Italy: [12.5, 41.9], Finland: [24.9, 60.2] }[ME] || [15, 50];
         const home = ME === 'United States' ? { lon: -70, lat: 34.5, dist: 2.9 } : ME === 'Japan' ? { lon: 128, lat: 38.5, dist: 2.1 } : { lon: cap[0], lat: cap[1] + 1.5, dist: 1.75 };
         delGlobe = new Globe($('stage-del'), $('ov-del'), { fog: true, pins: true, lon: home.lon, lat: home.lat - 2.5, dist: home.dist, onUnit: (id) => pickForce(id) });
-        delGlobe.setTextures(world, fogCanvas, topo); fogSig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS, LIVE_ARROWS]);
+        delGlobe.setTextures(world, fogCanvas, topo); fogSig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS, LIVE_ARROWS, CONTROL]);
       }
     } catch (e) {
       document.querySelectorAll('.loading').forEach((l) => (l.textContent = 'The 3D map could not load. Reload the page, or try another browser.'));
