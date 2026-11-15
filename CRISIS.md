@@ -9,7 +9,7 @@ The live crisis app for the Early WWII committee. It lives at `/crisis` on the w
 | `/crisis` | Everyone | Code login |
 | `/crisis/map` | Projector (and staff) | The public 3D map: what the whole room knows, the crisis update, the directive on the floor, the news wire and breaking news flashes |
 | `/crisis/delegate` | Each delegate | Their own map with fog of war, plus the Actions, Directives, Portfolio, Intel and Requests tabs |
-| `/crisis/staff` | Crisis staff and chair | The request queue, chair controls for directives, crisis update publisher, projector controls, access codes and game reset |
+| `/crisis/staff` | Crisis staff and chair | The staff map: true positions of everything, the request drawer, and click-to-edit for units, regions and map features. Tools along the top open pop-ups: directives, crisis update, make something happen, battle, wars and treaties, map features, messages, projector, access codes, game |
 
 Screens refresh about every 1.5 seconds. Moves that staff approve glide across the map on every screen that can see them.
 
@@ -87,7 +87,14 @@ Staff no longer have to build effects by hand for most requests.
 
 **Turning it on:** add `ANTHROPIC_API_KEY` in Vercel (Project, Settings, Environment Variables, marked sensitive) and redeploy. It uses Claude Opus 5.5. Without the key, the app falls back to keyword matching, which catches wars, peace, alliances, pacts and trade deals only. The Setup tab shows which mode is on.
 
-**Staff screen tabs:** Requests, Directives, Events and updates, Map tools (battle calculator, forces, territory, wars and treaties, map features) and Setup (access codes, game reset).
+**Staff screen:** the staff screen is the map.
+- **Requests** sit in a drawer on the left. "Show on map" flies to the spot a delegate marked.
+- **Click land:** give the region or its whole zone to anyone; spawn forces there (owner, type, strength, name, a quality bonus such as "Elite +1", public or secret, optional headline); build trenches, bunkers, factories and other features; or drop a labelled pin.
+- **Click the sea:** spawn fleets or place features.
+- **Click a unit:** change strength, add or remove traits, move it (public or secret), reveal it, destroy it, or mark it as an attacker or defender. Picked units collect in a battle bar at the bottom; "Work it out" opens the battle calculator with them filled in.
+- **Click a map feature:** destroy, repair, finish or remove it.
+- **Buttons along the top** open pop-ups: Directives, Crisis update, Make something happen, Battle, Wars and treaties, Map features, Messages, Projector, Access codes (printable) and Game (storage, assistant mode, demo, reset).
+- The old `/crisis/map?edit=1` map editor now redirects here.
 
 ## Map features and unit traits
 

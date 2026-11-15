@@ -1282,6 +1282,8 @@ function renderEdit() {
     html += `<h3>${selected.type === 'sea' ? 'Open sea' : esc(LABEL_TEXT[selected.id] || selected.id)}</h3><p class="formnote">${selected.at ? `${selected.at[1].toFixed(1)}°, ${selected.at[0].toFixed(1)}°` : 'Click anywhere on the map.'}</p>${selected.at ? spawnForm(owner, selected.type === 'sea') + buildForm(owner) : ''}`;
   } else html += `<p class="formnote">Click a unit, a map feature, land or sea.</p>`;
   if (!selected.at && selected.type !== 'unit' && selected.type !== 'feature') html = html || '<p class="formnote">Click the map.</p>';
+  // Rebuild only when something changed, so a click is never lost to a refresh.
+  if (box._html === html && !box.hidden) return; box._html = html;
   const open = Object.fromEntries([...box.querySelectorAll('details[data-sec]')].map((d) => [d.dataset.sec, d.open])); box.innerHTML = `<button type="button" class="ecard-x" data-e="close" aria-label="Close">✕</button>` + html; box.querySelectorAll('details[data-sec]').forEach((d) => { if (open[d.dataset.sec]) d.open = true; });
   box.hidden = false;
 }
@@ -1320,7 +1322,7 @@ function bindEdit() {
       if (k === 'move-pub' || k === 'move-sec') { placing = { mode: 'move', id, public: k === 'move-pub' }; renderPlacebar(); }
       if (k === 'reveal') act({ type: 'reveal', unitId: id });
       if (k === 'att' || k === 'def') { const mine = k === 'att' ? battleSel.att : battleSel.def, other = k === 'att' ? battleSel.def : battleSel.att; other.delete(id); mine.has(id) ? mine.delete(id) : mine.add(id); syncBattleSelects(); renderEdit(); }
-      if (k === 'kill') { if (confirmKill === id) { confirmKill = null; act({ type: 'unit.destroy', id }); selected = { type: 'none' }; $('editcard').hidden = true; } else { confirmKill = id; renderEdit(); setTimeout(() => { if (confirmKill === id) { confirmKill = null; renderEdit(); } }, 4000); } }
+      if (k === 'kill') { if (confirmKill === id) { confirmKill = null; act({ type: 'unit.destroy', id }); selected = { type: 'none' }; $('editcard').hidden = true; } else { confirmKill = id; renderEdit(); setTimeout(() => { if (confirmKill === id) { confirmKill = null; renderEdit(); } }, 6000); } }
       return;
     }
     if (k === 'region' || k === 'zone') {
