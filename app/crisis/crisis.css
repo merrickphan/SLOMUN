@@ -348,3 +348,13 @@ button { cursor: pointer; }
 .zhead { margin-bottom: 2px; }
 .codes .fl { width: 18px; height: 12px; display: inline-block; vertical-align: -1px; }
 @media (max-width: 700px) { .bgrid { grid-template-columns: 1fr; } .editcard { width: calc(100% - 24px); top: auto; bottom: 12px; max-height: 50%; } }
+
+/* Operation markers, chosen locations and new-message pings */
+.opmark { display: flex; align-items: center; gap: 6px; background: rgba(20,22,26,.85); border: 1px solid var(--gold); padding: 3px 8px 3px 4px; font-size: 12px; }
+.opmark .fl { width: 18px; height: 12px; display: block; }
+.opmark b { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 12px; margin: 0; }
+.opmark.secret { border-style: dashed; opacity: .9; }
+.pickpin { background: var(--gold); color: #15110A; border-color: #15110A; }
+.pickpin b { color: #15110A; }
+.pickpin::after { border-top-color: #15110A; }
+.tabs button.ping::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 4px; background: var(--gold); border-radius: 50% !important; vertical-align: 2px; }
