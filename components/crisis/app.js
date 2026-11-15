@@ -904,6 +904,7 @@ function renderStaff() {
     </div>`).join('') || '<p class="formnote">Nothing waiting. New requests appear here a second or two after delegates send them.</p>';
   });
   keepInputs($('chair'), renderChair); renderProj();
+  const cd = $('cu-date'); if (cd && !cd.value && document.activeElement !== cd) cd.value = STATE.update?.date || '';
 }
 function renderChair() {
   const rows = (STATE.directives || []).filter((d) => d.status !== 'drafting');
