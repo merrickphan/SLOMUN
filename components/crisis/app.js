@@ -606,9 +606,9 @@ const DATECARD = `<div class="date glass num"><span class="date-line"></span><sm
 function skeleton(p) {
   const nav = ROLE === 'staff'
     ? `<a class="navlink${VIEW === 'staff' ? ' on' : ''}" href="/crisis/staff">Staff</a><a class="navlink${VIEW === 'map' && EDIT ? ' on' : ''}" href="/crisis/map?edit=1">Map editor</a><a class="navlink${VIEW === 'map' && !EDIT ? ' on' : ''}" href="/crisis/map" target="_blank" rel="noopener">Projector</a>
-       <select class="navlink" id="view-as" aria-label="Preview a delegate's laptop"><option value="">Preview a delegate…</option>${ROSTER.map((r) => `<option${r.name === AS ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}</select>`
+       <select class="navlink" id="view-as" aria-label="Act as a delegate"><option value="">Act as a delegate…</option>${ROSTER.map((r) => `<option${r.name === AS ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}</select>`
     : ROLE === 'projector' ? `<button type="button" class="navlink" id="fs-btn">Full screen</button>` : '';
-  const sub = VIEW === 'staff' ? 'Crisis staff' : EDIT ? 'Map editor (staff only: shows true positions)' : VIEW === 'map' ? 'SLOMUN II crisis' : AS ? `Preview: ${esc(AS)} (read only)` : 'Delegate laptop';
+  const sub = VIEW === 'staff' ? 'Crisis staff' : EDIT ? 'Map editor (staff only: shows true positions)' : VIEW === 'map' ? 'SLOMUN II crisis' : AS ? `Staff acting as ${esc(AS)}` : 'Delegate laptop';
   const top = `<header class="topbar">
     <div class="brand"><img src="/images/crest.png" alt="SLOMUN crest"><div><b>Early WWII</b><span>${sub}</span></div></div>
     <div class="hud num" id="treasuries" aria-label="Treasuries"></div>
@@ -699,9 +699,8 @@ async function fetchState() {
   SKEW = j.now - Date.now(); if (!j.unchanged) applyState(j);
 }
 async function act(payload) {
-  if (AS) { toast('This is a read-only preview. Delegates act from their own laptops.'); return false; }
   try {
-    const r = await fetch('/api/crisis/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const r = await fetch('/api/crisis/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(AS ? { ...payload, as: AS } : payload) });
     if (r.status === 401) { location.href = '/crisis'; return false; }
     const j = await r.json();
     if (!r.ok) { toast(j.error || 'That did not work. Try again.'); return false; }
