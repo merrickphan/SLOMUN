@@ -54,13 +54,21 @@ Then open `http://localhost:3000/crisis`. In development the codes are `STAFF-00
 - **Load demo requests** fills the queue with examples for practice. Don't use it during the real session.
 - Keep paper directive forms and crisis note slips in the room in case the Wi-Fi fails.
 
-## Map arrows
+## Effects toolkit and free-form play
 
-- Approving a move draws an arrow from the unit's old position to its new one, in the moving country's color.
-- A secret move draws a **dashed** arrow that only that side's laptops see. Revealing the move turns it solid on the projector.
-- Arrows fade one crisis update after they appear.
-- **Clear all arrows** on the staff screen removes every arrow at once.
-- Arrows are only drawn over the detailed Europe map, not the Pacific.
+- **Crisis notes:** delegates can submit any feasible plan as a free-form note, with an optional budget and map location. **Follow up** on an answered request builds a chain of notes into a longer plan.
+- **Messages:** delegates can send private messages to each other. Staff can read every message on the staff screen.
+- **Effects:** when approving any request, or carrying out a passed directive, staff can attach effects:
+  - change money or unit strength
+  - destroy, move or create units
+  - change who holds regions
+  - send intel
+  - post a headline
+  - place a map marker
+  - grant a delegate a new asset or power
+  - message delegates as a character such as Hitler or Stalin
+- **Make something happen:** applies the same effects at any time, for events nobody asked for.
+- **Arrows:** movement arrows are turned off. Units still glide to their new positions.
 
 ## Testing plan
 
@@ -74,8 +82,8 @@ Use separate browser profiles or incognito windows, since each login is a cookie
 Then run through this checklist:
 - [ ] Delegate moves a unit, sends a spy, sends money, and writes a press release.
 - [ ] Staff sees each one appear within about 2 seconds.
-- [ ] Approve a move **on projector**: the unit glides and a solid arrow appears on the projector.
-- [ ] Approve a move **secretly**: the projector shows nothing; the delegate sees the move and a dashed arrow; **Reveal on projector** makes it visible.
+- [ ] Approve a move **on projector**: the unit glides on the projector.
+- [ ] Approve a move **secretly**: the projector shows nothing; the delegate sees the move; **Reveal on projector** makes it visible.
 - [ ] Spy **Succeeds** puts a report in the delegate's Intel tab. Spy **Caught** puts an arrest headline on the news wire.
 - [ ] Money and builds change treasuries in the top bar.
 - [ ] Directive: one delegate writes it and asks 3 others, they sign, the sponsor submits, the chair puts it on the floor (it appears on the projector), and the chair records the vote.

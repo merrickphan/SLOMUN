@@ -358,3 +358,19 @@ button { cursor: pointer; }
 .pickpin b { color: #15110A; }
 .pickpin::after { border-top-color: #15110A; }
 .tabs button.ping::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 4px; background: var(--gold); border-radius: 50% !important; vertical-align: 2px; }
+
+/* Effects toolkit, messages, six delegate tabs */
+.fx { border: 1px dashed rgba(245,194,27,.5); padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.fx summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--gold); }
+.fx[open] { gap: 8px; }
+.fx-rows { display: flex; flex-direction: column; gap: 8px; }
+.fx-row { position: relative; background: #2A2D33; padding: 8px 36px 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.fx-row b { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.fx-row .fx-del { position: absolute; right: 6px; top: 6px; padding: 2px 7px; }
+.fx select, .fx input, .fx textarea { background: #23262C; border: 1px solid var(--line); color: var(--text); font-size: 13px; padding: 5px 7px; font-family: var(--body); min-width: 0; }
+.fx textarea { width: 100%; min-height: 48px; }
+.fx .row input[type=text] { flex: 1; min-width: 120px; }
+.msg.mine { border-color: rgba(245,194,27,.35); }
+.msg small { white-space: pre-wrap; }
+.tabs { display: grid !important; grid-template-columns: repeat(3, 1fr); }
+.tabs button { flex: none; }

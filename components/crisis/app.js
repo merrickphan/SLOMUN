@@ -125,7 +125,7 @@ function paintOverlays(ctx, canvas, sel) {
   }
   // Offensive arrows.
   // Movement arrows from the server: in the moving side's color, dashed when only that side can see them.
-  for (const a of LIVE_ARROWS) {
+  for (const a of []) { // movement arrows are turned off
     const p = a.pts.map(([lo, la]) => [tx(lo), ty(la)]); const col = a.owner === 'Germany' ? '#FF5A46' : (POWERS[a.owner]?.color || '#FF5A46');
     ctx.lineCap = 'round'; ctx.setLineDash([]);
     ctx.strokeStyle = 'rgba(15,15,10,0.7)'; ctx.lineWidth = 24; ctx.beginPath(); ctx.moveTo(...p[0]); ctx.quadraticCurveTo(...p[1], ...p[2]); ctx.stroke();
@@ -646,16 +646,22 @@ function skeleton(p) {
         <button type="button" role="tab" id="t-port" aria-selected="false" aria-controls="p-port">Portfolio</button>
         <button type="button" role="tab" id="t-intel" aria-selected="false" aria-controls="p-intel">Intel<span class="count num" id="c-intel"></span></button>
         <button type="button" role="tab" id="t-req" aria-selected="false" aria-controls="p-req">Requests<span class="count num" id="c-req"></span></button>
+        <button type="button" role="tab" id="t-msg" aria-selected="false" aria-controls="p-msg">Messages<span class="count num" id="c-msg"></span></button>
       </div>
       <div id="p-act" role="tabpanel" aria-labelledby="t-act"><div class="tiles" id="tiles"></div><form class="form" id="form" novalidate></form></div>
       <div id="p-dir" role="tabpanel" aria-labelledby="t-dir" hidden></div>
       <div id="p-port" role="tabpanel" aria-labelledby="t-port" hidden></div>
       <div id="p-intel" role="tabpanel" aria-labelledby="t-intel" hidden><div class="reqs" id="intel"></div></div>
       <div id="p-req" role="tabpanel" aria-labelledby="t-req" hidden><div class="reqs" id="reqs"></div></div>
+      <div id="p-msg" role="tabpanel" aria-labelledby="t-msg" hidden>
+        <form class="dform" id="msg-form" novalidate><label for="msg-to">To<select id="msg-to" multiple size="5">${ORDER.map((c) => { const rs = ROSTER.filter((r) => r.country === c); return rs.length ? `<optgroup label="${POWERS[c].label}">${rs.map((r) => `<option>${esc(r.name)}</option>`).join('')}</optgroup>` : ''; }).join('')}</select></label>
+          <label for="msg-text">Message<textarea id="msg-text" maxlength="1200" placeholder="Private note to other delegates. Crisis staff can read every message."></textarea></label>
+          <button type="submit" class="dbtn gold">Send message</button></form>
+        <div class="reqs" id="msgs"></div></div>
     </aside></div>
     <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div>
   </section>`;
-  if (VIEW === 'staff') body = `<section class="view staff">
+  if (VIEW === 'staff') body = `<section class="view staff" id="view-staff-root">
     <div class="sgrid">
       <div class="scol">
         <div class="spanel"><div class="shead"><h2>Request queue</h2><span class="pill pending num" id="q-count"></span>
@@ -677,9 +683,11 @@ function skeleton(p) {
             <label class="check"><input type="checkbox" id="cu-reset" checked> Restart the countdown at <input type="number" id="cu-min" min="1" max="60" value="15" style="width:56px"> minutes</label>
             <button type="submit" class="dbtn gold">Publish to the room</button>
           </form></div>
+        <div class="spanel"><h2>Make something happen</h2><p class="formnote">For events nobody asked for: Hitler's orders, neutral countries, natural disasters, consequences of earlier plans.</p><div id="free-fx">${fxEditor('free', true, 'Effects')}</div><button type="button" class="dbtn gold" id="free-apply">Apply now</button></div>
+        <div class="spanel"><h2>Messages</h2><p class="formnote">Every private message between delegates. Reply as a character with "Message delegates as a character" above.</p><div class="reqs" id="staff-msgs"></div></div>
         <div class="spanel"><h2>Projector</h2><div id="proj"></div>
-          <div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button><button type="button" class="dbtn" id="clear-arrows">Clear all arrows</button></div>
-          <p class="formnote">Approved moves draw an arrow automatically. Arrows fade after the next crisis update. Secret moves show as dashed arrows to that side only.</p></div>
+          <div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button><button type="button" class="dbtn" id="clear-arrows">Clear map markers</button></div>
+          <p class="formnote">Operation markers fade after the next crisis update.</p></div>
         <div class="spanel"><h2>Access codes</h2>
           <p class="formnote">Print these and hand one to each delegate. The staff and projector codes are set in the Vercel project settings.</p>
           <div class="codes-wrap"><table class="codes"><thead><tr><th>Delegate</th><th>Country</th><th>Code</th></tr></thead><tbody>${(p.codes || []).map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(POWERS[c.country].label)}</td><td class="code">${esc(c.code)}</td></tr>`).join('')}</tbody></table></div></div>
@@ -798,21 +806,24 @@ const ICON = {
 const ACTIONS = [
   { id: 'fleet', label: 'Move forces' }, { id: 'spy', label: 'Send spy' }, { id: 'money', label: 'Send money' },
   { id: 'build', label: 'Build forces' }, { id: 'op', label: 'Fund operation' }, { id: 'propaganda', label: 'Propaganda' },
-  { id: 'secret', label: 'Secret directive' }, { id: 'press', label: 'Press release' }, { id: 'treaty', label: 'Propose treaty' },
+  { id: 'secret', label: 'Crisis note' }, { id: 'press', label: 'Press release' }, { id: 'treaty', label: 'Propose treaty' },
 ];
-let action = 'fleet', visibility = 'private', pickedForce = null, drafting = false, fogSig = '', pickLoc = null;
+let action = 'fleet', visibility = 'private', pickedForce = null, drafting = false, fogSig = '', pickLoc = null, followParent = null;
 const myUnits = () => UNITS.filter((x) => x.owner === ME && MEE.commands.includes(x.kind));
 const TO = () => ORDER.filter((n) => n !== ME).map((n) => POWERS[n].label).concat(['Romania', 'Turkey', 'Belgium', 'Netherlands']);
 
-let seenReq = null, seenIntel = null;
+let seenReq = null, seenIntel = null, seenMsg = null;
 function notifyDelegate() {
   const Q = STATE.queue || [], I = STATE.intel || [];
   if (seenReq) for (const q of Q) { const was = seenReq[q.id]; if (was === 'pending' && q.status !== 'pending') { toast(`Crisis staff ${q.status === 'approved' ? 'approved' : 'answered'} "${q.title}": ${q.reply || ''}`); $('t-req').classList.add('ping'); } }
   if (seenIntel != null && I.length > seenIntel) { toast(`New intel: ${I[0].from}`); $('t-intel').classList.add('ping'); }
+  const inbox = (STATE.messages || []).filter((m) => m.from !== MEE.name);
+  if (seenMsg != null && inbox.length > seenMsg) { const m = inbox[inbox.length - 1]; toast(`Message from ${m.from}`); $('t-msg').classList.add('ping'); }
+  seenMsg = inbox.length;
   seenReq = Object.fromEntries(Q.map((q) => [q.id, q.status])); seenIntel = I.length;
 }
 function renderDelegate(first, prev) {
-  const r = MEE; if (!r) return; notifyDelegate();
+  const r = MEE; if (!r) return; notifyDelegate(); renderMessages();
   if (first) {
     $('who-flag').innerHTML = flag(ME) + `<em>${initials(r.name)}</em>`; $('who-name').textContent = r.name;
     $('who-role').textContent = `${r.role} · ${POWERS[ME].label} · commands ${r.commands.map((k) => KIND_NAME[k].toLowerCase()).join(', ')}`;
@@ -834,7 +845,7 @@ function repaintFog() {
 }
 function setPick(loc) { pickLoc = loc; if (delGlobe) { delGlobe.pick = loc ? { at: loc.at, label: action === 'build' ? 'Build here' : 'Operation here' } : null; delGlobe.addPins(); } }
 function pickGround(lon, lat) {
-  if (!['build', 'op'].includes(action) || $('p-act').hidden) return false;
+  if (!['build', 'op', 'secret'].includes(action) || $('p-act').hidden) return false;
   const rid = regionAt(lon, lat); const rg = rid && REGION[rid]; const country = countryAt(lon, lat);
   const holder = rg ? ctrlOf(rg) : country ? (OWNER[country] || A.wsub?.[country] || country) : null;
   const kind = action === 'build' ? BUILD_KIND[$('f-btype')?.value] : null;
@@ -853,11 +864,11 @@ function renderTiles() {
   $('tiles').innerHTML = ACTIONS.map((a) => `<button type="button" class="tile" data-a="${a.id}" aria-pressed="${a.id === action}">${ICON[a.id]}<span>${a.label}</span></button>`).join('');
   document.querySelectorAll('.tile').forEach((b) => b.addEventListener('click', () => { action = b.dataset.a; setPick(null); renderTiles(); renderForm(); }));
 }
-const locBlock = (required) => `<div class="${pickLoc ? 'picked' : 'pickprompt'}">${pickLoc ? `<div style="grid-column:1/3"><b>${esc(pickLoc.where)}</b><span>Location chosen. Click the map again to change it.</span></div><button type="button" class="unpick" aria-label="Clear location">✕</button>` : `${required ? 'Click your own territory on the map to choose where to build.' : 'Optional: click the map to mark where the operation happens.'}<span>${required ? 'Ships must be built on a coast. Crisis staff check the location.' : 'Air reconnaissance reveals enemy units around the spot you pick.'}</span>`}</div>`;
+const locBlock = (required, note) => `<div class="${pickLoc ? 'picked' : 'pickprompt'}">${pickLoc ? `<div style="grid-column:1/3"><b>${esc(pickLoc.where)}</b><span>Location chosen. Click the map again to change it.</span></div><button type="button" class="unpick" aria-label="Clear location">✕</button>` : `${required ? 'Click your own territory on the map to choose where to build.' : (note ? 'Optional: click the map if your plan happens somewhere specific.' : 'Optional: click the map to mark where the operation happens.')}<span>${required ? 'Ships must be built on a coast. Crisis staff check the location.' : (note ? 'Crisis staff will see the spot you mark.' : 'Air reconnaissance reveals enemy units around the spot you pick.')}</span>`}</div>`;
 // Update only the location box so the rest of the form keeps what the delegate already chose.
 function renderLoc() {
   const box = $('f-loc'); if (!box) return renderForm();
-  box.innerHTML = locBlock(action === 'build');
+  box.innerHTML = locBlock(action === 'build', action === 'secret');
   box.querySelector('.unpick')?.addEventListener('click', () => { setPick(null); renderLoc(); });
 }
 function renderForm() {
@@ -880,11 +891,14 @@ function renderForm() {
   if (action === 'op') body = `<div id="f-loc">${LOC(false)}</div><label for="f-op">Operation<select id="f-op">${opt(['Naval blockade', 'Escort convoys', 'Air reconnaissance', 'Evacuate civilians', 'Other (describe below)'])}</select></label><label for="f-cost">Budget ($ millions)<input id="f-cost" type="number" min="1" max="9999" value="20"></label><label for="f-text">Details<textarea id="f-text" maxlength="1200" placeholder="Where, when and how."></textarea></label>`;
   if (action === 'propaganda') body = `<label for="f-aud">Audience<select id="f-aud">${opt(['People at home', 'Neutral countries', 'People in Germany', 'People in Britain', 'People in France', 'People in Italy', 'People in the Soviet Union', 'The United States', 'Japan'])}</select></label><label for="f-text">Message<textarea id="f-text" maxlength="1200" placeholder="What do you want them to believe?"></textarea></label>`;
   if (action === 'treaty') body = `<label for="f-with">Treaty with<select id="f-with">${ORDER.filter((k) => k !== ME).map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select></label>`;
-  if (['secret', 'press', 'treaty'].includes(action)) body += `<label for="f-text">${{ secret: 'Directive', press: 'Statement', treaty: 'Terms' }[action]}<textarea id="f-text" maxlength="1200" placeholder="${{ secret: 'Describe what you want to happen and how.', press: 'What do you want to announce?', treaty: 'Who is the treaty with, and what does each side agree to?' }[action]}"></textarea></label>`;
+  if (action === 'secret') body = `${followParent ? `<div class="picked"><div style="grid-column:1/3"><b>Follow-up</b><span>${esc((STATE.queue.find((q) => q.id === followParent) || {}).title || '')}</span></div><button type="button" class="unfollow unpick" aria-label="Stop following up">✕</button></div>` : ''}<p class="formnote">Any plan your character could carry out: bribes, sabotage, secret talks, coups, propaganda, anything feasible. Be specific about who, where, how and with what. Crisis staff decide what happens.</p>`;
+  if (['secret', 'press', 'treaty'].includes(action)) body += `<label for="f-text">${{ secret: 'Your plan', press: 'Statement', treaty: 'Terms' }[action]}<textarea id="f-text" maxlength="1200" placeholder="${{ secret: 'For example: Quietly pay Romanian oil officials to delay shipments to Germany, using contacts in Bucharest.', press: 'What do you want to announce?', treaty: 'Who is the treaty with, and what does each side agree to?' }[action]}"></textarea></label>`;
+  if (action === 'secret') body += `<label for="f-cost">Budget, if any ($ millions)<input id="f-cost" type="number" min="0" max="9999" value="0"></label><div id="f-loc">${locBlock(false, true)}</div>`;
   const forced = action === 'spy' ? 'private' : action === 'press' ? 'public' : null; const vis = forced || visibility;
   f.innerHTML = body + (forced ? '' : `<div class="vis" role="group" aria-label="Who can see this"><button type="button" data-v="private" aria-pressed="${vis === 'private'}">Private</button><button type="button" data-v="public" aria-pressed="${vis === 'public'}">Public</button></div>`) + `<button class="send" type="submit">${action === 'spy' ? 'Send agent' : 'Send to crisis staff'}</button>`;
   f.querySelectorAll('.vis button').forEach((b) => b.addEventListener('click', () => { visibility = b.dataset.v; f.querySelectorAll('.vis button').forEach((x) => x.setAttribute('aria-pressed', x === b)); }));
   f.querySelector('#f-loc .unpick')?.addEventListener('click', () => { setPick(null); renderLoc(); });
+  f.querySelector('.unfollow')?.addEventListener('click', () => { followParent = null; renderForm(); });
   f.querySelector('.picked:not(#f-loc .picked) .unpick')?.addEventListener('click', () => { pickedForce = null; if (delGlobe) { delGlobe.selectedUnit = null; delGlobe.markSelected(null); } renderForm(); });
   if (action === 'build') { const upd = () => { const c = BUILD[f.querySelector('#f-btype').value] * (+f.querySelector('#f-bqty').value || 0); f.querySelector('#f-bcost').textContent = `Cost: $${c}M of your $${POWERS[ME].treasury}M treasury. Each counts as 1 strength.`; }; f.querySelector('#f-btype').addEventListener('change', upd); f.querySelector('#f-bqty').addEventListener('input', upd); upd(); }
 }
@@ -896,7 +910,7 @@ function summary() {
   if (action === 'build') return `Build ${v('f-bqty')} × ${v('f-btype').toLowerCase()}${pickLoc ? ' in ' + pickLoc.where : ''}`;
   if (action === 'op') return `Fund ${v('f-op').toLowerCase()} with $${v('f-cost')}M${pickLoc ? ' near ' + pickLoc.where : ''}`;
   if (action === 'treaty') { const t = (v('f-text') || '').trim(); return t ? `Treaty with ${POWERS[v('f-with')].label}: ${t.length > 50 ? t.slice(0, 47) + '...' : t}` : ''; }
-  const t = (v('f-text') || '').trim(); const kind = { secret: 'Secret directive', press: 'Press release', treaty: 'Treaty proposal', propaganda: `Propaganda to ${(v('f-aud') || '').replace(/^People/, 'people')}` }[action];
+  const t = (v('f-text') || '').trim(); const kind = { secret: followParent ? 'Follow-up' : 'Crisis note', press: 'Press release', treaty: 'Treaty proposal', propaganda: `Propaganda to ${(v('f-aud') || '').replace(/^People/, 'people')}` }[action];
   return t ? `${kind}: ${t.length > 60 ? t.slice(0, 57) + '...' : t}` : '';
 }
 async function submitAction(e) {
@@ -909,10 +923,11 @@ async function submitAction(e) {
   if (action === 'build') { if (!pickLoc) { toast('Click your own territory on the map to choose where to build.'); return; } Object.assign(detail, { btype: v('f-btype'), qty: +v('f-bqty'), at: pickLoc.at, where: pickLoc.where }); }
   if (action === 'op') Object.assign(detail, { op: v('f-op'), cost: +v('f-cost'), ...(pickLoc ? { at: pickLoc.at, where: pickLoc.where } : {}) });
   if (action === 'treaty') detail.with = v('f-with');
+  if (action === 'secret') Object.assign(detail, { cost: +v('f-cost') || 0, ...(pickLoc ? { at: pickLoc.at, where: pickLoc.where } : {}), ...(followParent ? { parent: followParent } : {}) });
   const btn = e.target.querySelector('.send'); btn.disabled = true;
   const ok = await act({ type: 'request', kind: action, title: s, vis: visibility, detail, text: v('f-text') });
   btn.disabled = false;
-  if (ok) { if (action === 'fleet') { pickedForce = null; delGlobe?.markSelected(null); } if (['build', 'op'].includes(action)) setPick(null); renderForm(); }
+  if (ok) { if (action === 'fleet') { pickedForce = null; delGlobe?.markSelected(null); } if (['build', 'op', 'secret'].includes(action)) setPick(null); followParent = null; renderForm(); }
 }
 function renderIntel() {
   const I = STATE.intel || []; $('c-intel').textContent = I.length || '';
@@ -920,7 +935,11 @@ function renderIntel() {
 }
 function renderReqs() {
   const R = STATE.queue || []; $('c-req').textContent = R.length || '';
-  $('reqs').innerHTML = R.map((r) => `<div class="req"><b>${esc(r.title)}</b><span class="pill ${r.status}">${esc(r.outcome || r.status)}</span><small>${r.vis === 'public' ? 'Public' : 'Private'} · Sent ${esc(r.time)}${r.reply ? ' · Crisis staff: ' + esc(r.reply) : ''}</small></div>`).join('') || '<p class="formnote">No requests yet. Pick an action to send your first one.</p>';
+  $('reqs').innerHTML = R.map((r) => `<div class="req"><b>${r.detail?.parent ? '↳ ' : ''}${esc(r.title)}</b><span class="pill ${r.status}">${esc(r.outcome || r.status)}</span><small>${r.vis === 'public' ? 'Public' : 'Private'} · Sent ${esc(r.time)}${r.reply ? ' · Crisis staff: ' + esc(r.reply) : ''}</small>${r.status !== 'pending' ? `<button type="button" class="dbtn" data-follow="${r.id}" style="grid-column:1/-1;justify-self:start">Follow up</button>` : ''}</div>`).join('') || '<p class="formnote">No requests yet. Pick an action to send your first one.</p>';
+}
+function renderMessages() {
+  const M = (STATE.messages || []).slice().reverse(); const me = MEE.name;
+  $('msgs').innerHTML = M.map((m) => `<div class="req msg${m.from === me ? ' mine' : ''}"><b>${m.from === me ? 'You' : esc(m.from)} → ${(m.to || []).map((n) => n === me ? 'you' : esc(n)).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No messages yet. Send private notes to other delegates to plan together. Crisis staff can read everything.</p>';
 }
 function renderPortfolio() {
   const r = MEE; const units = myUnits(); const missing = KINDS.filter((k) => !r.commands.includes(k));
@@ -930,7 +949,7 @@ function renderPortfolio() {
     <div class="sec"><h3>Your assets</h3><ul class="plist">
       ${units.length ? units.map((u) => `<li>${esc(u.name)}<small>${KIND_NAME[u.kind]} · strength ${u.str} · ${esc(u.note)}</small></li>`).join('') : '<li>No forces on the map</li>'}
       <li>$${POWERS[ME].treasury}M national treasury<small>Shared with the other ${POWERS[ME].label} commanders</small></li>
-      <li>${SPECIAL[ME] || "Your government's contacts"}</li></ul></div>
+      <li>${SPECIAL[ME] || "Your government's contacts"}</li>${(STATE.assets || []).map((x) => `<li>${esc(x.text)}<small>Granted by crisis staff after update ${x.update}</small></li>`).join('')}</ul></div>
     <div class="sec"><h3>Not in your portfolio</h3><ul class="plist no">
       ${missing.map((k) => `<li>${KIND_NAME[k]}${boss(k) ? ` (ask ${esc(boss(k).name)})` : ''}</li>`).join('')}${LIMITS_ALWAYS.map((l) => `<li>${l}</li>`).join('')}</ul></div>
     <div class="secret"><b>Secret objective</b>${esc(SECRET[r.name] || 'Crisis staff will give you a secret objective.')}<small class="formnote" style="display:block;margin-top:6px">Only you and crisis staff can see this.</small></div>`;
@@ -987,7 +1006,7 @@ function bindDraft() {
     if (!ok) { drafting = true; } renderDirectives();
   });
 }
-function showTab(t) { $('t-' + t).classList.remove('ping'); ['act', 'dir', 'port', 'intel', 'req'].forEach((o) => { $('t-' + o).setAttribute('aria-selected', o === t); $('p-' + o).hidden = o !== t; }); }
+function showTab(t) { $('t-' + t).classList.remove('ping'); ['act', 'dir', 'port', 'intel', 'req', 'msg'].forEach((o) => { $('t-' + o).setAttribute('aria-selected', o === t); $('p-' + o).hidden = o !== t; }); }
 
 
 /* ---------- Map editor (staff) ---------- */
@@ -1050,6 +1069,56 @@ function bindEdit() {
     if (k === 'add-pub' || k === 'add-sec') {
       placing = { mode: 'add', public: k === 'add-pub', data: { owner: $('a-owner').value, kind: $('a-kind').value, name: $('a-name').value, str: $('a-str').value } }; renderPlacebar();
     }
+  });
+}
+
+
+/* ---------- Effects toolkit (staff): make anything happen ---------- */
+const FX_TYPES = { money: 'Change money', strength: 'Change unit strength', destroy: 'Destroy a unit', move: 'Move a unit', unit: 'Create a unit', region: 'Change who holds regions', intel: 'Send an intel report', wire: 'Post a news headline', marker: 'Place a map marker', asset: 'Grant a new asset or power', message: 'Message delegates as a character' };
+const countrySel = (cls, sel) => `<select data-f="${cls}">${ORDER.map((k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${POWERS[k].label}</option>`).join('')}</select>`;
+const unitSel = () => `<select data-f="unit">${unitOptions()}</select>`;
+const placeSel = () => `<select data-f="to">${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<optgroup label="${esc(c)}">${REGIONS.filter((r) => r.country === c).map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>`).join('')}<optgroup label="Seas">${Object.keys(S.SEAS).map((k) => `<option>${esc(k)}</option>`).join('')}</optgroup></select>`;
+const pubBox = (on = true) => `<label class="check"><input type="checkbox" data-f="public"${on ? ' checked' : ''}> Public</label>`;
+const delegateSel = (multi) => `<select data-f="${multi ? 'to' : 'name'}"${multi ? ' multiple size="4"' : ''}>${ROSTER.map((r) => `<option>${esc(r.name)}</option>`).join('')}</select>`;
+function fxRow(t, ctx = {}) {
+  const f = {
+    money: () => `${countrySel('country', ctx.country)}<input type="number" data-f="amount" placeholder="+ or − $M" style="width:110px">`,
+    strength: () => `${unitSel()}<input type="number" data-f="delta" placeholder="+ or −" style="width:80px">`,
+    destroy: () => `${unitSel()}${pubBox()}`,
+    move: () => `${unitSel()}<span class="formnote">to</span>${placeSel()}${pubBox()}`,
+    unit: () => `${countrySel('owner', ctx.country)}<select data-f="kind">${KINDS.map((k) => `<option value="${k}">${KIND_NAME[k]}</option>`).join('')}</select><input type="number" data-f="str" value="1" min="1" max="99" style="width:60px" aria-label="Strength"><input type="text" data-f="name" placeholder="Name"><span class="formnote">at</span>${placeSel()}${pubBox(false)}`,
+    region: () => `<select data-f="ids" multiple size="5">${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<optgroup label="${esc(c)}">${REGIONS.filter((r) => r.country === c).map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>`).join('')}</select><span class="formnote">to</span>${countrySel('owner', ctx.country)}${pubBox()}`,
+    intel: () => `${countrySel('country', ctx.country)}<input type="text" data-f="from" placeholder="From, e.g. Agent in Rome"><select data-f="rel"><option>High</option><option selected>Medium</option><option>Low</option></select><textarea data-f="text" placeholder="What they learn"></textarea>`,
+    wire: () => `<input type="text" data-f="text" placeholder="Headline the whole room sees" style="flex:1">`,
+    marker: () => `<input type="text" data-f="label" placeholder="Label, e.g. Oil fields sabotaged">${countrySel('owner', ctx.country)}<span class="formnote">at</span>${placeSel()}${pubBox()}`,
+    asset: () => `${delegateSel(false)}<input type="text" data-f="text" placeholder="e.g. Controls a network of agents in Bucharest" style="flex:1">`,
+    message: () => `<input type="text" data-f="from" placeholder="From, e.g. Adolf Hitler">${delegateSel(true)}<textarea data-f="text" placeholder="Message"></textarea>`,
+  }[t];
+  return `<div class="fx-row" data-t="${t}"><b>${FX_TYPES[t]}</b><div class="row">${f()}</div><button type="button" class="dbtn fx-del" aria-label="Remove this effect">✕</button></div>`;
+}
+function fxEditor(key, open = false, label = 'Add effects (optional)') {
+  return `<details class="fx" data-fx="${key}"${open ? ' open' : ''}><summary>${label}</summary><div class="fx-rows"></div>
+    <div class="row"><select class="fx-type" aria-label="Effect type">${Object.entries(FX_TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><button type="button" class="dbtn fx-add">Add effect</button></div></details>`;
+}
+function readFx(box) {
+  if (!box) return [];
+  return [...box.querySelectorAll('.fx-row')].map((row) => {
+    const e = { type: row.dataset.t };
+    row.querySelectorAll('[data-f]').forEach((el) => {
+      const k = el.dataset.f;
+      if (el.type === 'checkbox') e[k] = el.checked;
+      else if (el.multiple) e[k] = [...el.selectedOptions].map((o) => o.value);
+      else e[k] = el.value;
+    });
+    if (e.type === 'move' || e.type === 'destroy' || e.type === 'strength') { /* unit already set */ }
+    return e;
+  });
+}
+function bindFx(root) {
+  root.addEventListener('click', (e) => {
+    const add = e.target.closest('.fx-add'), del = e.target.closest('.fx-del');
+    if (add) { const box = add.closest('.fx'); const country = box.dataset.country; box.querySelector('.fx-rows').insertAdjacentHTML('beforeend', fxRow(box.querySelector('.fx-type').value, { country })); }
+    if (del) del.closest('.fx-row').remove();
   });
 }
 
@@ -1178,18 +1247,22 @@ function refreshBattleLists() {
   for (const id of ['b-att', 'b-def']) { const sel = new Set([...$(id).selectedOptions].map((o) => o.value)); $(id).innerHTML = unitOptions(); [...$(id).options].forEach((o) => (o.selected = sel.has(o.value))); }
   renderBattleResult();
 }
+let queueSig = '', chairSig = '';
 function renderStaff() {
   const Q = STATE.queue || []; const pending = Q.filter((q) => q.status === 'pending').length;
   $('q-count').textContent = `${pending} pending`;
   const list = Q.filter((q) => (qFilter === 'all' || q.status === 'pending') && (!qCountry || q.country === qCountry));
-  keepInputs($('queue'), () => {
+  const qsig = JSON.stringify([qFilter, qCountry, list.map((q) => [q.id, q.status])]);
+  if (qsig !== queueSig) { queueSig = qsig; keepInputs($('queue'), () => {
     $('queue').innerHTML = list.map((q) => `<div class="qcard${q.status !== 'pending' ? ' done' : ''}">
       <div class="qtop">${flag(q.country)}<b>${esc(q.from)}</b>${POWERS[q.country].label} · ${esc(q.time)}<span class="pill type">${q.type === 'fleet' ? 'move' : q.type}</span><span class="pill ${q.vis}">${q.vis}</span>${q.status !== 'pending' ? `<span class="pill ${q.status}">${esc(q.outcome || q.status)}</span>` : ''}</div>
       <div class="qtitle">${esc(q.title)}</div>${qDetail(q) ? `<div class="qdetail">${qDetail(q)}</div>` : ''}
-      ${q.status === 'pending' ? `<textarea id="r-${q.id}" maxlength="500" aria-label="Reply to ${esc(q.from)}" placeholder="Reply to the delegate (optional). A default reply is used if empty."></textarea><div class="qbtns">${qButtons(q)}</div>` : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b></div>`}
+      ${q.status === 'pending' ? fxEditor(q.id).replace('class="fx"', `class="fx" data-country="${q.country}"`) : ''}${q.status === 'pending' ? `<textarea id="r-${q.id}" maxlength="500" aria-label="Reply to ${esc(q.from)}" placeholder="Reply to the delegate (optional). A default reply is used if empty."></textarea><div class="qbtns">${qButtons(q)}</div>` : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b>${q.effects ? `<br>Effects: ${q.effects.map(esc).join(', ')}` : ''}</div>`}
     </div>`).join('') || '<p class="formnote">Nothing waiting. New requests appear here a second or two after delegates send them.</p>';
-  });
-  keepInputs($('chair'), renderChair); renderProj(); renderTerritory(); renderForces(); refreshBattleLists();
+  }); }
+  const csig = JSON.stringify((STATE.directives || []).map((d) => [d.id, d.status, d.signed.length, (d.carried || []).length]));
+  if (csig !== chairSig) { chairSig = csig; keepInputs($('chair'), renderChair); }
+  renderProj(); renderStaffMessages(); renderTerritory(); renderForces(); refreshBattleLists();
   const cd = $('cu-date'); if (cd && !cd.value && document.activeElement !== cd) cd.value = STATE.update?.date || '';
 }
 function renderChair() {
@@ -1198,8 +1271,15 @@ function renderChair() {
     <ol class="formnote" style="margin:0;padding-left:18px">${d.clauses.map((c) => `<li>${esc(c)}</li>`).join('')}</ol>
     <small class="formnote">Sponsors ${d.sponsors.map(esc).join(', ')} · ${d.signed.length} signatures${d.vote ? ' · ' + esc(d.vote) : ''}</small>
     ${d.status === 'chair' ? `<div class="qbtns"><button type="button" class="dbtn gold" data-ch="floor" data-d="${d.id}">Approve and put on the floor</button><button type="button" class="dbtn" data-ch="back" data-d="${d.id}">Send back</button></div>` : ''}
+    ${d.carried ? `<small class="formnote">Carried out: ${d.carried.map(esc).join(', ')}</small>` : ''}
+    ${d.status === 'passed' ? fxEditor('dir-' + d.id, !d.carried, d.carried ? 'Add more effects' : 'Carry out this directive') + `<button type="button" class="dbtn gold" data-ch="carry" data-d="${d.id}">Apply effects</button>` : ''}
     ${d.status === 'floor' ? `<div class="votes"><label>For <input type="number" min="0" id="vf-${d.id}" value="0"></label><label>Against <input type="number" min="0" id="va-${d.id}" value="0"></label><button type="button" class="dbtn gold" data-ch="vote" data-d="${d.id}">Record placard vote</button></div>` : ''}
   </div>`).join('') || '<p class="formnote">No directives yet. They appear here once delegates send them for signatures.</p>';
+}
+let msgSig = '';
+function renderStaffMessages() {
+  const M = STATE.messages || []; const sig = M.length + ':' + (M[M.length - 1]?.id || ''); if (sig === msgSig) return; msgSig = sig;
+  $('staff-msgs').innerHTML = M.slice().reverse().map((m) => `<div class="req msg"><b>${esc(m.from)} → ${(m.to || []).map(esc).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No messages yet.</p>';
 }
 function renderProj() {
   const hidden = (STATE.hiddenMoves || []).map((id) => STATE.units.find((u) => u.id === id)).filter(Boolean);
@@ -1207,11 +1287,13 @@ function renderProj() {
     ${hidden.map((u) => `<div class="projrow"><div><b>${esc(u.name)}</b>${POWERS[u.owner].label} · moved secretly</div><button type="button" class="dbtn gold" data-reveal="${u.id}">Reveal on projector</button></div>`).join('') || '<p class="formnote">No hidden moves right now.</p>'}`;
 }
 function bindStaff() {
-  $('queue').addEventListener('click', (e) => { const b = e.target.closest('[data-dec]'); if (!b) return; b.disabled = true; act({ type: 'decide', id: b.dataset.q, dec: b.dataset.dec, reply: $('r-' + b.dataset.q)?.value || '' }); });
+  $('queue').addEventListener('click', (e) => { const b = e.target.closest('[data-dec]'); if (!b) return; b.disabled = true; act({ type: 'decide', id: b.dataset.q, dec: b.dataset.dec, reply: $('r-' + b.dataset.q)?.value || '', effects: readFx(b.closest('.qcard').querySelector('.fx')) }).then(() => { b.disabled = false; }); });
+  bindFx($('view-staff-root'));
   $('chair').addEventListener('click', (e) => {
     const b = e.target.closest('[data-ch]'); if (!b) return; const id = b.dataset.d;
     if (b.dataset.ch === 'floor') act({ type: 'chair.floor', id });
     if (b.dataset.ch === 'back') act({ type: 'chair.back', id });
+    if (b.dataset.ch === 'carry') { const fx = readFx(b.closest('.chair-row').querySelector('.fx')); if (!fx.length) { toast('Add at least one effect first.'); return; } act({ type: 'effects.apply', directive: id, effects: fx }).then((ok) => { if (ok) chairSig = ''; }); }
     if (b.dataset.ch === 'vote') act({ type: 'chair.vote', id, for: $('vf-' + id).value, against: $('va-' + id).value });
   });
   $('proj').addEventListener('click', (e) => { const b = e.target.closest('[data-reveal]'); if (b) act({ type: 'reveal', unitId: b.dataset.reveal }); });
@@ -1225,6 +1307,7 @@ function bindStaff() {
   $('replay-flash').addEventListener('click', () => act({ type: 'flash' }));
   $('cd-restart').addEventListener('click', () => act({ type: 'countdown', minutes: 15 }));
   $('clear-arrows').addEventListener('click', () => act({ type: 'arrows.clear' }));
+  $('free-apply').addEventListener('click', async () => { const box = $('free-fx').querySelector('.fx'); const fx = readFx(box); if (!fx.length) { toast('Add at least one effect first.'); return; } if (await act({ type: 'effects.apply', effects: fx })) box.querySelector('.fx-rows').innerHTML = ''; });
   $('load-demo').addEventListener('click', () => act({ type: 'game.demo' }));
   $('reset-game').addEventListener('click', () => act({ type: 'game.reset', confirm: $('reset-confirm').value.trim().toUpperCase() }));
 }
@@ -1250,8 +1333,13 @@ export function start(root, props) {
     g.dirty = true;
   }));
   if (VIEW === 'delegate') {
-    ['act', 'dir', 'port', 'intel', 'req'].forEach((t) => $('t-' + t).addEventListener('click', () => showTab(t)));
+    ['act', 'dir', 'port', 'intel', 'req', 'msg'].forEach((t) => $('t-' + t).addEventListener('click', () => showTab(t)));
     $('form').addEventListener('submit', submitAction);
+    $('msg-form').addEventListener('submit', async (e) => {
+      e.preventDefault(); const to = [...$('msg-to').selectedOptions].map((o) => o.value);
+      if (await act({ type: 'msg.send', to, text: $('msg-text').value })) { $('msg-text').value = ''; [...$('msg-to').options].forEach((o) => (o.selected = false)); }
+    });
+    $('reqs').addEventListener('click', (e) => { const b = e.target.closest('[data-follow]'); if (!b) return; followParent = b.dataset.follow; action = 'secret'; setPick(null); showTab('act'); renderTiles(); renderForm(); $('f-text')?.focus(); });
   }
   if (VIEW === 'staff') { bindStaff(); bindTerritory(); bindForces(); }
   const cd = setInterval(tickCountdown, 1000);
