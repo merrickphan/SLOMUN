@@ -96,6 +96,13 @@ Staff no longer have to build effects by hand for most requests.
 - **Buttons along the top** open pop-ups: Directives, Crisis update, Make something happen, Battle, Wars and treaties, Map features, Messages, Projector, Access codes (printable) and Game (storage, assistant mode, demo, reset).
 - The old `/crisis/map?edit=1` map editor now redirects here.
 
+## Spies and notes
+
+- **Notes:** the Notes tab lets delegates pass private notes to any other delegates. Crisis staff can read every note in the Messages pop-up.
+- **Spies:** when a spy plan is approved, the assistant places an agent. Staff can also add one by hand with the "Place or remove a spy" effect. The sender sees the agent as a dark pin on their map, and it clears the fog around it so they can see nearby forces.
+- **Interception:** an agent in a country has an even chance of copying each note sent to or from that country's delegates. The copy appears in the spy owner's Notes tab marked "Intercepted by your agent". The sender is never told. Staff see who intercepted what.
+- **Recall or capture:** staff open Features and spies, then click **Recall**, or **Caught** to post an arrest headline.
+
 ## Map features and unit traits
 
 These turn free-form plans into things that show on the map and count in battles.

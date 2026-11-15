@@ -428,7 +428,7 @@ function paintFog(canvas) {
   const deg = TW / (LON1 - LON0);
   const clear = (lon, lat, rDeg) => { const x = tx(lon), y = ty(lat), r = rDeg * deg; const g = f.createRadialGradient(x, y, r * 0.35, x, y, r); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); f.fillStyle = g; f.beginPath(); f.arc(x, y, r, 0, Math.PI * 2); f.fill(); };
   for (const u of UNITS) { if (ALLIES.includes(u.owner)) clear(u.at[0], u.at[1], u.kind === 'air' ? 5 : u.kind === 'fleet' ? 4 : 3); else clear(u.at[0], u.at[1], 2.2); }
-  for (const a of AGENTS) { const c = CAPITAL[a.target]; if (c) clear(c[0], c[1], 2.6); }
+  for (const a of AGENTS) { const c = a.at || CAPITAL[a.target]; if (c) clear(c[0], c[1], 2.6); }
   for (const r of RECON) clear(r.at[0], r.at[1], r.r);
   ctx.drawImage(fog, 0, 0);
   feather(canvas);
@@ -589,7 +589,7 @@ class Globe {
     const tex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
       gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.18)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const core = g.createRadialGradient(32, 32, 0, 32, 32, 11); core.addColorStop(0, '#fff'); core.addColorStop(0.6, 'rgba(255,255,255,0.9)'); core.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = core; g.beginPath(); g.arc(32, 32, 11, 0, Math.PI * 2); g.fill(); return new THREE.CanvasTexture(c); })();
-    const seen = (lo, la, o) => !this.opts.fog || ALLIES.includes(ownerOf(o)) || AGENTS.some(a => { const c = CAPITAL[a.target]; return c && Math.hypot(c[0] - lo, c[1] - la) < 2.4; });
+    const seen = (lo, la, o) => !this.opts.fog || ALLIES.includes(ownerOf(o)) || AGENTS.some(a => { const c = a.at || CAPITAL[a.target]; return c && Math.hypot(c[0] - lo, c[1] - la) < 2.4; });
     const make = (pts, size) => {
       const pos = [], col = []; const c = new THREE.Color();
       for (const [lo, la, w, o] of pts) { if (!seen(lo, la, o)) continue; const v = toVec(lo, la, 1.0025); pos.push(v.x, v.y, v.z); c.set(worldColor(o || '')).lerp(new THREE.Color(0xffffff), 0.15).multiplyScalar(w); col.push(c.r, c.g, c.b); }
@@ -665,8 +665,10 @@ class Globe {
     if (this.pick) { const d = document.createElement('div'); d.className = 'pin pickpin'; d.innerHTML = `<b>${this.pick.label}</b>`; this.ov.appendChild(d); this.items.push({ el: d, lon: this.pick.at[0], lat: this.pick.at[1], kind: 'pin' }); }
     if (!this.opts.pins) { this.dirty = true; return; }
     for (const a of AGENTS) {
-      const c = CAPITAL[a.target]; if (!c) continue; const [lo, la] = c; const d = document.createElement('div'); d.className = 'pin';
-      d.innerHTML = `<b>Agent</b> ${String(a.mission).replace(/[<>&]/g, '')}`; this.ov.appendChild(d); this.items.push({ el: d, lon: lo, lat: la, kind: 'pin' });
+      const c = a.at || CAPITAL[a.target]; if (!c) continue; const [lo, la] = c; const d = document.createElement('div'); d.className = 'pin agentpin';
+      d.innerHTML = `${SPY_SVG}<b>${a.owner ? esc(a.owner.split(' ').slice(-1)[0]) + "'s agent" : 'Your agent'}</b><span>${esc(a.mission || '')}</span>`;
+      d.title = `${a.owner ? a.owner + "'s agent" : 'Your agent'} in ${POWERS[a.target]?.label || a.target}: ${a.mission || ''}. Reveals forces nearby and can intercept notes to and from ${POWERS[a.target]?.label || 'that country'}.`;
+      this.ov.appendChild(d); this.items.push({ el: d, lon: lo, lat: la, kind: 'pin' });
     }
     this.dirty = true;
   }
@@ -782,6 +784,7 @@ class Globe {
 /* ====================================================================== */
 /* App shell: screens, live state from the server, and actions            */
 /* ====================================================================== */
+const SPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11h18M6 11l2-6h8l2 6"/><circle cx="8" cy="16" r="3"/><circle cx="16" cy="16" r="3"/><path d="M11 16h2"/></svg>';
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const $ = (id) => document.getElementById(id);
 let EDIT = false, STAFFMAP = false, placing = null, VIEW, ROLE, AS, STATE = null, VER = 0, SKEW = 0, lastFlashId, MEE = null, ME = null;
@@ -794,7 +797,7 @@ const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button"
 const DATECARD = `<div class="date glass num"><span class="date-line"></span><small class="countdown">Next crisis update in <b>15:00</b></small></div>`;
 
 /* ---------- Staff screen: the map plus a request drawer and pop-ups ---------- */
-const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['ev', 'Make something happen'], ['battle', 'Battle'], ['rels', 'Wars and treaties'], ['feat', 'Map features'], ['msgs', 'Messages'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
+const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['ev', 'Make something happen'], ['battle', 'Battle'], ['rels', 'Wars and treaties'], ['feat', 'Features and spies'], ['msgs', 'Messages'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
 function staffBar() {
   return `<div class="undobar" id="undobar" hidden></div><nav class="stoolbar" aria-label="Staff tools">${MODALS.map(([k, l]) => `<button type="button" class="dbtn" data-modal="${k}">${l}<span class="count num" id="stc-${k}" hidden></span></button>`).join('')}</nav>`;
 }
@@ -820,7 +823,7 @@ function staffModals(p) {
           <div id="free-fx">${fxEditor('free', false, 'Or build the effects by hand')}</div><button type="button" class="dbtn" id="free-apply">Apply the hand-made effects</button>`, true)
     + modal('battle', 'Battle calculator', '<p class="formnote">Tip: click units on the map and choose "Attacker" or "Defender". Battles in approved crisis notes roll by themselves.</p><div id="battle"></div>', true)
     + modal('rels', 'Wars, treaties and conditions', '<div id="rels"></div>')
-    + modal('feat', 'Map features and scheduled events', '<p class="formnote">Click any feature on the map to change it, or click the map to build one.</p><div id="featlist"></div>', true)
+    + modal('feat', 'Map features, spies and scheduled events', '<p class="formnote">Click any feature on the map to change it, or click the map to build one. Spies show on the map as dark pins.</p><div id="featlist"></div>', true)
     + modal('msgs', 'Messages between delegates', '<div class="reqs" id="staff-msgs"></div>')
     + modal('proj', 'Projector', `<div id="proj"></div><div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button><button type="button" class="dbtn" id="clear-arrows">Clear map pins</button></div>`)
     + modal('codes', 'Access codes', `<p class="formnote">Print these and hand one to each delegate. The staff and projector codes are set in the Vercel project settings.</p><div class="row"><button type="button" class="dbtn" onclick="window.print()">Print</button></div>
@@ -866,7 +869,7 @@ function skeleton(p) {
         <button type="button" role="tab" id="t-port" aria-selected="false" aria-controls="p-port">Portfolio</button>
         <button type="button" role="tab" id="t-intel" aria-selected="false" aria-controls="p-intel">Intel<span class="count num" id="c-intel"></span></button>
         <button type="button" role="tab" id="t-req" aria-selected="false" aria-controls="p-req">Requests<span class="count num" id="c-req"></span></button>
-        <button type="button" role="tab" id="t-msg" aria-selected="false" aria-controls="p-msg">Messages<span class="count num" id="c-msg"></span></button>
+        <button type="button" role="tab" id="t-msg" aria-selected="false" aria-controls="p-msg">Notes<span class="count num" id="c-msg"></span></button>
       </div>
       <div id="p-act" role="tabpanel" aria-labelledby="t-act"><div class="tiles" id="tiles"></div><form class="form" id="form" novalidate></form></div>
       <div id="p-dir" role="tabpanel" aria-labelledby="t-dir" hidden></div>
@@ -874,9 +877,9 @@ function skeleton(p) {
       <div id="p-intel" role="tabpanel" aria-labelledby="t-intel" hidden><div class="reqs" id="intel"></div></div>
       <div id="p-req" role="tabpanel" aria-labelledby="t-req" hidden><div class="reqs" id="reqs"></div></div>
       <div id="p-msg" role="tabpanel" aria-labelledby="t-msg" hidden>
-        <form class="dform" id="msg-form" novalidate><label for="msg-to">To<select id="msg-to" multiple size="5">${ORDER.map((c) => { const rs = ROSTER.filter((r) => r.country === c); return rs.length ? `<optgroup label="${POWERS[c].label}">${rs.map((r) => `<option>${esc(r.name)}</option>`).join('')}</optgroup>` : ''; }).join('')}</select></label>
-          <label for="msg-text">Message<textarea id="msg-text" maxlength="1200" placeholder="Private note to other delegates. Crisis staff can read every message."></textarea></label>
-          <button type="submit" class="dbtn gold">Send message</button></form>
+        <form class="dform" id="msg-form" novalidate><fieldset class="notepick"><legend>Pass a note to</legend>${ORDER.map((c) => { const rs = ROSTER.filter((r) => r.country === c && r.name !== (AS || p.session?.name)); return rs.length ? `<div class="npc">${flag(c)}${rs.map((r) => `<label><input type="checkbox" value="${esc(r.name)}"><span>${esc(r.name)}</span></label>`).join('')}</div>` : ''; }).join('')}</fieldset>
+          <label for="msg-text">Note<textarea id="msg-text" maxlength="1200" placeholder="Private note. Crisis staff read every note, and enemy spies in your country or theirs may intercept it."></textarea></label>
+          <button type="submit" class="dbtn gold">Pass the note</button></form>
         <div class="reqs" id="msgs"></div></div>
     </aside></div>
     <div class="warbar" id="warbar" aria-live="polite"></div>
@@ -920,6 +923,7 @@ function applyState(v) {
   const prevFeat = new Set(FEATS.map((f) => f.id)); FEATS = v.features || [];
   ORDER.forEach((c) => { if (v.treasury?.[c] != null) POWERS[c].treasury = v.treasury[c]; });
   if (VIEW === 'delegate' && v.me) { MEE = v.me; ME = v.me.country; ALLIES = v.allies; AGENTS = v.agents || []; }
+  if (STAFFMAP) { const all = Object.entries(v.agents || {}).flatMap(([owner, l]) => l.map((g) => ({ ...g, owner }))); if (JSON.stringify(all) !== JSON.stringify(AGENTS)) { AGENTS = all; if (!first) mapGlobe?.addPins(); } }
   renderCommon(first);
   if (marksChanged && !first) [mapGlobe, delGlobe].forEach((g) => g && g.addPins());
   if (featsChanged && !first) {
@@ -1023,7 +1027,7 @@ function notifyDelegate() {
   if (seenReq) for (const q of Q) { const was = seenReq[q.id]; if (was === 'pending' && q.status !== 'pending') { toast(`Crisis staff ${q.status === 'approved' ? 'approved' : 'answered'} "${q.title}": ${q.reply || ''}`); $('t-req').classList.add('ping'); } }
   if (seenIntel != null && I.length > seenIntel) { toast(`New intel: ${I[0].from}`); $('t-intel').classList.add('ping'); }
   const inbox = (STATE.messages || []).filter((m) => m.from !== MEE.name);
-  if (seenMsg != null && inbox.length > seenMsg) { const m = inbox[inbox.length - 1]; toast(`Message from ${m.from}`); $('t-msg').classList.add('ping'); }
+  if (seenMsg != null && inbox.length > seenMsg) { const m = inbox[inbox.length - 1]; toast(m.intercepted ? `Your agent intercepted a note from ${m.from}` : `Note from ${m.from}`); $('t-msg').classList.add('ping'); }
   seenMsg = inbox.length;
   seenReq = Object.fromEntries(Q.map((q) => [q.id, q.status])); seenIntel = I.length;
 }
@@ -1144,7 +1148,7 @@ function renderReqs() {
 }
 function renderMessages() {
   const M = (STATE.messages || []).slice().reverse(); const me = MEE.name;
-  $('msgs').innerHTML = M.map((m) => `<div class="req msg${m.from === me ? ' mine' : ''}"><b>${m.from === me ? 'You' : esc(m.from)} → ${(m.to || []).map((n) => n === me ? 'you' : esc(n)).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No messages yet. Send private notes to other delegates to plan together. Crisis staff can read everything.</p>';
+  $('msgs').innerHTML = M.map((m) => `<div class="req msg${m.from === me ? ' mine' : ''}${m.intercepted ? ' intercepted' : ''}">${m.intercepted ? `<span class="pill rejected">Intercepted by your agent</span>` : ''}<b>${m.from === me ? 'You' : esc(m.from)} → ${(m.to || []).map((n) => n === me ? 'you' : esc(n)).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No notes yet. Pass private notes to other delegates to plan together. Crisis staff read everything, and spies can intercept notes.</p>';
 }
 function renderPortfolio() {
   const r = MEE; const units = myUnits(); const missing = KINDS.filter((k) => !r.commands.includes(k));
@@ -1155,6 +1159,7 @@ function renderPortfolio() {
       ${units.length ? units.map((u) => `<li>${esc(u.name)}<small>${KIND_NAME[u.kind]} · strength ${u.str}${u.traits?.length ? ' · ' + traitText(u) : ''} · ${esc(u.note)}</small></li>`).join('') : '<li>No forces on the map</li>'}
       ${FEATS.filter((f) => f.owner === ME).map((f) => `<li>${esc(f.label)}<small>${esc(featTitle(f).split(' · ').slice(2).join(' · ') || 'Ready')}</small></li>`).join('')}
       <li>$${POWERS[ME].treasury}M national treasury<small>Shared with the other ${POWERS[ME].label} commanders</small></li>
+      ${AGENTS.map((g) => `<li>Agent in ${esc(POWERS[g.target]?.label || g.target)}<small>${esc(g.mission || '')} · reveals forces nearby and can intercept notes</small></li>`).join('')}
       <li>${SPECIAL[ME] || "Your government's contacts"}</li>${(STATE.assets || []).map((x) => `<li>${esc(x.text)}<small>Granted by crisis staff after update ${x.update}</small></li>`).join('')}</ul></div>
     <div class="sec"><h3>Not in your portfolio</h3><ul class="plist no">
       ${missing.map((k) => `<li>${KIND_NAME[k]}${boss(k) ? ` (ask ${esc(boss(k).name)})` : ''}</li>`).join('')}${LIMITS_ALWAYS.map((l) => `<li>${l}</li>`).join('')}</ul></div>
@@ -1345,7 +1350,7 @@ function bindEdit() {
 
 
 /* ---------- Effects toolkit (staff): make anything happen ---------- */
-const FX_TYPES = { feature: 'Build or place a map feature (trenches, bunkers, factory…)', 'feature.edit': 'Destroy, repair or remove a map feature', trait: 'Give a unit a trait (veteran, low on fuel…)', money: 'Change money', strength: 'Change unit strength', destroy: 'Destroy a unit', move: 'Move a unit', unit: 'Create a unit', region: 'Change who holds regions', intel: 'Send an intel report', wire: 'Post a news headline', marker: 'Place a map marker', asset: 'Grant a new asset or power', message: 'Message delegates as a character' };
+const FX_TYPES = { agent: 'Place or remove a spy', feature: 'Build or place a map feature (trenches, bunkers, factory…)', 'feature.edit': 'Destroy, repair or remove a map feature', trait: 'Give a unit a trait (veteran, low on fuel…)', money: 'Change money', strength: 'Change unit strength', destroy: 'Destroy a unit', move: 'Move a unit', unit: 'Create a unit', region: 'Change who holds regions', intel: 'Send an intel report', wire: 'Post a news headline', marker: 'Place a map marker', asset: 'Grant a new asset or power', message: 'Message delegates as a character' };
 const countrySel = (cls, sel) => `<select data-f="${cls}">${ORDER.map((k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${POWERS[k].label}</option>`).join('')}</select>`;
 const unitSel = () => `<select data-f="unit">${unitOptions()}</select>`;
 const placeSel = (key = 'to', first = '') => `<select data-f="${key}">${first}${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<optgroup label="${esc(c)}">${REGIONS.filter((r) => r.country === c).map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>`).join('')}<optgroup label="Seas">${Object.keys(S.SEAS).map((k) => `<option>${esc(k)}</option>`).join('')}</optgroup></select>`;
@@ -1368,6 +1373,7 @@ function fxRow(t, ctx = {}) {
       <span class="formnote">at</span>${placeSel('to', ctx.here ? '<option value="@here" selected>Where the delegate marked</option>' : '')}<span class="formnote">line to</span>${placeSel('to2', '<option value="" selected>No line (one spot)</option>')}
       <label class="formnote">Defense <input type="number" data-f="mod" min="-4" max="4" placeholder="auto" style="width:60px"></label><label class="formnote">Ready <select data-f="turns"><option value="0">Now</option><option value="1">After next update</option><option value="2">In 2 updates</option><option value="3">In 3 updates</option></select></label>${pubBox(ctx.vis !== 'private')}`,
     'feature.edit': () => `<select data-f="id">${FEATS.map((f) => `<option value="${f.id}">${esc(f.label)} · ${esc(POWERS[f.owner]?.short || f.owner)}${f.ruined ? ' (destroyed)' : ''}</option>`).join('') || '<option value="">No features on the map yet</option>'}</select><select data-f="action"><option value="ruin">Destroy</option><option value="repair">Repair</option><option value="finish">Finish building now</option><option value="remove">Remove from map</option></select>${pubBox()}`,
+    agent: () => `${delegateSel(false)}<select data-f="action"><option value="add">places an agent in</option><option value="remove">loses their agent in</option></select><select data-f="target">${Object.keys(CAPITAL).map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select><input type="text" data-f="mission" maxlength="80" placeholder="Mission, e.g. Watch the navy at Kiel">`,
     trait: () => `${unitSel()}<select data-f="action"><option value="add">Add trait</option><option value="clear">Clear all traits</option></select><input type="text" data-f="label" maxlength="40" placeholder="e.g. Winter gear, Low on fuel, Veteran"><label class="formnote">Battle bonus <input type="number" data-f="mod" min="-4" max="4" value="1" style="width:60px"></label>`,
   }[t];
   return `<div class="fx-row" data-t="${t}"><b>${FX_TYPES[t]}</b><div class="row">${f()}</div><button type="button" class="dbtn fx-del" aria-label="Remove this effect">✕</button></div>`;
@@ -1556,6 +1562,7 @@ function effText(e) {
     case 'trait': return e.action === 'clear' ? `${uName(e.unit)}: traits cleared` : `${uName(e.unit)}: ${e.label} ${+e.mod >= 0 ? '+' : ''}${e.mod}`;
     case 'relation': return `${pl(e.country)} and ${pl(e.other)}: ${e.status === 'peace' || e.status === 'none' ? 'peace' : (S.RELATION_NAME[e.status] || e.status).toLowerCase()}`;
     case 'status': return `${pl(e.country)}: ${e.action === 'clear' ? 'no longer ' : ''}${e.label}`;
+    case 'agent': return e.action === 'remove' ? `${e.name || 'The sender'}'s agent in ${pl(e.target)} removed` : `Agent for ${e.name || 'the sender'} in ${pl(e.target)}: ${e.mission || ''}`;
     case 'battle': return `Battle (rolled): ${(e.attackers || []).map(uName).join(', ')} attack ${(e.defenders || []).map(uName).join(', ')}${e.ids?.length ? `, taking ${e.ids.map((id) => REGION[id]?.name || id).join(', ')} if they win` : ''}`;
   }
   return e.type;
@@ -1715,7 +1722,10 @@ function bindStaff() {
     if (e.target.id === 'rl-add') act({ type: 'effects.apply', effects: [{ type: 'relation', country: $('rl-a').value, other: $('rl-b').value, status: $('rl-s').value }], headline: $('rl-s').value === 'war' ? `${pl($('rl-a').value).toUpperCase()} · ${pl($('rl-a').value)} declares war on ${pl($('rl-b').value)}` : '' });
   });
   $('proj').addEventListener('click', (e) => { const b = e.target.closest('[data-reveal]'); if (b) act({ type: 'reveal', unitId: b.dataset.reveal }); });
-  $('featlist').addEventListener('click', (e) => { const b = e.target.closest('[data-fl]'), c = e.target.closest('[data-cancel]'); if (b) act({ type: 'feature.edit', id: b.dataset.id, action: b.dataset.fl }); if (c) act({ type: 'schedule.cancel', id: c.dataset.cancel }); });
+  $('featlist').addEventListener('click', (e) => {
+    const ua = e.target.closest('[data-unagent],[data-caught]');
+    if (ua) { const caught = !!ua.dataset.caught; const [name, id] = (ua.dataset.unagent || ua.dataset.caught).split('|'); const g = AGENTS.find((x) => x.id === id); const r = ROSTER.find((x) => x.name === name);
+      act({ type: 'effects.apply', effects: [{ type: 'agent', name, id, action: 'remove' }], headline: caught && g ? `${(POWERS[g.target]?.label || g.target).toUpperCase()} · ${POWERS[r?.country]?.label || 'Foreign'} spy arrested` : '' }); return; } const b = e.target.closest('[data-fl]'), c = e.target.closest('[data-cancel]'); if (b) act({ type: 'feature.edit', id: b.dataset.id, action: b.dataset.fl }); if (c) act({ type: 'schedule.cancel', id: c.dataset.cancel }); });
   document.querySelectorAll('[data-qf]').forEach((b) => b.addEventListener('click', () => { qFilter = b.dataset.qf; document.querySelectorAll('[data-qf]').forEach((x) => x.setAttribute('aria-pressed', x === b)); renderStaff(); }));
   $('q-country').addEventListener('change', (e) => { qCountry = e.target.value; renderStaff(); });
   $('cu-form').addEventListener('submit', async (e) => {
@@ -1732,16 +1742,17 @@ function bindStaff() {
 }
 let flSig = '';
 function renderFeatList() {
-  const sc = STATE.scheduled || []; const sig = JSON.stringify([FEATS, sc, STATE.update.no]); if (sig === flSig) return; flSig = sig;
+  const sc = STATE.scheduled || []; const sig = JSON.stringify([FEATS, sc, STATE.update.no, AGENTS]); if (sig === flSig) return; flSig = sig;
   $('featlist').innerHTML = (FEATS.length ? `<div class="codes-wrap"><table class="codes"><tbody>${FEATS.slice().reverse().map((f) => { const st = featState(f); return `<tr><td>${flag(f.owner)} <b>${esc(f.label)}</b><br><small class="formnote">${FEAT[f.kind]?.name}${modText(f.ruined ? 0 : f.mod)} · ${st === 'building' ? `ready after Update ${f.ready}` : st}${f.public ? '' : ' · secret'}</small></td>
     <td class="qbtns">${f.ruined ? `<button type="button" class="dbtn green" data-fl="repair" data-id="${f.id}">Repair</button>` : `<button type="button" class="dbtn red" data-fl="ruin" data-id="${f.id}">Destroy</button>`}${st === 'building' ? `<button type="button" class="dbtn gold" data-fl="finish" data-id="${f.id}">Finish now</button>` : ''}<button type="button" class="dbtn" data-fl="remove" data-id="${f.id}">Remove</button></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="formnote">No map features yet. Add them as effects when approving a plan, or place them in the map editor.</p>')
+    + `<h3 class="formnote" style="margin-top:10px">Spies</h3>` + (AGENTS.length ? AGENTS.map((g) => `<div class="projrow"><div><b>${esc(g.owner)}</b> agent in ${esc(POWERS[g.target]?.label || g.target)}<br><small class="formnote">${esc(g.mission || '')}</small></div><div class="qbtns"><button type="button" class="dbtn" data-unagent="${esc(g.owner)}|${g.id}">Recall</button><button type="button" class="dbtn red" data-caught="${esc(g.owner)}|${g.id}">Caught</button></div></div>`).join('') : '<p class="formnote">No spies placed. They appear when a spy plan is approved.</p>')
     + (sc.length ? `<h3 class="formnote" style="margin-top:10px">Scheduled</h3>${sc.map((x) => `<div class="projrow"><div><b>Update ${x.due}</b> ${esc(x.note || 'Staff event')}<br><small class="formnote">${x.effects.map((e) => esc(FX_TYPES[e.type] || e.type)).join(', ')}</small></div><button type="button" class="dbtn red" data-cancel="${x.id}">Cancel</button></div>`).join('')}` : '');
 }
 
 let msgSig = '';
 function renderStaffMessages() {
   const M = STATE.messages || []; const sig = M.length + ':' + (M[M.length - 1]?.id || ''); if (sig === msgSig) return; msgSig = sig;
-  $('staff-msgs').innerHTML = M.slice().reverse().map((m) => `<div class="req msg"><b>${esc(m.from)} → ${(m.to || []).map(esc).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No messages yet.</p>';
+  $('staff-msgs').innerHTML = M.slice().reverse().map((m) => `<div class="req msg"><b>${esc(m.from)} → ${(m.to || []).map(esc).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small>${m.intercepted ? `<span class="pill rejected">Intercepted by ${m.intercepted.map(esc).join(', ')}</span>` : ''}</div>`).join('') || '<p class="formnote">No notes yet.</p>';
 }
 function renderProj() {
   const hidden = (STATE.hiddenMoves || []).map((id) => STATE.units.find((u) => u.id === id)).filter(Boolean);
@@ -1776,8 +1787,8 @@ export function start(root, props) {
     ['act', 'dir', 'port', 'intel', 'req', 'msg'].forEach((t) => $('t-' + t).addEventListener('click', () => showTab(t)));
     $('form').addEventListener('submit', submitAction);
     $('msg-form').addEventListener('submit', async (e) => {
-      e.preventDefault(); const to = [...$('msg-to').selectedOptions].map((o) => o.value);
-      if (await act({ type: 'msg.send', to, text: $('msg-text').value })) { $('msg-text').value = ''; [...$('msg-to').options].forEach((o) => (o.selected = false)); }
+      e.preventDefault(); const boxes = [...document.querySelectorAll('.notepick input:checked')]; const to = boxes.map((o) => o.value);
+      if (await act({ type: 'msg.send', to, text: $('msg-text').value })) { $('msg-text').value = ''; boxes.forEach((o) => (o.checked = false)); }
     });
     $('reqs').addEventListener('click', (e) => { const b = e.target.closest('[data-follow]'); if (!b) return; followParent = b.dataset.follow; action = 'secret'; setPick(null); showTab('act'); renderTiles(); renderForm(); $('f-text')?.focus(); });
   }
@@ -1803,7 +1814,7 @@ export function start(root, props) {
       if (VIEW === 'map') {
         BASE_CACHE = document.createElement('canvas'); BASE_CACHE.ready = false;
         patchCanvas = document.createElement('canvas'); patchCanvas.width = TW * TEXK; patchCanvas.height = TH * TEXK; paintTexture(patchCanvas, imgs, selected.id);
-        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat), [lon, lat]), onUnit: (id) => select('unit', id), onFeature: (id) => select('feature', id), onGround: EDIT ? placeAt : null, onSea: EDIT ? (lon, lat) => select('sea', null, null, [lon, lat]) : null });
+        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat), [lon, lat]), onUnit: (id) => select('unit', id), onFeature: (id) => select('feature', id), onGround: EDIT ? placeAt : null, pins: STAFFMAP, onSea: EDIT ? (lon, lat) => select('sea', null, null, [lon, lat]) : null });
         mapGlobe.setTextures(world, patchCanvas, topo);
       } else {
         fogCanvas = document.createElement('canvas'); fogCanvas.width = TW * TEXK; fogCanvas.height = TH * TEXK; paintFog(fogCanvas);

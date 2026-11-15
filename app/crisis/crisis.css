@@ -484,3 +484,18 @@ button { cursor: pointer; }
 .stoolbar .count, .shead .count { background: var(--gold); color: #15110A; border-radius: 999px; padding: 0 6px; font-size: 11px; }
 @media print { .smodal:not(#m-codes), .topbar, .staffmap > :not(#m-codes) { display: none !important; } #m-codes { position: static; background: none; } #m-codes .mbox { box-shadow: none; max-height: none; } }
 @media (max-width: 760px) { .sdrawer { width: 100%; } .staffmap .editcard { width: calc(100% - 24px); right: 12px; } }
+
+/* Spies and notes */
+.agentpin { display: flex; align-items: center; gap: 6px; background: #121418; border: 1px solid #9AA3B2; color: #E8ECF2; padding: 3px 8px 3px 5px; font-size: 12px; }
+.agentpin b { color: #E8ECF2; text-transform: none; letter-spacing: 0; font-size: 12px; margin: 0; }
+.agentpin span { color: #9AA3B2; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.agentpin::after { border-top-color: #9AA3B2; }
+.notepick { border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; margin: 0; display: grid; gap: 4px; max-height: 190px; overflow-y: auto; }
+.notepick legend { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; padding: 0 4px; }
+.npc { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.npc .fl { width: 20px; height: 13px; margin-right: 2px; }
+.npc label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+.npc label:has(input:checked) { background: var(--gold); color: #15110A; border-color: var(--gold); }
+.npc input { position: absolute; opacity: 0; pointer-events: none; }
+.req.msg.intercepted { border-left: 3px solid #C23A2E; }
+.req.msg.intercepted > .pill { grid-column: 1 / -1; justify-self: start; }
