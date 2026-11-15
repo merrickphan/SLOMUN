@@ -816,7 +816,7 @@ function skeleton(p) {
     </div>
     <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div>
   </section>`;
-  if (VIEW === 'delegate') body = `<section class="view"><div class="dlayout">
+  if (VIEW === 'delegate') body = `<section class="view dview"><div class="dlayout">
     <div class="stage" id="stage-del"><div class="loading">Loading the map…</div><div class="overlay" id="ov-del"></div>${DATECARD}
       <div class="fognote glass"><i></i><span>Fog of war. You see your own and allied forces, plus whatever your patrols and spies have found.</span></div>${ZOOM('del')}</div>
     <aside class="side">
@@ -841,44 +841,62 @@ function skeleton(p) {
           <button type="submit" class="dbtn gold">Send message</button></form>
         <div class="reqs" id="msgs"></div></div>
     </aside></div>
+    <div class="warbar" id="warbar" aria-live="polite"></div>
     <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div>
   </section>`;
   if (VIEW === 'staff') body = `<section class="view staff" id="view-staff-root">
-    <div class="sgrid">
+    <div class="undobar" id="undobar" hidden></div>
+    <div class="stabs" role="tablist" aria-label="Staff sections">${[['req', 'Requests'], ['dir', 'Directives'], ['ev', 'Events and updates'], ['tools', 'Map tools'], ['setup', 'Setup']].map(([k, l], i) => `<button type="button" role="tab" id="st-${k}" aria-selected="${i === 0}" data-st="${k}">${l}<span class="count num" id="stc-${k}" hidden></span></button>`).join('')}</div>
+    <div class="spane" id="sp-req">
+      <div class="spanel"><div class="shead"><h2>Requests</h2><span class="pill pending num" id="q-count"></span>
+        <div class="seg small" role="group" aria-label="Filter requests"><button type="button" data-qf="pending" aria-pressed="true">Waiting</button><button type="button" data-qf="all" aria-pressed="false">All</button></div>
+        <select id="q-country" aria-label="Filter by country"><option value="">All countries</option>${ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select></div>
+        <p class="formnote" id="ai-mode"></p>
+        <div id="queue" class="queue-list"></div></div>
+    </div>
+    <div class="spane" id="sp-dir" hidden><div class="spanel"><h2>Directives</h2><div id="chair"></div></div></div>
+    <div class="spane sgrid" id="sp-ev" hidden>
       <div class="scol">
-        <div class="spanel"><div class="shead"><h2>Request queue</h2><span class="pill pending num" id="q-count"></span>
-          <div class="seg small" role="group" aria-label="Filter requests"><button type="button" data-qf="pending" aria-pressed="true">Pending</button><button type="button" data-qf="all" aria-pressed="false">All</button></div>
-          <select id="q-country" aria-label="Filter by country"><option value="">All countries</option>${ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select></div>
-          <div id="queue" class="queue-list"></div></div>
-        <div class="spanel"><h2>Battle calculator</h2><div id="battle"></div></div>
-        <div class="spanel"><div class="shead"><h2>Territory</h2><select id="t-country" aria-label="Country">${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<option>${esc(c)}</option>`).join('')}</select></div><div id="territory"></div></div>
-        <div class="spanel"><div class="shead"><h2>Forces</h2><select id="f-country" aria-label="Country"><option value="">All countries</option>${ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select><a class="dbtn" href="/crisis/map?edit=1" style="margin-left:auto;text-decoration:none">Open map editor</a></div><div id="forces"></div></div>
+        <div class="spanel"><h2>Make something happen</h2><p class="formnote">Describe any event in plain words: Hitler's orders, a neutral country acting, a storm, consequences of earlier plans. The assistant turns it into effects you can check before applying.</p>
+          <textarea id="ev-text" maxlength="1500" placeholder="For example: Hitler orders Rommel's panzers to take Warsaw within ten days, and rations fuel for the Luftwaffe."></textarea>
+          <div class="row"><button type="button" class="dbtn gold" id="ev-preview">Preview</button></div><div id="ev-result"></div>
+          <div id="free-fx">${fxEditor('free', false, 'Add effects by hand')}</div><button type="button" class="dbtn" id="free-apply">Apply the hand-made effects</button></div>
+        <div class="spanel"><h2>Messages</h2><p class="formnote">Every private message between delegates.</p><div class="reqs" id="staff-msgs"></div></div>
       </div>
       <div class="scol">
-        <div class="spanel"><h2>Directives (chair)</h2><div id="chair"></div></div>
         <div class="spanel"><h2>Publish crisis update</h2>
           <form id="cu-form" class="dform" novalidate>
             <label for="cu-title">Headline<input type="text" id="cu-title" maxlength="140" placeholder="For example: Soviet troops cross into eastern Poland"></label>
             <label for="cu-text">What happened<textarea id="cu-text" maxlength="900" placeholder="Two or three sentences for the room."></textarea></label>
             <label for="cu-date">Game date and time<input type="text" id="cu-date" maxlength="60"></label>
-            <label class="check"><input type="checkbox" id="cu-flash" checked> Show as a breaking news flash on the projector</label>
+            <label class="check"><input type="checkbox" id="cu-flash" checked> Breaking news flash on every screen</label>
             <label class="check"><input type="checkbox" id="cu-reset" checked> Restart the countdown at <input type="number" id="cu-min" min="1" max="60" value="15" style="width:56px"> minutes</label>
             <button type="submit" class="dbtn gold">Publish to the room</button>
           </form></div>
-        <div class="spanel"><h2>Make something happen</h2><p class="formnote">For events nobody asked for: Hitler's orders, neutral countries, natural disasters, consequences of earlier plans.</p><div id="free-fx">${fxEditor('free', true, 'Effects')}</div><button type="button" class="dbtn gold" id="free-apply">Apply now</button></div>
-        <div class="spanel"><h2>Map features and scheduled events</h2><div id="featlist"></div></div>
-        <div class="spanel"><h2>Messages</h2><p class="formnote">Every private message between delegates. Reply as a character with "Message delegates as a character" above.</p><div class="reqs" id="staff-msgs"></div></div>
         <div class="spanel"><h2>Projector</h2><div id="proj"></div>
-          <div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button><button type="button" class="dbtn" id="clear-arrows">Clear map markers</button></div>
-          <p class="formnote">Operation markers fade after the next crisis update.</p></div>
-        <div class="spanel"><h2>Access codes</h2>
-          <p class="formnote">Print these and hand one to each delegate. The staff and projector codes are set in the Vercel project settings.</p>
-          <div class="codes-wrap"><table class="codes"><thead><tr><th>Delegate</th><th>Country</th><th>Code</th></tr></thead><tbody>${(p.codes || []).map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(POWERS[c.country].label)}</td><td class="code">${esc(c.code)}</td></tr>`).join('')}</tbody></table></div></div>
-        <div class="spanel"><h2>Game</h2>
-          <p class="storage">Storage: ${p.storage === 'supabase' ? 'Supabase database. The game survives restarts.' : '<b>Server memory only.</b> Fine for testing, but the game resets whenever the server restarts. Connect Supabase before the conference.'}</p>
-          <div class="row"><button type="button" class="dbtn" id="load-demo">Load demo requests</button></div>
-          <div class="row"><input type="text" id="reset-confirm" placeholder="Type RESET" aria-label="Type RESET to confirm"><button type="button" class="dbtn red" id="reset-game">Reset the whole game</button></div></div>
+          <div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button><button type="button" class="dbtn" id="clear-arrows">Clear map markers</button></div></div>
       </div>
+    </div>
+    <div class="spane sgrid" id="sp-tools" hidden>
+      <div class="scol">
+        <div class="spanel"><h2>Battle calculator</h2><p class="formnote">Battles in crisis notes are rolled automatically. Use this to run one by hand.</p><div id="battle"></div></div>
+        <div class="spanel"><div class="shead"><h2>Forces</h2><select id="f-country" aria-label="Country"><option value="">All countries</option>${ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select><a class="dbtn" href="/crisis/map?edit=1" style="margin-left:auto;text-decoration:none">Open map editor</a></div><div id="forces"></div></div>
+      </div>
+      <div class="scol">
+        <div class="spanel"><div class="shead"><h2>Territory</h2><select id="t-country" aria-label="Country">${[...new Set(REGIONS.map((r) => r.country))].map((c) => `<option>${esc(c)}</option>`).join('')}</select></div><div id="territory"></div></div>
+        <div class="spanel"><h2>Wars, treaties and conditions</h2><div id="rels"></div></div>
+        <div class="spanel"><h2>Map features and scheduled events</h2><div id="featlist"></div></div>
+      </div>
+    </div>
+    <div class="spane sgrid" id="sp-setup" hidden>
+      <div class="scol"><div class="spanel"><h2>Access codes</h2>
+          <p class="formnote">Print these and hand one to each delegate. The staff and projector codes are set in the Vercel project settings.</p>
+          <div class="codes-wrap"><table class="codes"><thead><tr><th>Delegate</th><th>Country</th><th>Code</th></tr></thead><tbody>${(p.codes || []).map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(POWERS[c.country].label)}</td><td class="code">${esc(c.code)}</td></tr>`).join('')}</tbody></table></div></div></div>
+      <div class="scol"><div class="spanel"><h2>Game</h2>
+          <p class="storage">Storage: ${p.storage === 'supabase' ? 'Supabase database. The game survives restarts.' : '<b>Server memory only.</b> Fine for testing, but the game resets whenever the server restarts. Connect Supabase before the conference.'}</p>
+          <p class="storage">Assistant: ${p.ai === 'claude' ? 'Claude is reading notes and suggesting effects.' : '<b>Keyword matching only.</b> Add ANTHROPIC_API_KEY in Vercel to have Claude suggest effects for every note.'}</p>
+          <div class="row"><button type="button" class="dbtn" id="load-demo">Load demo requests</button></div>
+          <div class="row"><input type="text" id="reset-confirm" placeholder="Type RESET" aria-label="Type RESET to confirm"><button type="button" class="dbtn red" id="reset-game">Reset the whole game</button></div></div></div>
     </div>
   </section>`;
   return top + body + `<div class="toast glass" id="toast" role="status" hidden></div>
@@ -941,8 +959,18 @@ function renderCommon(first) {
   const sig = (s.wire || []).join('|');
   if ($('track') && sig !== wireSig) { wireSig = sig; const items = s.wire.map((w) => `<span>${esc(w)}</span>`).join(''); $('track').innerHTML = items + items; }
   if ($('update-card')) $('update-card').innerHTML = `<span class="card-title">Crisis Update ${s.update.no}</span><b style="display:block;color:var(--text);margin-bottom:2px">${esc(s.update.title)}</b>${esc(s.update.text)}`;
-  if (VIEW === 'map' && s.flash && s.flash.id !== lastFlashId) { if (!first) showFlash(s.flash); lastFlashId = s.flash.id; }
+  if ((VIEW === 'map' || VIEW === 'delegate') && s.flash && s.flash.id !== lastFlashId) { if (!first) showFlash(s.flash); lastFlashId = s.flash.id; }
+  if (VIEW === 'delegate') renderWarbar();
   if (first && s.flash) lastFlashId = s.flash.id;
+}
+// Bottom bar on delegate screens: who you are at war with, your allies and treaties, and your country's conditions.
+let warSig = '';
+function renderWarbar() {
+  const el = $('warbar'); if (!el || !ME) return; const R = (STATE.relations || []).filter((r) => r.a === ME || r.b === ME); const st = (STATE.status || {})[ME] || [];
+  const sig = JSON.stringify([R, st]); if (sig === warSig) return; warSig = sig;
+  const group = (k, title) => { const l = R.filter((r) => r.status === k).map((r) => (r.a === ME ? r.b : r.a)); return l.length ? `<div class="wgroup ${k}"><span>${title}</span>${l.map((c) => `<b>${flag(c)}${esc(POWERS[c]?.label || c)}</b>`).join('')}</div>` : ''; };
+  el.innerHTML = group('war', 'At war with') + group('alliance', 'Allied with') + group('pact', 'Pact with') + group('trade', 'Trade deal') + group('tension', 'Tension with')
+    + (st.length ? `<div class="wgroup"><span>${esc(POWERS[ME].label)}</span>${st.map((x) => `<b class="schip ${x.tone}">${esc(x.label)}</b>`).join('')}</div>` : '') || '<div class="wgroup"><span>At peace with everyone</span></div>';
 }
 function tickCountdown() {
   if (!STATE) return; const left = Math.max(0, Math.round((STATE.countdownEnd - (Date.now() + SKEW)) / 1000));
@@ -1001,10 +1029,7 @@ const ICON = {
   propaganda: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M5 13v6h4l10 6V7L9 13z"/><path d="M23 11c2 1.5 2 8.5 0 10M26 8c3.5 3 3.5 13 0 16"/></svg>',
 };
 // One open box for any plan, plus quick forms for the common moves the app can carry out by itself.
-const ACTIONS = [
-  { id: 'secret', label: 'Write a plan' }, { id: 'fleet', label: 'Move forces' }, { id: 'build', label: 'Build forces' }, { id: 'spy', label: 'Send a spy' },
-  { id: 'money', label: 'Send money' }, { id: 'op', label: 'Operation' }, { id: 'treaty', label: 'Treaty' }, { id: 'press', label: 'Press release' },
-];
+const ACTIONS = [{ id: 'secret', label: 'Crisis note' }, { id: 'fleet', label: 'Move forces' }, { id: 'build', label: 'Build forces' }, { id: 'money', label: 'Send money' }];
 let action = 'secret', visibility = 'private', pickedForce = null, drafting = false, fogSig = '', pickLoc = null, followParent = null;
 const myUnits = () => UNITS.filter((x) => x.owner === ME && MEE.commands.includes(x.kind));
 const TO = () => ORDER.filter((n) => n !== ME).map((n) => POWERS[n].label).concat(['Romania', 'Turkey', 'Belgium', 'Netherlands']);
@@ -1089,8 +1114,8 @@ function renderForm() {
   if (action === 'propaganda') body = `<label for="f-aud">Audience<select id="f-aud">${opt(['People at home', 'Neutral countries', 'People in Germany', 'People in Britain', 'People in France', 'People in Italy', 'People in the Soviet Union', 'The United States', 'Japan'])}</select></label><label for="f-text">Message<textarea id="f-text" maxlength="1200" placeholder="What do you want them to believe?"></textarea></label>`;
   if (action === 'treaty') body = `<label for="f-with">Treaty with<select id="f-with">${ORDER.filter((k) => k !== ME).map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select></label>`;
   if (action === 'secret') body = `${followParent ? `<div class="picked"><div style="grid-column:1/3"><b>Follow-up</b><span>${esc((STATE.queue.find((q) => q.id === followParent) || {}).title || '')}</span></div><button type="button" class="unfollow unpick" aria-label="Stop following up">✕</button></div>` : ''}`;
-  if (['secret', 'press', 'treaty'].includes(action)) body += `<label for="f-text" class="${action === 'secret' ? 'bigask' : ''}">${{ secret: 'What do you want to do?', press: 'Statement', treaty: 'Terms' }[action]}<textarea id="f-text" maxlength="1200"${action === 'secret' ? ' rows="6"' : ''} placeholder="${{ secret: 'Anything your character could really do. For example: Dig a trench and bunker line along the Westwall from Aachen to Saarbrücken, using 20,000 workers from the Todt Organization.', press: 'What do you want to announce?', treaty: 'Who is the treaty with, and what does each side agree to?' }[action]}"></textarea></label>`;
-  if (action === 'secret') body += `<p class="formnote">Say who does it, where, how, and with what. Crisis staff decide what happens and can put it on the map: trenches, bunkers, factories, sabotage, new units.</p><label for="f-cost">Budget, if any ($ millions)<input id="f-cost" type="number" min="0" max="9999" value="0"></label><div id="f-loc">${locBlock(false, true)}</div>`;
+  if (['secret', 'press', 'treaty'].includes(action)) body += `<label for="f-text" class="${action === 'secret' ? 'bigask' : ''}">${{ secret: 'What do you want to do?', press: 'Statement', treaty: 'Terms' }[action]}<textarea id="f-text" maxlength="1200"${action === 'secret' ? ' rows="6"' : ''} placeholder="${{ secret: 'Anything your character could really do: attack, spy, sabotage, build defenses, propaganda, a treaty, a press release, declaring war. For example: Attack the French forces on the Saar front with Army Group C at dawn.', press: 'What do you want to announce?', treaty: 'Who is the treaty with, and what does each side agree to?' }[action]}"></textarea></label>`;
+  if (action === 'secret') body += `<p class="formnote">Say who does it, where, how and with what. Public notes are announced to the room, like a press release. Private notes stay between you and crisis staff.</p><label for="f-cost">Budget, if any ($ millions)<input id="f-cost" type="number" min="0" max="9999" value="0"></label><div id="f-loc">${locBlock(false, true)}</div>`;
   const forced = action === 'spy' ? 'private' : action === 'press' ? 'public' : null; const vis = forced || visibility;
   f.innerHTML = body + (forced ? '' : `<div class="vis" role="group" aria-label="Who can see this"><button type="button" data-v="private" aria-pressed="${vis === 'private'}">Private</button><button type="button" data-v="public" aria-pressed="${vis === 'public'}">Public</button></div>`) + `<button class="send" type="submit">${action === 'spy' ? 'Send agent' : 'Send to crisis staff'}</button>`;
   f.querySelectorAll('.vis button').forEach((b) => b.addEventListener('click', () => { visibility = b.dataset.v; f.querySelectorAll('.vis button').forEach((x) => x.setAttribute('aria-pressed', x === b)); }));
@@ -1467,30 +1492,81 @@ function renderBattleResult() {
   });
 }
 
-/* ---------- Crisis staff ---------- */
+/* ---------- Crisis assistant (staff) ---------- */
+let PROPS_AI = 'rules';
+const aiOff = {}, aiAsked = {}, aiErr = {}; let aiBusy = 0;
+async function assist(body) {
+  const r = await fetch('/api/crisis/assist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (r.status === 401) { location.href = '/crisis'; return {}; }
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'The assistant is unavailable right now.'); return j;
+}
+// Ask for suggestions on anything new, two at a time. Results are saved on the server, so every staff screen shares them.
+function pumpAssistant() {
+  if (!STATE) return;
+  const want = [...STATE.queue.filter((q) => q.status === 'pending' && !q.ai).map((q) => ({ kind: 'request', id: q.id })),
+    ...(STATE.directives || []).filter((d) => d.status === 'passed' && !d.carried && !d.ai).map((d) => ({ kind: 'directive', id: d.id }))];
+  for (const w of want) {
+    if (aiBusy >= 2) break; if (aiAsked[w.id] && Date.now() - aiAsked[w.id] < 50000) continue;
+    aiAsked[w.id] = Date.now(); aiBusy++; delete aiErr[w.id];
+    assist(w).catch((e) => { aiErr[w.id] = e.message; queueSig = ''; chairSig = ''; renderStaff(); }).finally(() => { aiBusy--; });
+  }
+}
+const uName = (id) => STATE.units.find((u) => u.id === id)?.name || id;
+const pl = (c) => POWERS[c]?.label || c || '?';
+const whereTxt = (to) => (to === '@here' ? 'the marked spot' : REGION[to]?.name || to || 'the map');
+function effText(e) {
+  switch (e.type) {
+    case 'money': return `${+e.amount >= 0 ? '+' : ''}$${e.amount}M for ${pl(e.country)}`;
+    case 'strength': return `${uName(e.unit)} ${+e.delta >= 0 ? '+' : ''}${e.delta} strength`;
+    case 'destroy': return `${uName(e.unit)} destroyed`;
+    case 'move': return `${uName(e.unit)} moves to ${whereTxt(e.to)}${e.public ? '' : ' (secret)'}`;
+    case 'unit': return `New ${(KIND_NAME[e.kind] || 'unit').toLowerCase()} for ${pl(e.owner)}, strength ${e.str}, at ${whereTxt(e.to)}${e.public ? '' : ' (secret)'}`;
+    case 'region': return `${pl(e.owner)} takes ${(e.ids || []).map((id) => REGION[id]?.name || id).join(', ')}`;
+    case 'intel': return `Intel to ${pl(e.country)}: ${e.text}`;
+    case 'wire': return `Extra headline: ${e.text}`;
+    case 'marker': return `Map pin: ${e.label}`;
+    case 'asset': return `New power for ${e.name}: ${e.text}`;
+    case 'message': return `Letter from ${e.from || 'staff'} to ${(e.to || []).join(', ')}: ${e.text}`;
+    case 'feature': return `${+e.turns > 0 ? 'Start building' : 'Place'} ${e.label || FEAT[e.kind]?.name} for ${pl(e.owner)}${+e.turns > 0 ? `, ready in ${e.turns} update${e.turns > 1 ? 's' : ''}` : ''}${e.public ? '' : ' (secret)'}`;
+    case 'feature.edit': return `${{ ruin: 'Destroy', repair: 'Repair', finish: 'Finish', remove: 'Remove' }[e.action] || 'Change'} ${FEATS.find((f) => f.id === e.id)?.label || 'a map feature'}`;
+    case 'trait': return e.action === 'clear' ? `${uName(e.unit)}: traits cleared` : `${uName(e.unit)}: ${e.label} ${+e.mod >= 0 ? '+' : ''}${e.mod}`;
+    case 'relation': return `${pl(e.country)} and ${pl(e.other)}: ${e.status === 'peace' || e.status === 'none' ? 'peace' : (S.RELATION_NAME[e.status] || e.status).toLowerCase()}`;
+    case 'status': return `${pl(e.country)}: ${e.action === 'clear' ? 'no longer ' : ''}${e.label}`;
+    case 'battle': return `Battle (rolled): ${(e.attackers || []).map(uName).join(', ')} attack ${(e.defenders || []).map(uName).join(', ')}${e.ids?.length ? `, taking ${e.ids.map((id) => REGION[id]?.name || id).join(', ')} if they win` : ''}`;
+  }
+  return e.type;
+}
+// A plan's outcome as a short list. Effects in the approve list can be dropped with ✕.
+function planList(key, b, editable) {
+  const off = aiOff[key] || new Set();
+  const items = (b?.effects || []).map((e, i) => `<li class="${off.has(i) ? 'off' : ''}">${esc(effText(e))}${editable ? `<button type="button" class="x" data-off="${key}:${i}" aria-label="${off.has(i) ? 'Keep' : 'Drop'} this effect" title="${off.has(i) ? 'Keep' : 'Drop'} this effect">${off.has(i) ? '↺' : '✕'}</button>` : ''}</li>`).join('')
+    + (b?.headline ? `<li class="head">Headline: ${esc(b.headline)}</li>` : '') + (b?.flash ? `<li class="head flash">Breaking news: ${esc(b.flash.head)}</li>` : '');
+  return items;
+}
+const keptEffects = (key, b) => (b?.effects || []).filter((_, i) => !(aiOff[key] || new Set()).has(i));
+function aiBlock(q) {
+  if (!q.ai) return `<div class="aibox wait">${aiErr[q.id] ? `${esc(aiErr[q.id])} <button type="button" class="dbtn" data-retry="${q.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading this request…'}</div>`;
+  const A = planList(q.id, q.ai.approve, true), R = planList('r' + q.id, q.ai.reject, false);
+  return `<div class="aibox"><div><b>If approved</b><ul>${A || '<li class="none">Reply only, nothing changes on the map.</li>'}</ul></div><div><b>If rejected</b><ul>${R || '<li class="none">Nothing happens.</li>'}</ul></div>${q.ai.approve?.staff_note ? `<small>${esc(q.ai.approve.staff_note)}</small>` : ''}</div>`;
+}
 let qFilter = 'pending', qCountry = '';
 function qDetail(q) {
   const d = q.detail || {}; let s = '';
   if (q.type === 'fleet') { const u = STATE.units.find((x) => x.id === d.unit); s = u ? `${esc(u.name)} (${KIND_NAME[u.kind].toLowerCase()}, strength ${u.str}) to <b>${esc(d.dest)}</b>` : ''; }
-  if (q.type === 'spy') s = `Target ${esc(d.target)} · mission: ${esc(d.mission)} · cover: ${esc(d.cover)} · budget $${d.cost}M`;
+  if (q.type === 'spy') s = `Target ${esc(d.target)} · mission: ${esc(d.mission)} · budget $${d.cost}M`;
   if (q.type === 'money') s = `$${d.amount}M from ${POWERS[q.country].label} to ${esc(d.to)} · treasury now $${STATE.treasury[q.country]}M`;
   if (q.type === 'build') s = `${d.qty} × ${esc(d.btype)} · cost $${(BUILD[d.btype] || 0) * d.qty}M${d.where ? ` · in <b>${esc(d.where)}</b>` : ''}`;
-  if (q.type === 'op') s = `${esc(d.op || '')} · budget $${d.cost}M${d.where ? ` · at <b>${esc(d.where)}</b>` : ' · no location'}`;
+  if (q.type === 'op') s = `${esc(d.op || '')} · budget $${d.cost}M${d.where ? ` · at <b>${esc(d.where)}</b>` : ''}`;
+  if (q.type === 'secret') s = [d.cost ? `Budget $${d.cost}M` : '', d.where ? `Marked: <b>${esc(d.where)}</b>` : ''].filter(Boolean).join(' · ');
   if (q.type === 'treaty' && d.with) s = `With <b>${POWERS[d.with].label}</b>`;
   return [s, q.text ? `“${esc(q.text)}”` : ''].filter(Boolean).join('<br>');
 }
-function qButtons(q) {
-  const b = (dec, label, cls = '') => `<button type="button" class="dbtn ${cls}" data-q="${q.id}" data-dec="${dec}">${label}</button>`;
-  if (q.type === 'fleet') return b('move-public', 'Move on projector', 'gold') + b('move-secret', 'Move secretly', 'green') + b('reject', 'Reject', 'red');
-  if (q.type === 'spy') return b('spy-ok', 'Succeeds', 'green') + b('spy-fail', 'Fails') + b('spy-caught', 'Caught', 'red');
-  if (q.type === 'treaty' && q.detail?.with) return b('approve', 'Approve', 'green') + b('ally', 'Approve and make allies', 'gold') + b('reject', 'Reject', 'red');
-  return b('approve', 'Approve', 'green') + b('reject', 'Reject', 'red');
-}
+const TYPE_PILL = { fleet: 'move', secret: 'crisis note', build: 'build', money: 'money', spy: 'spy', op: 'operation', press: 'press', treaty: 'treaty', propaganda: 'propaganda' };
 function keepInputs(root, fn) {
-  const vals = {}; root.querySelectorAll('textarea[id], input[id]').forEach((t) => (vals[t.id] = t.value));
+  const vals = {}; root.querySelectorAll('textarea[id], input[id]').forEach((t) => (vals[t.id] = t.type === 'checkbox' ? t.checked : t.value));
   const act = document.activeElement; const focusId = root.contains(act) ? act.id : null; const sel = focusId && 'selectionStart' in act ? [act.selectionStart, act.selectionEnd] : null;
   fn();
-  for (const [id, v] of Object.entries(vals)) { const t = document.getElementById(id); if (t && v) t.value = v; }
+  for (const [id, v] of Object.entries(vals)) { const t = document.getElementById(id); if (!t) continue; if (t.type === 'checkbox') t.checked = v; else if (v) t.value = v; }
   if (focusId) { const t = document.getElementById(focusId); if (t) { t.focus(); if (sel) try { t.setSelectionRange(...sel); } catch {} } }
 }
 let unitSig = '';
@@ -1499,61 +1575,110 @@ function refreshBattleLists() {
   for (const id of ['b-att', 'b-def']) { const sel = new Set([...$(id).selectedOptions].map((o) => o.value)); $(id).innerHTML = unitOptions(); [...$(id).options].forEach((o) => (o.selected = sel.has(o.value))); }
   renderBattleResult();
 }
-let queueSig = '', chairSig = '';
+let queueSig = '', chairSig = '', undoSig = '';
 function renderStaff() {
   const Q = STATE.queue || []; const pending = Q.filter((q) => q.status === 'pending').length;
-  $('q-count').textContent = `${pending} pending`;
+  $('q-count').textContent = `${pending} waiting`; const c = $('stc-req'); c.textContent = pending; c.hidden = !pending;
+  const dn = (STATE.directives || []).filter((d) => d.status === 'chair' || (d.status === 'passed' && !d.carried)).length; $('stc-dir').textContent = dn; $('stc-dir').hidden = !dn;
+  $('ai-mode').textContent = PROPS_AI === 'claude' ? 'Claude suggests what each request does. Drop any effect with ✕, write a reply to change the outcome, or add your own effects. You can undo the last decision for 10 minutes.' : 'Keyword matching only (no ANTHROPIC_API_KEY). Wars, peace and alliances are detected; add other effects by hand.';
   const list = Q.filter((q) => (qFilter === 'all' || q.status === 'pending') && (!qCountry || q.country === qCountry));
-  const qsig = JSON.stringify([qFilter, qCountry, list.map((q) => [q.id, q.status])]);
+  const qsig = JSON.stringify([qFilter, qCountry, list.map((q) => [q.id, q.status, !!q.ai, aiErr[q.id] || '', [...(aiOff[q.id] || [])]])]);
   if (qsig !== queueSig) { queueSig = qsig; keepFx($('queue'), () => keepInputs($('queue'), () => {
-    $('queue').innerHTML = list.map((q) => `<div class="qcard${q.status !== 'pending' ? ' done' : ''}">
-      <div class="qtop">${flag(q.country)}<b>${esc(q.from)}</b>${POWERS[q.country].label} · ${esc(q.time)}<span class="pill type">${q.type === 'fleet' ? 'move' : q.type}</span><span class="pill ${q.vis}">${q.vis}</span>${q.status !== 'pending' ? `<span class="pill ${q.status}">${esc(q.outcome || q.status)}</span>` : ''}</div>
+    $('queue').innerHTML = list.map((q) => `<div class="qcard${q.status !== 'pending' ? ' done' : ''}" data-q="${q.id}">
+      <div class="qtop">${flag(q.country)}<b>${esc(q.from)}</b>${POWERS[q.country].label} · ${esc(q.time)}<span class="pill type">${TYPE_PILL[q.type] || q.type}</span><span class="pill ${q.vis}">${q.vis}</span>${q.status !== 'pending' ? `<span class="pill ${q.status}">${esc(q.outcome || q.status)}</span>` : ''}</div>
       <div class="qtitle">${esc(q.title)}</div>${qDetail(q) ? `<div class="qdetail">${qDetail(q)}</div>` : ''}
-      ${q.status === 'pending' ? fxEditor(q.id).replace('class="fx"', `class="fx" data-country="${q.country}" data-vis="${q.vis}" data-here="${q.detail?.at ? 1 : 0}"`) : ''}${q.status === 'pending' ? `<textarea id="r-${q.id}" maxlength="500" aria-label="Reply to ${esc(q.from)}" placeholder="Reply to the delegate (optional). A default reply is used if empty."></textarea><div class="qbtns">${qButtons(q)}</div>` : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b>${q.effects ? `<br>Effects: ${q.effects.map(esc).join(', ')}` : ''}</div>`}
+      ${q.status === 'pending' ? `${aiBlock(q)}
+        <textarea id="r-${q.id}" maxlength="800" aria-label="Reply to ${esc(q.from)}" placeholder="Reply (optional). Describe what happens and the effects are matched to your reply."></textarea>
+        ${fxEditor(q.id, false, 'Add your own effects').replace('class="fx"', `class="fx" data-country="${q.country}" data-vis="${q.vis}" data-here="${q.detail?.at ? 1 : 0}"`)}
+        <div class="qbtns"><button type="button" class="dbtn green" data-dec="approve" data-q="${q.id}">Approve</button><button type="button" class="dbtn red" data-dec="reject" data-q="${q.id}">Reject</button>${q.type === 'fleet' ? `<label class="check"><input type="checkbox" id="sec-${q.id}"${q.vis === 'private' ? ' checked' : ''}> Keep the move off the projector</label>` : ''}</div>`
+      : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b>${q.effects ? `<br>Effects: ${q.effects.map(esc).join(', ')}` : ''}</div>`}
     </div>`).join('') || '<p class="formnote">Nothing waiting. New requests appear here a second or two after delegates send them.</p>';
   })); }
-  const csig = JSON.stringify((STATE.directives || []).map((d) => [d.id, d.status, d.signed.length, (d.carried || []).length]));
+  const csig = JSON.stringify([(STATE.directives || []).map((d) => [d.id, d.status, d.signed.length, (d.carried || []).length, !!d.ai, aiErr[d.id] || '', [...(aiOff['d' + d.id] || [])]])]);
   if (csig !== chairSig) { chairSig = csig; keepFx($('chair'), () => keepInputs($('chair'), renderChair)); }
-  renderProj(); renderStaffMessages(); renderTerritory(); renderForces(); refreshBattleLists(); renderFeatList();
+  const u = STATE.undo; const live = u && Date.now() + SKEW - u.at < 600000; const us = live ? u.label + u.at : '';
+  if (us !== undoSig) { undoSig = us; $('undobar').hidden = !live; if (live) $('undobar').innerHTML = `<span>Last decision: <b>${esc(u.label)}</b></span><button type="button" class="dbtn" id="undo-btn">Undo it</button>`; }
+  renderProj(); renderStaffMessages(); renderTerritory(); renderForces(); refreshBattleLists(); renderFeatList(); renderRels();
   const cd = $('cu-date'); if (cd && !cd.value && document.activeElement !== cd) cd.value = STATE.update?.date || '';
+  pumpAssistant();
 }
 function renderChair() {
   const rows = (STATE.directives || []).filter((d) => d.status !== 'drafting');
   $('chair').innerHTML = rows.map((d) => `<div class="chair-row"><div class="dir-top"><b>${d.no ? esc(d.no) + ': ' : ''}${esc(d.title)}</b><span class="pill ${d.status}">${DSTATUS[d.status]}</span></div>
     <ol class="formnote" style="margin:0;padding-left:18px">${d.clauses.map((c) => `<li>${esc(c)}</li>`).join('')}</ol>
     <small class="formnote">Sponsors ${d.sponsors.map(esc).join(', ')} · ${d.signed.length} signatures${d.vote ? ' · ' + esc(d.vote) : ''}</small>
-    ${d.status === 'chair' ? `<div class="qbtns"><button type="button" class="dbtn gold" data-ch="floor" data-d="${d.id}">Approve and put on the floor</button><button type="button" class="dbtn" data-ch="back" data-d="${d.id}">Send back</button></div>` : ''}
-    ${d.carried ? `<small class="formnote">Carried out: ${d.carried.map(esc).join(', ')}</small>` : ''}
-    ${d.status === 'passed' ? fxEditor('dir-' + d.id, !d.carried, d.carried ? 'Add more effects' : 'Carry out this directive') + `<button type="button" class="dbtn gold" data-ch="carry" data-d="${d.id}">Apply effects</button>` : ''}
+    ${d.status === 'chair' ? `<div class="qbtns"><button type="button" class="dbtn gold" data-ch="floor" data-d="${d.id}">Put it on the floor</button><button type="button" class="dbtn" data-ch="back" data-d="${d.id}">Send back</button></div>` : ''}
     ${d.status === 'floor' ? `<div class="votes"><label>For <input type="number" min="0" id="vf-${d.id}" value="0"></label><label>Against <input type="number" min="0" id="va-${d.id}" value="0"></label><button type="button" class="dbtn gold" data-ch="vote" data-d="${d.id}">Record placard vote</button></div>` : ''}
+    ${d.status === 'passed' && !d.carried ? `${d.ai ? `<div class="aibox"><div><b>Carrying it out will</b><ul>${planList('d' + d.id, d.ai, true) || '<li class="none">Nothing on the map. Add effects by hand if needed.</li>'}</ul></div>${d.ai.staff_note ? `<small>${esc(d.ai.staff_note)}</small>` : ''}</div>` : `<div class="aibox wait">${aiErr[d.id] ? `${esc(aiErr[d.id])} <button type="button" class="dbtn" data-retry="${d.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading the clauses…'}</div>`}
+      ${fxEditor('dir-' + d.id, false, 'Add your own effects')}<div class="qbtns"><button type="button" class="dbtn gold" data-ch="carry" data-d="${d.id}">Carry out the directive</button></div>` : ''}
+    ${d.carried ? `<small class="formnote">Carried out: ${d.carried.map(esc).join(', ') || 'no map changes'}</small>` : ''}
   </div>`).join('') || '<p class="formnote">No directives yet. They appear here once delegates send them for signatures.</p>';
 }
-let flSig = '';
-function renderFeatList() {
-  const sc = STATE.scheduled || []; const sig = JSON.stringify([FEATS, sc, STATE.update.no]); if (sig === flSig) return; flSig = sig;
-  $('featlist').innerHTML = (FEATS.length ? `<div class="codes-wrap"><table class="codes"><tbody>${FEATS.slice().reverse().map((f) => { const st = featState(f); return `<tr><td>${flag(f.owner)} <b>${esc(f.label)}</b><br><small class="formnote">${FEAT[f.kind]?.name}${modText(f.ruined ? 0 : f.mod)} · ${st === 'building' ? `ready after Update ${f.ready}` : st}${f.public ? '' : ' · secret'}</small></td>
-    <td class="qbtns">${f.ruined ? `<button type="button" class="dbtn green" data-fl="repair" data-id="${f.id}">Repair</button>` : `<button type="button" class="dbtn red" data-fl="ruin" data-id="${f.id}">Destroy</button>`}${st === 'building' ? `<button type="button" class="dbtn gold" data-fl="finish" data-id="${f.id}">Finish now</button>` : ''}<button type="button" class="dbtn" data-fl="remove" data-id="${f.id}">Remove</button></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="formnote">No map features yet. Add them as effects when approving a plan, or place them in the map editor.</p>')
-    + (sc.length ? `<h3 class="formnote" style="margin-top:10px">Scheduled</h3>${sc.map((x) => `<div class="projrow"><div><b>Update ${x.due}</b> ${esc(x.note || 'Staff event')}<br><small class="formnote">${x.effects.map((e) => esc(FX_TYPES[e.type] || e.type)).join(', ')}</small></div><button type="button" class="dbtn red" data-cancel="${x.id}">Cancel</button></div>`).join('')}` : '');
+let relSig = '';
+function renderRels() {
+  const sig = JSON.stringify([STATE.relations, STATE.status]); if (sig === relSig) return; relSig = sig;
+  const opts = ORDER.map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('');
+  $('rels').innerHTML = `<ul class="plist">${(STATE.relations || []).map((r) => `<li>${flag(r.a)} ${esc(pl(r.a))} and ${flag(r.b)} ${esc(pl(r.b))}: <b>${esc(S.RELATION_NAME[r.status] || r.status)}</b> <button type="button" class="dbtn" data-unrel="${r.a}|${r.b}">End</button></li>`).join('')}</ul>
+    <div class="row"><select id="rl-a">${opts}</select><select id="rl-s"><option value="war">at war with</option><option value="alliance">allied with</option><option value="pact">non-aggression pact with</option><option value="trade">trade deal with</option><option value="tension">tension with</option></select><select id="rl-b">${opts}</select><button type="button" class="dbtn gold" id="rl-add">Set</button></div>
+    <h3 class="formnote" style="margin-top:10px">Country conditions</h3>${Object.entries(STATE.status || {}).flatMap(([c, l]) => l.map((x) => `<span class="schip ${x.tone}">${flag(c)} ${esc(x.label)} <button type="button" data-unstat="${c}|${esc(x.label)}" aria-label="Clear">✕</button></span>`)).join('') || '<p class="formnote">None yet. Notes like "start rationing" add them.</p>'}`;
 }
-let msgSig = '';
-function renderStaffMessages() {
-  const M = STATE.messages || []; const sig = M.length + ':' + (M[M.length - 1]?.id || ''); if (sig === msgSig) return; msgSig = sig;
-  $('staff-msgs').innerHTML = M.slice().reverse().map((m) => `<div class="req msg"><b>${esc(m.from)} → ${(m.to || []).map(esc).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No messages yet.</p>';
+async function decideQ(q, ok, btn) {
+  const card = btn.closest('.qcard'); const reply = ($('r-' + q.id)?.value || '').trim(); const box = card.querySelector('.fx');
+  const manual = readFx(box); const key = ok ? q.id : 'r' + q.id;
+  let b = (ok ? q.ai?.approve : q.ai?.reject) || { effects: [], headline: null, flash: null, reply: '' };
+  b = { ...b, effects: keptEffects(key, b) };
+  card.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = true));
+  if (reply && PROPS_AI === 'claude') {
+    btn.textContent = 'Matching effects to your reply…';
+    try { const j = await assist({ kind: 'request', id: q.id, decision: ok ? 'approve' : 'reject', reply }); if (j.result) b = j.result; } catch (e) { toast(e.message + ' Using the earlier suggestion.'); }
+  }
+  const dec = !ok ? (q.type === 'spy' ? 'spy-fail' : 'reject') : q.type === 'fleet' ? ($('sec-' + q.id)?.checked ? 'move-secret' : 'move-public') : q.type === 'spy' ? 'spy-ok' : 'approve';
+  const done = await act({ type: 'decide', id: q.id, dec, reply: reply || b.reply || '', effects: [...(b.effects || []), ...manual], headline: b.headline, flash: b.flash, when: readWhen(box) });
+  if (!done) { card.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = false)); btn.textContent = ok ? 'Approve' : 'Reject'; }
 }
-function renderProj() {
-  const hidden = (STATE.hiddenMoves || []).map((id) => STATE.units.find((u) => u.id === id)).filter(Boolean);
-  $('proj').innerHTML = `<p class="formnote">The projector shows what the whole room knows. Secret moves stay at their old position on the big screen until you reveal them.</p>
-    ${hidden.map((u) => `<div class="projrow"><div><b>${esc(u.name)}</b>${POWERS[u.owner].label} · moved secretly</div><button type="button" class="dbtn gold" data-reveal="${u.id}">Reveal on projector</button></div>`).join('') || '<p class="formnote">No hidden moves right now.</p>'}`;
+let evPlan = null;
+function renderEvPlan() {
+  $('ev-result').innerHTML = evPlan ? `<div class="aibox"><div><b>This will</b><ul>${planList('ev', evPlan, true) || '<li class="none">The assistant found nothing to change. Try describing it differently.</li>'}</ul></div>${evPlan.staff_note ? `<small>${esc(evPlan.staff_note)}</small>` : ''}</div><div class="row"><button type="button" class="dbtn gold" id="ev-go">Make it happen</button><button type="button" class="dbtn" id="ev-cancel">Cancel</button></div>` : '';
 }
+function showStaffTab(k) { document.querySelectorAll('[data-st]').forEach((b) => b.setAttribute('aria-selected', b.dataset.st === k)); document.querySelectorAll('.spane').forEach((p) => (p.hidden = p.id !== 'sp-' + k)); }
 function bindStaff() {
-  $('queue').addEventListener('click', (e) => { const b = e.target.closest('[data-dec]'); if (!b) return; b.disabled = true; act({ type: 'decide', id: b.dataset.q, dec: b.dataset.dec, reply: $('r-' + b.dataset.q)?.value || '', effects: readFx(b.closest('.qcard').querySelector('.fx')), when: readWhen(b.closest('.qcard').querySelector('.fx')) }).then(() => { b.disabled = false; }); });
+  document.querySelectorAll('[data-st]').forEach((b) => b.addEventListener('click', () => showStaffTab(b.dataset.st)));
+  $('queue').addEventListener('click', (e) => {
+    const off = e.target.closest('[data-off]'); if (off) { const [k, i] = off.dataset.off.split(':'); const set = (aiOff[k] = aiOff[k] || new Set()); set.has(+i) ? set.delete(+i) : set.add(+i); queueSig = ''; renderStaff(); return; }
+    const re = e.target.closest('[data-retry]'); if (re) { delete aiAsked[re.dataset.retry]; delete aiErr[re.dataset.retry]; queueSig = ''; renderStaff(); return; }
+    const b = e.target.closest('[data-dec]'); if (!b) return; const q = STATE.queue.find((x) => x.id === b.dataset.q); if (q) decideQ(q, b.dataset.dec === 'approve', b);
+  });
   bindFx($('view-staff-root'));
+  $('undobar').addEventListener('click', (e) => { if (e.target.id === 'undo-btn') act({ type: 'undo' }).then(() => { queueSig = ''; chairSig = ''; }); });
   $('chair').addEventListener('click', (e) => {
+    const off = e.target.closest('[data-off]'); if (off) { const [k, i] = off.dataset.off.split(':'); const set = (aiOff[k] = aiOff[k] || new Set()); set.has(+i) ? set.delete(+i) : set.add(+i); chairSig = ''; renderStaff(); return; }
+    const re = e.target.closest('[data-retry]'); if (re) { delete aiAsked[re.dataset.retry]; delete aiErr[re.dataset.retry]; chairSig = ''; renderStaff(); return; }
     const b = e.target.closest('[data-ch]'); if (!b) return; const id = b.dataset.d;
     if (b.dataset.ch === 'floor') act({ type: 'chair.floor', id });
     if (b.dataset.ch === 'back') act({ type: 'chair.back', id });
-    if (b.dataset.ch === 'carry') { const fx = readFx(b.closest('.chair-row').querySelector('.fx')); if (!fx.length) { toast('Add at least one effect first.'); return; } act({ type: 'effects.apply', directive: id, effects: fx, when: readWhen(b.closest('.chair-row').querySelector('.fx')) }).then((ok) => { if (ok) chairSig = ''; }); }
+    if (b.dataset.ch === 'carry') {
+      const d = STATE.directives.find((x) => x.id === id); const box = b.closest('.chair-row').querySelector('.fx');
+      const fx = [...keptEffects('d' + id, d.ai), ...readFx(box)];
+      b.disabled = true; act({ type: 'effects.apply', directive: id, effects: fx, headline: d.ai?.headline, flash: d.ai?.flash, when: readWhen(box), empty: true }).then((ok) => { b.disabled = false; if (ok) chairSig = ''; });
+    }
     if (b.dataset.ch === 'vote') act({ type: 'chair.vote', id, for: $('vf-' + id).value, against: $('va-' + id).value });
+  });
+  $('ev-preview').addEventListener('click', async (e) => {
+    const t = $('ev-text').value.trim(); if (!t) { toast('Describe what happens first.'); return; }
+    e.target.disabled = true; e.target.textContent = 'Reading…';
+    try { const j = await assist({ kind: 'event', text: t }); evPlan = j.result; aiOff.ev = new Set(); renderEvPlan(); } catch (err) { toast(err.message); }
+    e.target.disabled = false; e.target.textContent = 'Preview';
+  });
+  $('ev-result').addEventListener('click', async (e) => {
+    const off = e.target.closest('[data-off]'); if (off) { const i = +off.dataset.off.split(':')[1]; const set = (aiOff.ev = aiOff.ev || new Set()); set.has(i) ? set.delete(i) : set.add(i); renderEvPlan(); return; }
+    if (e.target.id === 'ev-cancel') { evPlan = null; renderEvPlan(); }
+    if (e.target.id === 'ev-go') { if (await act({ type: 'effects.apply', effects: keptEffects('ev', evPlan), headline: evPlan.headline, flash: evPlan.flash })) { evPlan = null; $('ev-text').value = ''; renderEvPlan(); } }
+  });
+  $('rels').addEventListener('click', (e) => {
+    const u = e.target.closest('[data-unrel]'), us = e.target.closest('[data-unstat]');
+    if (u) { const [a, b] = u.dataset.unrel.split('|'); act({ type: 'effects.apply', effects: [{ type: 'relation', country: a, other: b, status: 'none' }] }); }
+    if (us) { const [c, l] = us.dataset.unstat.split('|'); act({ type: 'effects.apply', effects: [{ type: 'status', country: c, label: l, action: 'clear' }] }); }
+    if (e.target.id === 'rl-add') act({ type: 'effects.apply', effects: [{ type: 'relation', country: $('rl-a').value, other: $('rl-b').value, status: $('rl-s').value }], headline: $('rl-s').value === 'war' ? `${pl($('rl-a').value).toUpperCase()} · ${pl($('rl-a').value)} declares war on ${pl($('rl-b').value)}` : '' });
   });
   $('proj').addEventListener('click', (e) => { const b = e.target.closest('[data-reveal]'); if (b) act({ type: 'reveal', unitId: b.dataset.reveal }); });
   $('featlist').addEventListener('click', (e) => { const b = e.target.closest('[data-fl]'), c = e.target.closest('[data-cancel]'); if (b) act({ type: 'feature.edit', id: b.dataset.id, action: b.dataset.fl }); if (c) act({ type: 'schedule.cancel', id: c.dataset.cancel }); });
@@ -1571,10 +1696,28 @@ function bindStaff() {
   $('load-demo').addEventListener('click', () => act({ type: 'game.demo' }));
   $('reset-game').addEventListener('click', () => act({ type: 'game.reset', confirm: $('reset-confirm').value.trim().toUpperCase() }));
 }
+let flSig = '';
+function renderFeatList() {
+  const sc = STATE.scheduled || []; const sig = JSON.stringify([FEATS, sc, STATE.update.no]); if (sig === flSig) return; flSig = sig;
+  $('featlist').innerHTML = (FEATS.length ? `<div class="codes-wrap"><table class="codes"><tbody>${FEATS.slice().reverse().map((f) => { const st = featState(f); return `<tr><td>${flag(f.owner)} <b>${esc(f.label)}</b><br><small class="formnote">${FEAT[f.kind]?.name}${modText(f.ruined ? 0 : f.mod)} · ${st === 'building' ? `ready after Update ${f.ready}` : st}${f.public ? '' : ' · secret'}</small></td>
+    <td class="qbtns">${f.ruined ? `<button type="button" class="dbtn green" data-fl="repair" data-id="${f.id}">Repair</button>` : `<button type="button" class="dbtn red" data-fl="ruin" data-id="${f.id}">Destroy</button>`}${st === 'building' ? `<button type="button" class="dbtn gold" data-fl="finish" data-id="${f.id}">Finish now</button>` : ''}<button type="button" class="dbtn" data-fl="remove" data-id="${f.id}">Remove</button></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="formnote">No map features yet. Add them as effects when approving a plan, or place them in the map editor.</p>')
+    + (sc.length ? `<h3 class="formnote" style="margin-top:10px">Scheduled</h3>${sc.map((x) => `<div class="projrow"><div><b>Update ${x.due}</b> ${esc(x.note || 'Staff event')}<br><small class="formnote">${x.effects.map((e) => esc(FX_TYPES[e.type] || e.type)).join(', ')}</small></div><button type="button" class="dbtn red" data-cancel="${x.id}">Cancel</button></div>`).join('')}` : '');
+}
+
+let msgSig = '';
+function renderStaffMessages() {
+  const M = STATE.messages || []; const sig = M.length + ':' + (M[M.length - 1]?.id || ''); if (sig === msgSig) return; msgSig = sig;
+  $('staff-msgs').innerHTML = M.slice().reverse().map((m) => `<div class="req msg"><b>${esc(m.from)} → ${(m.to || []).map(esc).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No messages yet.</p>';
+}
+function renderProj() {
+  const hidden = (STATE.hiddenMoves || []).map((id) => STATE.units.find((u) => u.id === id)).filter(Boolean);
+  $('proj').innerHTML = `<p class="formnote">The projector shows what the whole room knows. Secret moves stay at their old position on the big screen until you reveal them.</p>
+    ${hidden.map((u) => `<div class="projrow"><div><b>${esc(u.name)}</b>${POWERS[u.owner].label} · moved secretly</div><button type="button" class="dbtn gold" data-reveal="${u.id}">Reveal on projector</button></div>`).join('') || '<p class="formnote">No hidden moves right now.</p>'}`;
+}
 
 /* ---------- Boot ---------- */
 export function start(root, props) {
-  VIEW = props.view; ROLE = props.session.role; AS = props.as || null;
+  VIEW = props.view; ROLE = props.session.role; AS = props.as || null; PROPS_AI = props.ai || 'rules';
   EDIT = VIEW === 'map' && ROLE === 'staff' && new URLSearchParams(location.search).get('edit') === '1';
   root.innerHTML = skeleton(props);
   if (VIEW === 'staff') renderBattleShell();

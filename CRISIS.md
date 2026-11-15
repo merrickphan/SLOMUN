@@ -71,6 +71,24 @@ Then open `http://localhost:3000/crisis`. In development the codes are `STAFF-00
 - **Timing:** every set of effects can happen now, at the next crisis update, or 2 or 3 updates later. Scheduled effects are listed under **Map features and scheduled events**, where staff can cancel them.
 - **Arrows:** movement arrows are turned off. Units still glide to their new positions.
 
+## The crisis assistant
+
+Staff no longer have to build effects by hand for most requests.
+
+- **Delegates have four actions:** Crisis note, Move forces, Build forces and Send money. A crisis note covers everything else: attacks, spies, sabotage, propaganda, treaties, declarations of war. A **public** note works as a press release.
+- **Every request shows "If approved" and "If rejected"** before staff decide: the effects, the headline and any breaking news. Drop any effect with ✕.
+- **Approve or Reject is one click.** If staff write a reply that describes a different outcome ("the attack stalls at the Maginot Line"), the assistant re-reads the note with the reply and matches the effects to it.
+- **Battles roll themselves.** An approved attack becomes a battle effect that uses the same table as the battle calculator, including map features and unit traits.
+- **Passed directives** get the same preview and a **Carry out the directive** button.
+- **Make something happen** takes a plain description and turns it into effects to check before applying.
+- **Undo:** the last decision can be undone for 10 minutes from the bar at the top of the staff screen.
+- **Headlines:** every approved public request, battle and directive reaches the news wire automatically. Wars, peace and alliances also show a breaking news flash on the projector and every delegate screen.
+- **Wars, treaties and conditions:** delegate screens show a bar with who they are at war with, their allies and pacts, and their country's conditions (for example "Fuel rationing"). The game starts on 3 September 1939: Germany at war with Poland, Britain and France; the Pact of Steel; the Molotov-Ribbentrop Pact. Staff can change these under Map tools.
+
+**Turning it on:** add `ANTHROPIC_API_KEY` in Vercel (Project, Settings, Environment Variables, marked sensitive) and redeploy. It uses Claude Opus 5.5. Without the key, the app falls back to keyword matching, which catches wars, peace, alliances, pacts and trade deals only. The Setup tab shows which mode is on.
+
+**Staff screen tabs:** Requests, Directives, Events and updates, Map tools (battle calculator, forces, territory, wars and treaties, map features) and Setup (access codes, game reset).
+
 ## Map features and unit traits
 
 These turn free-form plans into things that show on the map and count in battles.
@@ -92,7 +110,7 @@ These turn free-form plans into things that show on the map and count in battles
 
 ## Delegate requests
 
-The Actions tab opens on one box: **What do you want to do?** Delegates write any feasible plan there, with an optional budget and map spot. Small buttons above it open quick forms for the moves the app can carry out by itself: move forces, build forces, send a spy, send money, an operation, a treaty or a press release.
+The Actions tab opens on one box: **What do you want to do?** Delegates write any feasible plan there, with an optional budget and map spot. Three buttons above it open quick forms for moves the app carries out exactly: move forces, build forces and send money.
 
 ## Testing plan
 
