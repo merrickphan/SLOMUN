@@ -1,6 +1,7 @@
 // Browser side of the crisis app: the 3D globe, figurines and all three screens.
 // Loaded only in the browser by components/crisis/CrisisClient.js.
 import * as THREE from 'three';
+import { mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as S from '@/lib/crisis/scenario';
 
 const { LON0, LON1, LAT0, LAT1, OWNER, NEUTRALS, LABELS, SKIP_WORLD, LABEL_TEXT, CITIES, CAPITAL, CITY_OF, BUILD,
@@ -54,8 +55,13 @@ function paintWorld(canvas, dark) {
 }
 
 let grainPat = null;
+let BASE_CACHE = null; // set to a canvas on the projector, where countries are clicked often
 function paintTexture(canvas, imgs, sel) {
   const ctx = canvas.getContext('2d');
+  if (BASE_CACHE && BASE_CACHE.ready) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'copy'; ctx.globalAlpha = 1; ctx.drawImage(BASE_CACHE, 0, 0); ctx.globalCompositeOperation = 'source-over';
+    ctx.setTransform(TEXK, 0, 0, TEXK, 0, 0); return paintOverlays(ctx, canvas, sel);
+  }
   ctx.setTransform(TEXK, 0, 0, TEXK, 0, 0);
   ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.imageSmoothingQuality = 'high';
   // Bright daytime ground.
@@ -90,6 +96,13 @@ function paintTexture(canvas, imgs, sel) {
     ctx.strokeStyle = 'rgba(10,20,40,0.35)'; ctx.lineWidth = 3.5; ctx.stroke();
     ctx.strokeStyle = 'rgba(225,240,255,0.55)'; ctx.lineWidth = 1.3; ctx.stroke();
   }
+  if (BASE_CACHE && !BASE_CACHE.ready) {
+    BASE_CACHE.width = canvas.width; BASE_CACHE.height = canvas.height; const b = BASE_CACHE.getContext('2d'); b.drawImage(canvas, 0, 0); BASE_CACHE.ready = true;
+  }
+  paintOverlays(ctx, canvas, sel);
+}
+function paintOverlays(ctx, canvas, sel) {
+  ctx.globalAlpha = 1; ctx.lineJoin = 'round';
   if (sel && A.geo[sel]) {
     ringPath(ctx, A.geo[sel].r);
     ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fill('evenodd');
@@ -217,6 +230,23 @@ function basePlate(hex) {
   return g;
 }
 const hexOf = (c) => parseInt(c.slice(1), 16);
+function bakeFigure(root, keep) {
+  root.updateMatrixWorld(true);
+  const groups = new Map(); const drop = [];
+  root.traverse((o) => {
+    if (!o.isMesh || o === keep || o.name === 'sel') return;
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal'].includes(k)) g.deleteAttribute(k);
+    g.applyMatrix4(o.matrixWorld);
+    if (!groups.has(o.material)) groups.set(o.material, []); groups.get(o.material).push(g); drop.push(o);
+  });
+  for (const o of drop) o.parent.remove(o);
+  // Keep the selection ring with the root even if it sat inside a removed group.
+  const ring = []; root.traverse((o) => { if (o.name === 'sel' && o.parent !== root) ring.push(o); });
+  for (const o of ring) { o.updateMatrixWorld(true); o.applyMatrix4(o.parent.matrixWorld); root.add(o); }
+  for (const c of [...root.children]) if (!c.isMesh && c.children.length === 0) root.remove(c);
+  for (const [m, list] of groups) { const merged = mergeBufferGeometries(list, false); list.forEach((g) => g.dispose()); if (merged) root.add(new THREE.Mesh(merged, m)); }
+}
 function makeFigure(u) {
   const col = hexOf(POWERS[u.owner].color); const root = new THREE.Group();
   if (u.kind === 'fleet') {
@@ -240,7 +270,8 @@ function makeFigure(u) {
   }
   const sh = new THREE.Mesh(new THREE.CircleGeometry(u.kind === 'fleet' ? 1.6 : 1.15, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: u.kind === 'air' ? 0.22 : 0.35, depthWrite: false }));
   sh.rotation.x = -Math.PI / 2; sh.position.y = 0.01; sh.scale.set(1, u.kind === 'fleet' ? 0.55 : 1, 1); root.add(sh);
-  root.traverse(o => { o.userData.unitId = u.id; if (o.isMesh && o !== sh) { o.castShadow = false; } });
+  bakeFigure(root, sh);
+  root.traverse(o => { o.userData.unitId = u.id; });
   return root;
 }
 
@@ -314,10 +345,14 @@ class Globe {
     new ResizeObserver(() => this.resize()).observe(stage); this.resize();
     this.bindInput();
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const loop = (t) => {
-      if (this.clouds && !reduce) { this.clouds.rotation.y = (t || 0) * 0.000004; this.dirty = true; }
-      if (this.dirty) { this.render(); this.dirty = false; }
-      requestAnimationFrame(loop);
+    // Draw only when something changed. The clouds drift too slowly to need more than a few frames a second,
+    // and on-map labels only need repositioning when the camera or units move.
+    let lastCloud = -1e9;
+    const loop = (t = 0) => {
+      let cloudOnly = false;
+      if (this.clouds && !reduce && t - lastCloud > 200) { this.clouds.rotation.y = t * 0.000004; lastCloud = t; cloudOnly = !this.dirty; }
+      if (this.dirty || cloudOnly) { this.render(!cloudOnly); this.dirty = false; }
+      this.raf = requestAnimationFrame(loop);
     }; loop();
   }
   addStars() {
@@ -438,13 +473,19 @@ class Globe {
     const eye = T.clone().addScaledVector(n, r * Math.cos(t)).addScaledVector(fwd, -r * Math.sin(t));
     this.camera.position.copy(eye); this.camera.up.copy(n); this.camera.lookAt(T);
   }
-  render() {
-    if (this.clouds) this.clouds.material.opacity = Math.max(0, Math.min(0.32, (this.view.dist - 1.25) * 0.5)); this.placeCamera(); this.renderer.render(this.scene, this.camera); this.layout(); }
+  render(full = true) {
+    if (this.clouds) this.clouds.material.opacity = Math.max(0, Math.min(0.32, (this.view.dist - 1.25) * 0.5));
+    if (full) this.placeCamera();
+    this.renderer.render(this.scene, this.camera);
+    if (full) this.layout();
+  }
   project(lon, lat, lift = 0) {
-    const p = toVec(lon, lat, 1.001 + lift); const n = p.clone().normalize();
-    const facing = n.dot(this.camera.position.clone().sub(p).normalize());
-    const s = p.project(this.camera); const w = this.stage.clientWidth, h = this.stage.clientHeight;
-    return { x: (s.x + 1) / 2 * w, y: (1 - s.y) / 2 * h, ok: facing > 0.12 && s.z < 1 };
+    const r = 1.001 + lift, cl = Math.cos(lat * D2R);
+    const p = (this._pv = this._pv || new THREE.Vector3()).set(r * cl * Math.cos(lon * D2R), r * Math.sin(lat * D2R), -r * cl * Math.sin(lon * D2R));
+    const n = (this._nv = this._nv || new THREE.Vector3()).copy(p).normalize();
+    const facing = n.dot((this._dv = this._dv || new THREE.Vector3()).copy(this.camera.position).sub(p).normalize());
+    p.project(this.camera);
+    return { x: (p.x + 1) / 2 * this._w, y: (1 - p.y) / 2 * this._h, ok: facing > 0.12 && p.z < 1 };
   }
   buildOverlay() {
     this.ov.innerHTML = ''; this.items = [];
@@ -469,14 +510,19 @@ class Globe {
   }
   layout() {
     if (!this.items) return;
-    const zoom = Math.min(2.2, 0.42 / Math.max(0.04, this.view.dist - 1) ); const w = this.stage.clientWidth; const k = Math.max(0.7, Math.min(1.6, w / 1200)) * zoom;
+    this._w = this.stage.clientWidth; this._h = this.stage.clientHeight;
+    const zoom = Math.min(2.2, 0.42 / Math.max(0.04, this.view.dist - 1) ); const w = this._w; const k = Math.max(0.7, Math.min(1.6, w / 1200)) * zoom;
+    const SHIFT = { lbl: 'translate(-50%, -50%)', city: 'translate(6px, -100%)', tok: 'translate(-50%, -50%)', pin: 'translate(-50%, -100%)' };
     for (const it of this.items) {
       const p = this.project(it.lon, it.lat, it.kind === 'tok' ? (it.air ? 0.026 : 0.019) : 0);
-      if (!p.ok) { it.el.style.display = 'none'; continue; }
-      it.el.style.display = ''; it.el.style.left = p.x + 'px'; it.el.style.top = p.y + 'px';
-      if (it.kind === 'lbl') it.el.style.fontSize = Math.max(9, it.size * k) + 'px';
-      if (it.kind === 'city') it.el.style.display = zoom < 0.85 && !['London', 'Paris', 'Berlin', 'Warsaw', 'Rome', 'Moscow'].includes(it.el.textContent) ? 'none' : '';
-      if (it.kind === 'tok') it.el.classList.toggle('sel', this.selectedUnit === it.id);
+      let show = p.ok;
+      if (show && it.kind === 'city' && zoom < 0.85 && !['London', 'Paris', 'Berlin', 'Warsaw', 'Rome', 'Moscow'].includes(it.el.textContent)) show = false;
+      if (show !== it._show) { it.el.style.display = show ? '' : 'none'; it._show = show; }
+      if (!show) continue;
+      const x = Math.round(p.x * 2) / 2, y = Math.round(p.y * 2) / 2;
+      if (x !== it._x || y !== it._y) { it.el.style.transform = `translate3d(${x}px, ${y}px, 0) ${SHIFT[it.kind]}`; it._x = x; it._y = y; }
+      if (it.kind === 'lbl') { const fs = Math.max(9, it.size * k).toFixed(1); if (fs !== it._fs) { it.el.style.fontSize = fs + 'px'; it._fs = fs; } }
+      if (it.kind === 'tok') { const sel = this.selectedUnit === it.id; if (sel !== it._sel) { it.el.classList.toggle('sel', sel); it._sel = sel; } }
     }
   }
   bindInput() {
@@ -988,6 +1034,7 @@ export function start(root, props) {
       A = geo; imgs = { marble, water, topo, world, wwater, clouds }; await first;
       if (stopped) return;
       if (VIEW === 'map') {
+        BASE_CACHE = document.createElement('canvas'); BASE_CACHE.ready = false;
         patchCanvas = document.createElement('canvas'); patchCanvas.width = TW * TEXK; patchCanvas.height = TH * TEXK; paintTexture(patchCanvas, imgs, selected.id);
         mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n) => select('country', n), onUnit: (id) => select('unit', id) });
         mapGlobe.setTextures(world, patchCanvas, topo);
@@ -1003,5 +1050,5 @@ export function start(root, props) {
       console.error(e);
     }
   })();
-  return () => { stopped = true; clearTimeout(timer); clearInterval(cd); };
+  return () => { stopped = true; clearTimeout(timer); clearInterval(cd); [mapGlobe, delGlobe].forEach((g) => g && cancelAnimationFrame(g.raf)); };
 }

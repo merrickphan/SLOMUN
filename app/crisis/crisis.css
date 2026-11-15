@@ -313,3 +313,6 @@ button { cursor: pointer; }
 .row input[type=text], .row select, .row input[type=number] { background: #2A2D33; border: 1px solid var(--line); padding: 6px 8px; color: var(--text); font-size: 13px; }
 .storage { font-size: 12px; color: var(--muted); }
 .storage b { color: var(--warn); }
+
+/* Performance: on-map labels are positioned with transforms from the top-left of the overlay. */
+.overlay .lbl, .overlay .city, .overlay .tok, .overlay .pin { left: 0; top: 0; will-change: transform; }
