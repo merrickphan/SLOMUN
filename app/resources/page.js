@@ -6,7 +6,7 @@ const guides = [
   ['SOCHUM', 'Modern Slavery and Human Trafficking'],
   ['CRISPR & Genetic Engineering Ethics', 'Crisis Committee'],
   ['Early WWII (Europe)', 'Crisis Committee'],
-  ['Modern AGI Emergency Summit', 'Crisis Committee'],
+  ['Modern AGI Emergency Summit', 'Crisis Committee', '/guides/modern-agi-emergency-summit.pdf'],
 ];
 
 export default function Resources() {
@@ -17,11 +17,17 @@ export default function Resources() {
       </div>
       <h2 className="heading">Background Guides</h2>
       <div className="cards">
-        {guides.map(([t, d]) => (
+        {guides.map(([t, d, href]) => (
           <div className="card" key={t}>
             <h3>{t}</h3>
             <p>{d}</p>
-            <span className="card-link">Coming soon</span>
+            {href ? (
+              <a className="card-link card-link-active" href={href} target="_blank" rel="noopener">
+                Download guide (PDF) →
+              </a>
+            ) : (
+              <span className="card-link">Coming soon</span>
+            )}
           </div>
         ))}
       </div>

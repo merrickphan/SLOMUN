@@ -419,3 +419,10 @@ html[data-intro='done'] .intro:not(.intro-lift) { display: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Committee tiles that open a background guide */
+a.tile-link { text-decoration: none; }
+a.tile-link:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3px; }
+.tile-cta { margin-top: 10px !important; font-family: var(--caps); font-size: 13px !important; letter-spacing: 0.08em; text-transform: uppercase; color: var(--yellow); opacity: 1 !important; }
+.card-link-active { color: var(--ink); border-bottom: 2px solid var(--yellow); align-self: flex-start; }
+.card-link-active:hover { background: var(--yellow); }

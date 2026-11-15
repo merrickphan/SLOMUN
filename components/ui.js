@@ -38,16 +38,23 @@ export function Page({ title, image, children }) {
 }
 
 export function CommitteeTile({ committee, line }) {
-  return (
-    <div
-      className="tile"
-      style={{ backgroundImage: `linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)), url(${committee.image})` }}
-    >
+  const style = { backgroundImage: `linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)), url(${committee.image})` };
+  const inner = (
+    <>
       <img src="/images/crest.png" alt="" className="tile-crest" />
       <div>
         <h3>{committee.name}</h3>
         {line && <p>{line}</p>}
+        {committee.guide && <p className="tile-cta">Read the background guide →</p>}
       </div>
-    </div>
+    </>
   );
+  if (committee.guide) {
+    return (
+      <a className="tile tile-link" href={committee.guide} target="_blank" rel="noopener" style={style}>
+        {inner}
+      </a>
+    );
+  }
+  return <div className="tile" style={style}>{inner}</div>;
 }
