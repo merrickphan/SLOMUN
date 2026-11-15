@@ -45,16 +45,13 @@ export function CommitteeTile({ committee, line }) {
       <div>
         <h3>{committee.name}</h3>
         {line && <p>{line}</p>}
-        {committee.guide && <p className="tile-cta">Read the background guide →</p>}
+        <p className="tile-cta">View committee →</p>
       </div>
     </>
   );
-  if (committee.guide) {
-    return (
-      <a className="tile tile-link" href={committee.guide} target="_blank" rel="noopener" style={style}>
-        {inner}
-      </a>
-    );
-  }
-  return <div className="tile" style={style}>{inner}</div>;
+  return (
+    <Link className="tile tile-link" href={`/committees/${committee.slug}`} style={style}>
+      {inner}
+    </Link>
+  );
 }

@@ -426,3 +426,26 @@ a.tile-link:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3p
 .tile-cta { margin-top: 10px !important; font-family: var(--caps); font-size: 13px !important; letter-spacing: 0.08em; text-transform: uppercase; color: var(--yellow); opacity: 1 !important; }
 .card-link-active { color: var(--ink); border-bottom: 2px solid var(--yellow); align-self: flex-start; }
 .card-link-active:hover { background: var(--yellow); }
+
+/* Committee detail page */
+.facts { display: grid; grid-template-columns: repeat(4, 1fr); margin: 16px 0 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.fact { padding: 24px 20px; min-width: 0; }
+.fact + .fact { border-left: 1px solid var(--line); }
+.fact dt { font-family: var(--caps); font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-600); margin-bottom: 8px; }
+.fact dd { margin: 0; font-family: var(--display); font-weight: 700; font-size: 26px; line-height: 1.2; }
+.fact dd.tba { font-weight: 600; color: var(--ink-600); font-size: 22px; }
+.briefing { display: flex; justify-content: center; padding: 16px 0 8px; }
+.btn-disabled { background: var(--gray-50); color: var(--ink-600); cursor: default; }
+.btn-disabled:hover { transform: none; }
+.back-link { font-family: var(--caps); font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; }
+.back-link:hover { color: var(--yellow-700, #8f6c00); }
+@media (max-width: 1100px) {
+  .facts { grid-template-columns: 1fr 1fr; }
+  .fact:nth-child(3) { border-left: 0; }
+  .fact:nth-child(n+3) { border-top: 1px solid var(--line); }
+}
+@media (max-width: 640px) {
+  .facts { grid-template-columns: 1fr; }
+  .fact + .fact { border-left: 0; border-top: 1px solid var(--line); }
+  .fact dd { font-size: 22px; }
+}

@@ -13,7 +13,7 @@ function Block({ title, desc, items, single }) {
         <p className="serif">{desc}</p>
         <div className={`tiles${single ? ' tiles-single' : ' tiles-3'}`}>
           {items.map((c) => (
-            <CommitteeTile key={c.name} committee={c} line={c.topic || (c.guide ? 'Crisis Committee' : 'Background guide coming soon')} />
+            <CommitteeTile key={c.name} committee={c} line={c.topic || 'Crisis Committee'} />
           ))}
         </div>
       </div>
