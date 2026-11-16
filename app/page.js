@@ -53,6 +53,7 @@ export default function Home() {
             <p className="serif">Sincerely,</p>
             <div className="sg-signatures">
               <img src="/images/signature-merrick-han.png" alt="Signature of Merrick Han" />
+              <img className="sig-diya" src="/images/signature-diya-menon.png" alt="Signature of Diya Menon" />
             </div>
             <p className="signature">Merrick Han and Diya Menon</p>
             <p className="small muted">
@@ -67,7 +68,6 @@ export default function Home() {
           </div>
           <div className="portrait">
             <div className="portrait-accent" />
-            {/* The two portraits fade into each other; with reduced motion they sit side by side. */}
             <div className="sg-photos">
               <figure className="sg-photo">
                 <img src="/images/sg-merrick-han.jpg" alt="Merrick Han, Co-Secretary General" />
