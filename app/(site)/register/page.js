@@ -1,25 +1,25 @@
-import PlaceholderForm from '@/components/PlaceholderForm';
 import { Page } from '@/components/ui';
 
 export const metadata = { title: 'Register | SLOMUN' };
+
+// Delegate registration runs on Google Forms; responses go straight to the form's owner.
+const FORM = 'https://docs.google.com/forms/d/1VGidEJs3Z0M3SArkq6Rnh8Cen8mx0AGdoZ5csB1fefU/viewform';
 
 export default function Register() {
   return (
     <Page title="Register" image="/images/register-banner.png">
       <div className="prose">
-        <p>Registration for the second session of SLOMUN will open soon. Fees and deadlines will be posted on this page.</p>
+        <p>Register for the second session of SLOMUN by filling out the delegate registration form below. Fees and deadlines will be posted on this page.</p>
       </div>
       <hr />
-      <h2 className="heading">Registration Form</h2>
-      <PlaceholderForm
-        rows={[
-          [['School name', 'School name'], ['Faculty advisor', 'Full name']],
-          [['Advisor email', 'Email address', 'email'], ['Number of delegates', 'Enter a number', 'number']],
-        ]}
-        textarea={['Committee preferences', 'List committees in order of preference']}
-        submit="Submit Registration"
-        notice="Registration is not open yet. Check back soon."
-      />
+      <div className="formhead">
+        <h2 className="heading">Delegate Registration Form</h2>
+        <a className="btn btn-light" href={FORM} target="_blank" rel="noopener noreferrer">Open the form in a new tab</a>
+      </div>
+      <div className="formembed">
+        <iframe src={`${FORM}?embedded=true`} title="SLOMUN delegate registration form" loading="lazy">Loading the registration form…</iframe>
+      </div>
+      <p className="formnote-site">Trouble with the form? <a href={FORM} target="_blank" rel="noopener noreferrer">Open it directly on Google Forms</a>.</p>
     </Page>
   );
 }
