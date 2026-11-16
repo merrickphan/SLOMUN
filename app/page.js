@@ -51,6 +51,9 @@ export default function Home() {
             </p>
             <p className="serif">We look forward to welcoming you to San Luis Obispo MUN II on April 3 and 4, 2027!</p>
             <p className="serif">Sincerely,</p>
+            <div className="sg-signatures">
+              <img src="/images/signature-merrick-han.png" alt="Signature of Merrick Han" />
+            </div>
             <p className="signature">Merrick Han and Diya Menon</p>
             <p className="small muted">
               Co-Secretary Generals

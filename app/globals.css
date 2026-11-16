@@ -479,3 +479,5 @@ a.tile-link:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3p
   .sg-photo figcaption { animation: none; }
   .sg-photo figcaption { font-size: 16px; }
 }
+.sg-signatures { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 32px; margin: -8px 0 -12px; }
+.sg-signatures img { width: min(240px, 60%); height: auto; }
