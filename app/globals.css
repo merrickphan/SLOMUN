@@ -470,5 +470,9 @@ a.tile-link:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3p
 .sg-signatures { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 32px; margin: -8px 0 -12px; }
 .sg-signatures img { width: min(240px, 46%); height: auto; }
 .sg-signatures img.sig-diya { width: min(170px, 34%); }
-.portrait:has(.sg-photos) .portrait-accent { bottom: 108px; }
+/* Each photo carries its own yellow offset, so nothing can sit behind the names at any width. */
+.portrait:has(.sg-photos) { padding: 0 14px 0 0; }
+.portrait:has(.sg-photos) .portrait-accent { display: none; }
+.sg-photo img { box-shadow: 14px 14px 0 var(--yellow); }
+.sg-photo figcaption { margin-top: 24px; }
 @media (max-width: 1100px) { .letter:has(.sg-photos) .portrait { order: -1; } }
