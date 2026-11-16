@@ -9,7 +9,7 @@ const faqs = [
   ['What committees are offered?', 'SOCHUM (Modern Slavery and Human Trafficking), CRISPR & Genetic Engineering Ethics, Early WWII, and the Modern AGI Emergency Summit.'],
   ['What is a crisis committee?', 'Crisis committees are fast-paced. Delegates represent individual characters and respond to developing events through directives and crisis notes.'],
   ['Do I need to write a position paper?', 'Position paper guidelines will be posted on the Position Paper page.'],
-  ['How do I register?', 'Registration details will be posted on the Register page.'],
+  ['How do I register?', 'Fill out the delegate registration form on the Register page.'],
   ['How can I contact the Secretariat?', 'Use the form on the Contact Us page.'],
 ];
 

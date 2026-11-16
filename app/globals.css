@@ -449,3 +449,12 @@ a.tile-link:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3p
   .fact + .fact { border-left: 0; border-top: 1px solid var(--line); }
   .fact dd { font-size: 22px; }
 }
+
+/* Register page: embedded Google Form */
+.formhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.formhead .btn { width: auto; }
+.formembed { margin-top: 24px; border: 2px solid var(--ink); background: var(--white); }
+.formembed iframe { display: block; width: 100%; height: min(1800px, 160vh); border: 0; }
+.formnote-site { margin-top: 12px; font-size: 15px; }
+.formnote-site a { text-decoration: underline; }
+@media (max-width: 640px) { .formembed iframe { height: 1600px; } }

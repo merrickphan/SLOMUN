@@ -72,7 +72,7 @@ export default function Home() {
 
       <section className="section section-gray center">
         <h2 className="display">Registration</h2>
-        <p className="lead">Registration details for the second session will be posted soon.</p>
+        <p className="lead">Registration for the second session is open. Fill out the delegate registration form to sign up.</p>
         <Button href="/register">Register</Button>
       </section>
     </>
