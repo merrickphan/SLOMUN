@@ -10,7 +10,7 @@ export default function Home() {
         <div className="hero-content">
           <p className="hero-eyebrow roll" style={{ '--d': '0s' }}>The Second Session</p>
           <h1 className="hero-title roll" style={{ '--d': '.08s' }}>San Luis Obispo Model United Nations</h1>
-          <p className="hero-meta roll" style={{ '--d': '.5s' }}>April 3, 2027</p>
+          <p className="hero-meta roll" style={{ '--d': '.5s' }}>April 3–4, 2027</p>
           <div className="roll" style={{ '--d': '.6s' }}>
             <Button href="/register" variant="white" arrow={false}>Register Here</Button>
           </div>
@@ -49,7 +49,7 @@ export default function Home() {
               share their ideas. Should you have any questions or concerns before the conference, please do not hesitate to
               reach out to us!
             </p>
-            <p className="serif">We look forward to welcoming you to San Luis Obispo MUN II on April 3, 2027!</p>
+            <p className="serif">We look forward to welcoming you to San Luis Obispo MUN II on April 3 and 4, 2027!</p>
             <p className="serif">Sincerely,</p>
             <p className="signature">Merrick Han and Diya Menon</p>
             <p className="small muted">
