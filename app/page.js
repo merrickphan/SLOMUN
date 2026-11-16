@@ -21,26 +21,60 @@ export default function Home() {
       </section>
 
       <section className="section" id="letter">
-        <h2 className="display">Hello Esteemed Delegates and Advisors,</h2>
-        <p className="serif">
-          It is our honor to welcome you to the second session of San Luis Obispo Model United Nations, hosted at San
-          Luis Obispo High School. This session features four committees: the Social, Humanitarian &amp; Cultural
-          Committee on Modern Slavery and Human Trafficking, and three crisis committees on CRISPR &amp; Genetic
-          Engineering Ethics, Early WWII, and a Modern AGI Emergency Summit.
-        </p>
+        <h2 className="display">Dear Delegates and Faculty Advisors,</h2>
         <div className="letter">
           <div className="letter-text">
-            <p className="serif muted">
-              [Secretary-General’s welcome message. Introduce yourself, share what delegates can expect at SLOMUN, and
-              invite advisors to reach out with questions.]
+            <p className="serif">
+              It is our great pleasure to invite you to the Second Session of San Luis Obispo Model United Nations! We are
+              Merrick Han and Diya Menon, sophomores at San Luis Obispo High School, and we are honored to serve as your
+              Co-Secretary Generals. Together with our secretariat, we have spent months preparing a conference that will
+              challenge, inspire, and help you explore complex topics.
             </p>
+            <p className="serif">
+              At San Luis Obispo High School, SLOMUN exists to make Model United Nations accessible and enjoyable to all
+              students on the Central Coast. We believe the skills delegates build in committee matter far beyond just Model
+              UN. This two day session is open to delegates of every experience level, whether you are attending your very
+              first conference or have been debating for years.
+            </p>
+            <p className="serif">
+              This session features four committees that span the past, present, and future. Delegates in <b>SOCHUM</b> will
+              take on questions of human rights, while our <b>CRISPR</b> committee will confront the ethics of genetic
+              engineering. In our <b>Early WWII</b> crisis committee, delegates will step into the roles of real commanders in
+              1939, where every decision plays out live on an interactive map. At the <b>AGI Summit</b>, delegates will race
+              to set guardrails on artificial intelligence before it outpaces the world&rsquo;s ability to govern it. Across
+              all four scopes, we hope that delegates will leave with a broader view of the world, and the confidence to lead!
+            </p>
+            <p className="serif">
+              Above all, we are committed to creating an environment where every delegate feels respected and encouraged to
+              share their ideas. Should you have any questions or concerns before the conference, please do not hesitate to
+              reach out to us!
+            </p>
+            <p className="serif">We look forward to welcoming you to San Luis Obispo MUN II on April 3, 2027!</p>
             <p className="serif">Sincerely,</p>
-            <p className="signature">[Name]</p>
-            <p className="small muted">Secretary-General, SLOMUN II</p>
+            <p className="signature">Merrick Han and Diya Menon</p>
+            <p className="small muted">
+              Co-Secretary Generals
+              <br />
+              San Luis Obispo Model United Nations, Session II
+              <br />
+              <a href="mailto:merrickphan2011@gmail.com">merrickphan2011@gmail.com</a>
+              <br />
+              <a href="mailto:diyavinilm@gmail.com">diyavinilm@gmail.com</a>
+            </p>
           </div>
           <div className="portrait">
             <div className="portrait-accent" />
-            <div className="photo-placeholder">Secretary-General photo</div>
+            {/* The two portraits fade into each other; with reduced motion they sit side by side. */}
+            <div className="sg-photos">
+              <figure className="sg-photo">
+                <img src="/images/sg-merrick-han.jpg" alt="Merrick Han, Co-Secretary General" />
+                <figcaption>Merrick Han<span>Co-Secretary General</span></figcaption>
+              </figure>
+              <figure className="sg-photo">
+                <img src="/images/sg-diya-menon.jpg" alt="Diya Menon, Co-Secretary General" />
+                <figcaption>Diya Menon<span>Co-Secretary General</span></figcaption>
+              </figure>
+            </div>
           </div>
         </div>
       </section>
