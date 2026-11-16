@@ -161,7 +161,7 @@ Crisis director, 2 to 3 backroom staff, the chair, plus 2 or 3 friends playing d
 - [ ] Projector laptop plus classroom projector: check that **Full screen** works and text is readable from the back row.
 - [ ] Check the school network does not block `*.vercel.app` or `slomun.com`.
 
-### 4. Full dress rehearsal (1 to 2 weeks before April 3)
+### 4. Full dress rehearsal (1 to 2 weeks before April 3 and 4)
 Fill as many of the 22 seats as possible with volunteers and run 45 to 60 minutes exactly as on the day. Keep paper directive forms and note slips ready, and practice switching to paper for 5 minutes as a Wi-Fi-failure drill.
 
 ### On the morning
