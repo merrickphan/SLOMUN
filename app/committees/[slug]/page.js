@@ -40,7 +40,7 @@ export default async function CommitteePage({ params }) {
       <div className="briefing">
         {c.guide ? (
           <a className="btn btn-gold" href={c.guide} target="_blank" rel="noopener">
-            Topic Briefing
+            Open Background Guide (PDF)
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -49,6 +49,11 @@ export default async function CommitteePage({ params }) {
           <span className="btn btn-disabled" aria-disabled="true">Topic Briefing coming soon</span>
         )}
       </div>
+      {c.guide && (
+        <div className="guide-embed">
+          <iframe src={`${c.guide}#view=FitH`} title={`${c.name} Background Guide`} loading="lazy" />
+        </div>
+      )}
       <hr />
       <Link className="back-link" href="/committees">← All committees</Link>
     </Page>
