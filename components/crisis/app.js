@@ -1157,8 +1157,9 @@ function renderMailbox() {
   mb.hidden = !n || !!LETTER;
   if (top) {
     mb.className = 'mailbox ' + top.kind + (mb.classList.contains('arrive') ? ' arrive' : '');
-    $('mb-title').textContent = top.kind === 'reply' ? 'Crisis staff replied' : top.kind === 'note' ? `Note from ${top.m.from}` : 'New intel';
-    $('mb-sub').textContent = top.kind === 'intel' ? top.r.from : top.kind === 'note' && top.m.intercepted ? 'Intercepted by your agent' : 'Click to open';
+    $('mb-title').textContent = top.kind === 'reply' ? 'Crisis staff replied' : top.kind === 'note' ? `Note from ${top.m.from}` : top.kind === 'bloc' ? top.b.name : 'New intel';
+    $('mb-sub').textContent = top.kind === 'intel' ? top.r.from : top.kind === 'note' && top.m.intercepted ? 'Intercepted by your agent' : top.kind === 'bloc' ? `New note from ${top.m.from}` : 'Click to open';
+    if (top.kind === 'bloc') mb.classList.replace('bloc', 'note');
   }
   $('mb-n').textContent = n; $('mb-n').hidden = n < 2;
   if (n > was && !mb.hidden && !CALM()) { mb.classList.remove('arrive'); void mb.offsetWidth; mb.classList.add('arrive'); }
@@ -1167,7 +1168,7 @@ function openMail() {
   const top = mailItems()[0]; if (!top) return;
   if (top.kind === 'reply') return openLetter();
   MAILQ = MAILQ.filter((x) => x !== top);
-  if (top.kind === 'note') openMsg(top.m); else openIntel(top.r);
+  if (top.kind === 'note') openMsg(top.m); else if (top.kind === 'bloc') openBloc(top.b.id); else openIntel(top.r);
   renderMailbox();
 }
 function openIntel(r) {
@@ -1205,7 +1206,8 @@ const opt = (arr, sel) => arr.map((d) => `<option${d === sel ? ' selected' : ''}
 const PEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>';
 const PLANE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5 2.5 7z"/><path d="m21 3-11 10"/></svg>';
 const CASE_SVG = '<svg class="case" viewBox="0 0 32 28" aria-hidden="true"><rect x="2" y="8" width="28" height="18" rx="2.5" fill="#7A4A2A"/><rect x="2" y="8" width="28" height="7" rx="2.5" fill="#8E5A34"/><path d="M11 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" fill="none" stroke="#3A2414" stroke-width="2.2"/><rect x="7" y="13" width="4" height="4" rx="1" fill="#D8B24A"/><rect x="21" y="13" width="4" height="4" rx="1" fill="#D8B24A"/></svg>';
-const OVERLAYS = () => ['letterpop', 'reader', 'brief', 'compose', 'mcompose', 'lap'].map($).filter(Boolean);
+const GROUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2A5 5 0 0 1 21 19"/></svg>';
+const OVERLAYS = () => ['letterpop', 'reader', 'brief', 'compose', 'mcompose', 'lap', 'chat', 'bcompose'].map($).filter(Boolean);
 const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button" data-z="feat" class="featbtn" aria-pressed="${SHOW_FEAT}" aria-label="Show map features" title="Show map features (trenches, bunkers, factories)">${fIcon('fort')}</button><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="reset" aria-label="Reset view">FIT</button></div>`;
 const DATECARD = `<div class="date glass num"><span class="date-line"></span><small class="countdown">Next crisis update in <b>15:00</b></small></div>`;
 
@@ -1345,7 +1347,8 @@ function skeleton(p) {
       <div id="p-dir" role="tabpanel" aria-labelledby="t-dir" hidden></div>
       <div id="p-intel" role="tabpanel" aria-labelledby="t-intel" hidden><div class="reqs" id="intel"></div></div>
       <div id="p-msg" role="tabpanel" aria-labelledby="t-msg" hidden>
-        <button type="button" class="send launch" id="open-msg">${PEN}Pass a note</button>
+        <div class="launchrow"><button type="button" class="send launch" id="open-msg">${PEN}Pass a note</button><button type="button" class="send launch alt" id="open-bloc">${GROUP}New bloc</button></div>
+        <div class="reqs" id="blocs"></div>
         <div class="reqs" id="msgs"></div></div>
     </aside></div>
     <div class="dock"><div class="warbar" id="warbar" aria-live="polite"></div>
@@ -1361,6 +1364,15 @@ function skeleton(p) {
   <div class="compose" id="mcompose" hidden><div class="cpaper lined torn"><header class="chead"><p class="ck">Pass a note</p></header><form class="mform" id="msg-form" novalidate><fieldset class="notepick"><legend>Pass a note to</legend>${ORDER.map((c) => { const rs = ROSTER.filter((r) => r.country === c && r.name !== (AS || p.session?.name)); return rs.length ? `<div class="npc">${flag(c)}${rs.map((r) => `<label><input type="checkbox" value="${esc(r.name)}"><span>${esc(r.name)}</span></label>`).join('')}</div>` : ''; }).join('')}</fieldset>
           <label for="msg-text" class="sr">Note</label><textarea id="msg-text" maxlength="1200" placeholder="Private note. Crisis staff read every note, and enemy spies in your country or theirs may intercept it."></textarea>
           <div class="cbtns"><button type="button" class="lbtn" data-cclose>Cancel</button><button type="submit" class="lbtn main">${PLANE}Pass the note</button></div></form></div></div>
+  <div class="compose" id="bcompose" hidden><div class="cpaper"><header class="chead"><p class="cto">New bloc</p><p class="formnote">A standing group for passing notes. Everyone in it sees every note. Crisis staff read everything, and spies can intercept.</p></header>
+    <form class="mform" id="bloc-form" novalidate><label class="formnote" for="bloc-name">Name<input type="text" id="bloc-name" maxlength="50" placeholder="For example: Western Allies war council"></label>
+      <fieldset class="notepick"><legend>Invite</legend>${ORDER.map((c) => { const rs = ROSTER.filter((r) => r.country === c && r.name !== (AS || p.session?.name)); return rs.length ? `<div class="npc">${flag(c)}${rs.map((r) => `<label><input type="checkbox" value="${esc(r.name)}"><span>${esc(r.name)}</span></label>`).join('')}</div>` : ''; }).join('')}</fieldset>
+      <div class="cbtns"><button type="button" class="lbtn" data-cclose>Cancel</button><button type="submit" class="lbtn main">Create bloc</button></div></form></div></div>
+  <div class="chat" id="chat" hidden><section class="chatwin" role="dialog" aria-modal="true" aria-labelledby="ch-name">
+    <header class="chhead"><span class="chicon">${GROUP}</span><div class="chtitle"><b id="ch-name"></b><span id="ch-members"></span></div><button type="button" class="dbtn" id="ch-invite">Invite</button><button type="button" class="dbtn" id="ch-leave">Leave</button><button type="button" class="dx" id="ch-close" aria-label="Close">✕</button></header>
+    <div class="chinv" id="ch-inv" hidden><div class="npc" id="ch-invlist"></div><div class="row"><button type="button" class="dbtn gold" id="ch-invgo">Invite</button></div></div>
+    <div class="chlog" id="ch-log" aria-live="polite"></div>
+    <form class="chform" id="ch-form" novalidate><textarea id="ch-text" rows="2" maxlength="1200" placeholder="Write to the bloc. Enter sends, Shift+Enter for a new line."></textarea><button type="submit" class="lbtn main">${PLANE}Send</button></form></section></div>
   <div class="lap" id="lap" hidden><div class="laptop"><div class="lscreen"><div class="docs" id="docs"></div></div><div class="lbase"><i></i></div></div></div>
   <div class="reader" id="reader" hidden><article class="rcard" id="rd-card" role="dialog" aria-modal="true" aria-labelledby="rd-title"><div class="rpaper" id="rd-paper"></div>
     <div class="rbtns"><button type="button" class="lbtn main" id="rd-close">Close</button></div></article></div>
@@ -1518,12 +1530,19 @@ let action = 'secret', visibility = 'private', pickedForce = null, drafting = fa
 const myUnits = () => UNITS.filter((x) => x.owner === ME && MEE.commands.includes(x.kind));
 const TO = () => ORDER.filter((n) => n !== ME).map((n) => POWERS[n].label).concat(['Romania', 'Turkey', 'Belgium', 'Netherlands']);
 
-let seenReq = null, seenIntel = null, seenMsg = null, seenSign = null, seenDraft = null;
+let seenReq = null, seenIntel = null, seenMsg = null, seenSign = null, seenDraft = null, seenBlocs = null;
 function notifyDelegate() {
   const Q = STATE.queue || [], I = STATE.intel || [];
   if (seenIntel != null && I.length > seenIntel) { I.slice(0, I.length - seenIntel).reverse().forEach((r) => MAILQ.push({ kind: 'intel', key: 'i:' + r.from + '|' + r.text, r })); $('t-intel').classList.add('ping'); }
   const inbox = (STATE.messages || []).filter((m) => m.from !== MEE.name);
-  if (seenMsg != null && inbox.length > seenMsg) { inbox.slice(seenMsg).forEach((m) => MAILQ.push({ kind: 'note', key: 'm:' + m.id, m })); $('t-msg').classList.add('ping'); }
+  if (seenMsg != null && inbox.length > seenMsg) { inbox.slice(seenMsg).forEach((m) => {
+    const b = m.bloc && !m.intercepted && (STATE.blocs || []).find((x) => x.id === m.bloc);
+    if (b) { if (CHAT === b.id) return; MAILQ = MAILQ.filter((x) => x.key !== 'b:' + b.id); MAILQ.push({ kind: 'bloc', key: 'b:' + b.id, b, m }); }
+    else MAILQ.push({ kind: 'note', key: 'm:' + m.id, m });
+  }); $('t-msg').classList.add('ping'); }
+  const blocIds = new Set((STATE.blocs || []).map((b) => b.id));
+  if (seenBlocs) for (const b of STATE.blocs || []) if (!seenBlocs.has(b.id) && b.owner !== MEE.name) notify({ kind: 'note', title: `You were added to ${b.name}`, body: `${b.owner} started a bloc with ${b.members.length - 1} others.`, action: { label: 'Open it', run: () => openBloc(b.id) }, ms: 7000 });
+  seenBlocs = blocIds;
   seenMsg = inbox.length;
   const askSign = (STATE.directives || []).filter((d) => d.status === 'signing' && d.requested.includes(MEE.name) && !d.signed.includes(MEE.name));
   if (seenSign) for (const d of askSign) if (!seenSign.has(d.id)) notify({ kind: 'sign', title: 'You were asked to sign a directive', body: d.title, action: { label: 'Open Directives', run: () => showTab('dir') }, ms: 7000 });
@@ -1697,6 +1716,40 @@ function openReader(o) {
   setTimeout(() => $('rd-close').focus({ preventScroll: true }), CALM() ? 0 : 500);
 }
 function closeReader() { const el = $('reader'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'reader'; }, CALM() ? 0 : 240); }
+/* ---------- Blocs: group chats for passing notes ---------- */
+let CHAT = null; const BLOC_SEEN = {};
+const blocMsgs = (id) => (STATE.messages || []).filter((m) => m.bloc === id && !m.intercepted);
+function renderBlocs() {
+  const box = $('blocs'); if (!box) return; const me = MEE.name;
+  if (!renderBlocs.ready) { for (const b of STATE.blocs || []) BLOC_SEEN[b.id] = blocMsgs(b.id).filter((m) => m.from !== me).length; renderBlocs.ready = true; }
+  for (const b of STATE.blocs || []) if (!(b.id in BLOC_SEEN) && b.owner === me) BLOC_SEEN[b.id] = 0;
+  box.innerHTML = (STATE.blocs || []).map((b) => { const ms = blocMsgs(b.id); const last = ms[ms.length - 1]; const unread = ms.filter((m) => m.from !== me).length > (BLOC_SEEN[b.id] ?? 0);
+    return `<button type="button" class="req tap blocrow${unread ? ' unread' : ''}" data-bloc="${b.id}"><b>${esc(b.name)}</b><span class="formnote">${b.members.length} members</span><small>${last ? `${last.from === me ? 'You' : esc(last.from.split(' ').slice(-1)[0])}: ${esc(last.text)}` : 'No notes yet'}</small><i class="chev" aria-hidden="true">›</i></button>`; }).join('');
+}
+function openBloc(id) {
+  CHAT = id; MAILQ = MAILQ.filter((x) => x.key !== 'b:' + id); renderMailbox(); $('ch-inv').hidden = true;
+  const el = $('chat'); el.className = 'chat'; el.hidden = true; void el.offsetWidth; el.hidden = false; renderChat(true);
+  setTimeout(() => $('ch-text').focus({ preventScroll: true }), CALM() ? 0 : 300);
+}
+function closeBloc() { const el = $('chat'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'chat'; CHAT = null; renderBlocs(); }, CALM() ? 0 : 220); }
+function renderChat(jump) {
+  const b = (STATE.blocs || []).find((x) => x.id === CHAT); if (!b) { if (CHAT) { notify({ title: 'You are no longer in that bloc' }); closeBloc(); } return; }
+  const me = MEE.name; const ms = blocMsgs(b.id); BLOC_SEEN[b.id] = ms.filter((m) => m.from !== me).length;
+  $('ch-name').textContent = b.name; $('ch-members').textContent = b.members.map((n) => (n === me ? 'you' : n)).join(', ');
+  const log = $('ch-log'); const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  const sig = ms.map((m) => m.id).join(); if (log.dataset.sig !== sig) {
+    log.dataset.sig = sig;
+    log.innerHTML = ms.map((m, i) => { const mine = m.from === me; const first = i === 0 || ms[i - 1].from !== m.from;
+      return `<div class="chmsg${mine ? ' mine' : ''}${first ? ' first' : ''}">${first && !mine ? `<span class="chwho" style="color:${authCol(m.from)}">${esc(m.from)} <small>${esc(POWERS[S.rosterEntry(m.from)?.country]?.label || '')}</small></span>` : ''}<p>${esc(m.text)}</p><time>${esc(m.time)}</time></div>`; }).join('') || '<p class="formnote chempty">No notes yet. Say hello to the bloc.</p>';
+    if (jump || atBottom) log.scrollTop = log.scrollHeight;
+  }
+  $('ch-invlist').innerHTML = ROSTER.filter((r) => !b.members.includes(r.name)).map((r) => `<label><input type="checkbox" value="${esc(r.name)}"><span>${esc(r.name)}</span></label>`).join('') || '<span class="formnote">Everyone is already in this bloc.</span>';
+  renderBlocs();
+}
+async function sendChat(e) {
+  e?.preventDefault(); const t = $('ch-text'); const text = t.value.trim(); if (!text || !CHAT) return;
+  t.value = ''; if (!(await act({ type: 'msg.send', bloc: CHAT, text }, { quiet: true }))) t.value = text; else { renderChat(true); $('ch-log').scrollTop = $('ch-log').scrollHeight; }
+}
 function renderIntel() {
   const I = STATE.intel || []; setCount($('c-intel'), I.length);
   const fresh = freshKeys('intel', I.map((r) => r.from + '|' + r.text));
@@ -1704,7 +1757,9 @@ function renderIntel() {
   $('intel').innerHTML = I.map((r, i) => { const k = 'i:' + r.from + '|' + r.text; return `<button type="button" class="req tap${fresh.has(r.from + '|' + r.text) ? ' new' : ''}${READ.has(k) ? '' : ' unread'}" data-intel="${i}"><b>${esc(r.from)}</b><span class="pill rel-${esc(r.rel).toLowerCase()}">${esc(r.rel)}</span><small>${esc(r.text)}</small><i class="chev" aria-hidden="true">›</i></button>`; }).join('') || '<p class="formnote">No intelligence yet. Send spies to learn more.</p>';
 }
 function renderMessages() {
-  const M = (STATE.messages || []).slice().reverse(); const me = MEE.name; setCount($('c-msg'), M.filter((m) => m.from !== me).length);
+  const myBlocs = STATE.blocs || []; const inBloc = (m) => m.bloc && myBlocs.some((b) => b.id === m.bloc) && !m.intercepted;
+  const M = (STATE.messages || []).filter((m) => !inBloc(m)).slice().reverse(); const me = MEE.name; setCount($('c-msg'), (STATE.messages || []).filter((m) => m.from !== me).length);
+  renderBlocs(); if (CHAT) renderChat();
   const fresh = freshKeys('msg', M.map((m) => m.id));
   MSG_LIST = M;
   $('msgs').innerHTML = M.map((m, i) => `<button type="button" class="req tap msg${fresh.has(m.id) ? ' new' : ''}${m.from === me ? ' mine' : ''}${m.intercepted ? ' intercepted' : ''}${m.from === me || READ.has('m:' + m.id) ? '' : ' unread'}" data-msg="${i}"><b>${m.intercepted ? 'Intercepted: ' : ''}${m.from === me ? 'You' : esc(m.from)} → ${(m.to || []).map((n) => n === me ? 'you' : esc(n)).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small><i class="chev" aria-hidden="true">›</i></button>`).join('') || '<p class="formnote">No notes yet. Pass private notes to other delegates to plan together. Crisis staff read everything, and spies can intercept notes.</p>';
@@ -2437,6 +2492,8 @@ export function start(root, props) {
       if (e.key === 'Escape' && !$('reader').hidden) { closeReader(); return; }
       if (e.key === 'Escape' && !$('brief').hidden) { closeBrief(); return; }
       if (e.key === 'Escape' && !$('lap').hidden) { closeLaptop(); return; }
+      if (e.key === 'Escape' && !$('chat').hidden) { closeBloc(); return; }
+      if (e.key === 'Escape' && !$('bcompose').hidden) { closeCompose('bcompose'); return; }
       if (e.key === 'Escape' && !$('compose').hidden && !$('compose').classList.contains('min')) { closeCompose(); return; }
       if (e.key === 'Escape' && !$('mcompose').hidden) { closeCompose('mcompose'); return; }
       if (e.key === 'Escape' && !$('letterpop').hidden) { closeLetter(); return; }
@@ -2453,8 +2510,19 @@ export function start(root, props) {
     $('brief-btn').addEventListener('click', openBrief); $('brief-close').addEventListener('click', closeBrief);
     $('brief').addEventListener('click', (e) => { if (e.target.id === 'brief' || e.target.classList.contains('bstage')) closeBrief(); });
     $('open-msg').addEventListener('click', () => openCompose('mcompose'));
+    $('open-bloc').addEventListener('click', () => openCompose('bcompose'));
+    $('blocs').addEventListener('click', (e) => { const b = e.target.closest('[data-bloc]'); if (b) openBloc(b.dataset.bloc); });
+    $('bloc-form').addEventListener('submit', async (e) => { e.preventDefault(); const boxes = [...$('bloc-form').querySelectorAll('input:checked')]; const before = new Set((STATE.blocs || []).map((b) => b.id));
+      if (await act({ type: 'bloc.create', name: $('bloc-name').value, members: boxes.map((o) => o.value) })) { closeCompose('bcompose'); $('bloc-name').value = ''; boxes.forEach((o) => (o.checked = false)); const nb = (STATE.blocs || []).find((b) => !before.has(b.id)); if (nb) setTimeout(() => openBloc(nb.id), 250); } });
+    $('ch-form').addEventListener('submit', sendChat);
+    $('ch-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+    $('ch-close').addEventListener('click', closeBloc);
+    $('chat').addEventListener('click', (e) => { if (e.target.id === 'chat') closeBloc(); });
+    $('ch-invite').addEventListener('click', () => ($('ch-inv').hidden = !$('ch-inv').hidden));
+    $('ch-invgo').addEventListener('click', async () => { const names = [...$('ch-invlist').querySelectorAll('input:checked')].map((i) => i.value); if (await act({ type: 'bloc.invite', id: CHAT, names })) $('ch-inv').hidden = true; });
+    $('ch-leave').addEventListener('click', async (e) => { const b = e.currentTarget; if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to leave'; setTimeout(() => { b.dataset.sure = ''; b.textContent = 'Leave'; }, 4000); return; } if (await act({ type: 'bloc.leave', id: CHAT })) closeBloc(); });
     $('c-restore').addEventListener('click', () => minCompose(false));
-    ['compose', 'mcompose'].forEach((id) => $(id).addEventListener('click', (e) => { if (e.target.closest('[data-cclose]') || (e.target.id === id && !$(id).classList.contains('min'))) closeCompose(id); }));
+    ['compose', 'mcompose', 'bcompose'].forEach((id) => $(id).addEventListener('click', (e) => { if (e.target.closest('[data-cclose]') || (e.target.id === id && !$(id).classList.contains('min'))) closeCompose(id); }));
     $('cform').addEventListener('submit', submitAction);
     $('reader').addEventListener('click', (e) => { if (e.target.id === 'reader') closeReader(); });
     $('lt-close').addEventListener('click', () => closeLetter());

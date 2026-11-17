@@ -116,6 +116,8 @@ Staff no longer have to build effects by hand for most requests.
 - **Portfolio** is the briefcase button at the top left of the map. It opens to show the delegate's powers, assets, limits and a sealed secret file.
 - **Writing:** crisis notes and passed notes open on paper in the middle of the screen. "Mark a spot on the map" tucks the paper away until the delegate clicks the map.
 - **Mail:** crisis staff replies, new notes and new intel arrive as an envelope at the bottom of the screen. Clicking opens the letter, the note (on torn lined paper) or the intel file.
+- **Blocs** are standing group chats for passing notes. Any delegate can start one from the Messages tab, name it and invite others; members can invite more or leave. Everyone in the bloc sees every note, including ones sent before they joined. Crisis staff read all of them, and spies in a member's country can intercept them like any note.
+- **Unit sizes** show as real numbers: one strength point is one infantry division (about 13,000 to 18,000 men depending on the country), one tank division or brigade (30 to 300 tanks), 100 aircraft, or a capital ship with escorts (5 ships). Staff still edit the strength points.
 - **Directives** are written on a laptop in a shared document. The author can invite other delegates with Share; everyone on the draft types at once, sees who is typing in each clause, and changes save on their own. "Send for signatures" turns the draft into a directive that needs 4 names in total (co-authors count).
 
 ## Map features and unit traits
