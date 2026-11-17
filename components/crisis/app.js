@@ -1316,6 +1316,9 @@ function skeleton(p) {
   </section>`;
   return top + body + `<div class="notices" id="notices" aria-live="polite"></div>
   <button type="button" class="mailbox" id="mailbox" hidden><span class="mb-env" aria-hidden="true"><i></i></span><span class="mb-txt"><b>Crisis staff replied</b><small id="mb-sub">Click to open</small></span><span class="mb-n num" id="mb-n" hidden></span></button>
+  <div class="reader" id="reader" hidden><article class="rcard" role="dialog" aria-modal="true" aria-labelledby="rd-title">
+    <p class="rkick" id="rd-kicker"></p><h3 id="rd-title"></h3><div class="rtags" id="rd-tags"></div><p class="rbody" id="rd-body"></p>
+    <div class="lbtns"><button type="button" class="lbtn main" id="rd-close">Close</button></div></article></div>
   <div class="letterpop" id="letterpop" hidden><div class="lstage">
     <div class="lenv" aria-hidden="true"><div class="lback"></div><div class="lflap"></div><div class="lfront"></div><div class="lseal">S</div></div>
     <article class="letter" role="dialog" aria-modal="true" aria-labelledby="lt-title">
@@ -1587,15 +1590,26 @@ async function submitAction(e) {
 // Items seen for the first time get a slide-in; the first render of each list never animates.
 const SEEN = {};
 function freshKeys(list, keys) { const had = SEEN[list]; SEEN[list] = new Set(keys); return had ? new Set(keys.filter((k) => !had.has(k))) : new Set(); }
+// Long reports open full screen; the lists only show a one-line summary.
+let INTEL_LIST = [], MSG_LIST = []; const READ = new Set();
+function openReader({ kicker, title, tags = [], body, from }) {
+  const el = $('reader'); $('rd-kicker').textContent = kicker; $('rd-title').textContent = title; $('rd-body').textContent = body;
+  $('rd-tags').innerHTML = tags.map((t) => `<span class="rtag ${t.cls || ''}">${esc(t.text)}</span>`).join('');
+  if (from && !CALM()) { const r = from.getBoundingClientRect(); el.style.setProperty('--ox', r.left + r.width / 2 + 'px'); el.style.setProperty('--oy', r.top + r.height / 2 + 'px'); }
+  el.hidden = true; void el.offsetWidth; el.hidden = false; el.classList.remove('closing'); $('rd-close').focus({ preventScroll: true });
+}
+function closeReader() { const el = $('reader'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.classList.remove('closing'); }, CALM() ? 0 : 200); }
 function renderIntel() {
   const I = STATE.intel || []; setCount($('c-intel'), I.length);
   const fresh = freshKeys('intel', I.map((r) => r.from + '|' + r.text));
-  $('intel').innerHTML = I.map((r) => `<div class="req${fresh.has(r.from + '|' + r.text) ? ' new' : ''}"><b>${esc(r.from)}</b><span class="pill rel-${esc(r.rel).toLowerCase()}">${esc(r.rel)}</span><small>${esc(r.text)}</small></div>`).join('') || '<p class="formnote">No intelligence yet. Send spies to learn more.</p>';
+  INTEL_LIST = I;
+  $('intel').innerHTML = I.map((r, i) => { const k = 'i:' + r.from + '|' + r.text; return `<button type="button" class="req tap${fresh.has(r.from + '|' + r.text) ? ' new' : ''}${READ.has(k) ? '' : ' unread'}" data-intel="${i}"><b>${esc(r.from)}</b><span class="pill rel-${esc(r.rel).toLowerCase()}">${esc(r.rel)}</span><small>${esc(r.text)}</small><i class="chev" aria-hidden="true">›</i></button>`; }).join('') || '<p class="formnote">No intelligence yet. Send spies to learn more.</p>';
 }
 function renderMessages() {
   const M = (STATE.messages || []).slice().reverse(); const me = MEE.name; setCount($('c-msg'), M.filter((m) => m.from !== me).length);
   const fresh = freshKeys('msg', M.map((m) => m.id));
-  $('msgs').innerHTML = M.map((m) => `<div class="req msg${fresh.has(m.id) ? ' new' : ''}${m.from === me ? ' mine' : ''}${m.intercepted ? ' intercepted' : ''}">${m.intercepted ? `<span class="pill rejected">Intercepted by your agent</span>` : ''}<b>${m.from === me ? 'You' : esc(m.from)} → ${(m.to || []).map((n) => n === me ? 'you' : esc(n)).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No notes yet. Pass private notes to other delegates to plan together. Crisis staff read everything, and spies can intercept notes.</p>';
+  MSG_LIST = M;
+  $('msgs').innerHTML = M.map((m, i) => `<button type="button" class="req tap msg${fresh.has(m.id) ? ' new' : ''}${m.from === me ? ' mine' : ''}${m.intercepted ? ' intercepted' : ''}${m.from === me || READ.has('m:' + m.id) ? '' : ' unread'}" data-msg="${i}"><b>${m.intercepted ? 'Intercepted: ' : ''}${m.from === me ? 'You' : esc(m.from)} → ${(m.to || []).map((n) => n === me ? 'you' : esc(n)).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small><i class="chev" aria-hidden="true">›</i></button>`).join('') || '<p class="formnote">No notes yet. Pass private notes to other delegates to plan together. Crisis staff read everything, and spies can intercept notes.</p>';
 }
 function renderPortfolio() {
   const r = MEE; const units = myUnits(); const missing = KINDS.filter((k) => !r.commands.includes(k));
@@ -2240,11 +2254,18 @@ export function start(root, props) {
     const TABS = ['act', 'dir', 'port', 'intel', 'msg'];
     TABS.forEach((t) => $('t-' + t).addEventListener('click', () => showTab(t)));
     document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('reader').hidden) { closeReader(); return; }
       if (e.key === 'Escape' && !$('letterpop').hidden) { closeLetter(); return; }
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
-      if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && /^[1-5]$/.test(e.key) && $('letterpop').hidden) showTab(TABS[+e.key - 1]);
+      if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && /^[1-5]$/.test(e.key) && $('letterpop').hidden && $('reader').hidden) showTab(TABS[+e.key - 1]);
     });
     $('mailbox').addEventListener('click', openLetter);
+    $('intel').addEventListener('click', (e) => { const b = e.target.closest('[data-intel]'); if (!b) return; const r = INTEL_LIST[+b.dataset.intel]; if (!r) return; READ.add('i:' + r.from + '|' + r.text); b.classList.remove('unread');
+      openReader({ kicker: 'Intelligence report', title: r.from, tags: [{ text: `${r.rel} reliability`, cls: 'rel-' + String(r.rel).toLowerCase() }], body: r.text, from: b }); });
+    $('msgs').addEventListener('click', (e) => { const b = e.target.closest('[data-msg]'); if (!b) return; const m = MSG_LIST[+b.dataset.msg]; if (!m) return; READ.add('m:' + m.id); b.classList.remove('unread'); const me = MEE.name;
+      openReader({ kicker: m.intercepted ? 'Intercepted note' : m.from === me ? 'Note you passed' : 'Private note', title: `${m.from === me ? 'You' : m.from} to ${(m.to || []).map((n) => (n === me ? 'you' : n)).join(', ')}`, tags: [{ text: m.time }, ...(m.intercepted ? [{ text: 'Copied by your agent', cls: 'bad' }] : [])], body: m.text, from: b }); });
+    $('rd-close').addEventListener('click', closeReader);
+    $('reader').addEventListener('click', (e) => { if (e.target.id === 'reader') closeReader(); });
     $('lt-close').addEventListener('click', () => closeLetter());
     $('lt-next').addEventListener('click', () => closeLetter(true));
     $('lt-follow').addEventListener('click', () => { const id = LETTER?.id; closeLetter(); followParent = id; action = 'secret'; setPick(null); showTab('act'); renderTiles(); renderForm(); setTimeout(() => $('f-text')?.focus(), 250); });
