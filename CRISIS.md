@@ -104,6 +104,13 @@ Staff no longer have to build effects by hand for most requests.
 - **Interception:** an agent in a country has an even chance of copying each note sent to or from that country's delegates. The copy appears in the spy owner's Notes tab marked "Intercepted by your agent". The sender is never told. Staff see who intercepted what.
 - **Recall or capture:** staff open Features and spies, then click **Recall**, or **Caught** to post an arrest headline.
 
+## Delegate screen
+
+- **Portfolio** is the briefcase button at the top left of the map. It opens to show the delegate's powers, assets, limits and a sealed secret file.
+- **Writing:** crisis notes and passed notes open on paper in the middle of the screen. "Mark a spot on the map" tucks the paper away until the delegate clicks the map.
+- **Mail:** crisis staff replies, new notes and new intel arrive as an envelope at the bottom of the screen. Clicking opens the letter, the note (on torn lined paper) or the intel file.
+- **Directives** are written on a laptop in a shared document. The author can invite other delegates with Share; everyone on the draft types at once, sees who is typing in each clause, and changes save on their own. "Send for signatures" turns the draft into a directive that needs 4 names in total (co-authors count).
+
 ## Map features and unit traits
 
 These turn free-form plans into things that show on the map and count in battles.

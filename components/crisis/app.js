@@ -1147,14 +1147,38 @@ let OPENED = null, LETTER = null, letterTimer = [];
 const LKEY = () => 'crisis-opened-' + (MEE?.name || '');
 const unreadLetters = () => (STATE.queue || []).filter((q) => q.status !== 'pending' && !OPENED.has(q.id)).reverse(); // oldest first
 function saveOpened() { try { localStorage.setItem(LKEY(), JSON.stringify([...OPENED].slice(-400))); } catch {} }
+let MAILQ = []; // new notes and intel waiting to be opened, oldest first
+function mailItems() { return [...unreadLetters().map((q) => ({ kind: 'reply', key: 'q:' + q.id, q })), ...MAILQ]; }
 function renderMailbox() {
   const mb = $('mailbox'); if (!mb || !MEE) return;
   if (!OPENED) { try { const v = localStorage.getItem(LKEY()); if (v) OPENED = new Set(JSON.parse(v)); } catch {} }
   if (!OPENED) { OPENED = new Set((STATE.queue || []).filter((q) => q.status !== 'pending').map((q) => q.id)); saveOpened(); } // first visit: no backlog
-  const n = unreadLetters().length; const was = !mb.hidden && +$('mb-n').textContent;
-  $('mb-n').textContent = n; $('mb-n').hidden = n < 2; mb.hidden = !n || !!LETTER;
-  $('mb-sub').textContent = n > 1 ? `${n} replies waiting. Click to open.` : 'Click to open';
-  if (n > (was || 0) && !mb.hidden && !CALM()) { mb.classList.remove('arrive'); void mb.offsetWidth; mb.classList.add('arrive'); }
+  const items = mailItems(); const n = items.length; const top = items[0]; const was = +mb.dataset.n || 0; mb.dataset.n = n;
+  mb.hidden = !n || !!LETTER;
+  if (top) {
+    mb.className = 'mailbox ' + top.kind + (mb.classList.contains('arrive') ? ' arrive' : '');
+    $('mb-title').textContent = top.kind === 'reply' ? 'Crisis staff replied' : top.kind === 'note' ? `Note from ${top.m.from}` : 'New intel';
+    $('mb-sub').textContent = top.kind === 'intel' ? top.r.from : top.kind === 'note' && top.m.intercepted ? 'Intercepted by your agent' : 'Click to open';
+  }
+  $('mb-n').textContent = n; $('mb-n').hidden = n < 2;
+  if (n > was && !mb.hidden && !CALM()) { mb.classList.remove('arrive'); void mb.offsetWidth; mb.classList.add('arrive'); }
+}
+function openMail() {
+  const top = mailItems()[0]; if (!top) return;
+  if (top.kind === 'reply') return openLetter();
+  MAILQ = MAILQ.filter((x) => x !== top);
+  if (top.kind === 'note') openMsg(top.m); else openIntel(top.r);
+  renderMailbox();
+}
+function openIntel(r) {
+  const k = 'i:' + r.from + '|' + r.text; READ.add(k); MAILQ = MAILQ.filter((x) => x.key !== k); renderIntel(); renderMailbox();
+  const i = (STATE.intel || []).indexOf(r);
+  openReader({ theme: 'dossier', kicker: 'Intelligence report', title: r.from, rel: r.rel, body: r.text, file: `File ${String((STATE.intel || []).length - Math.max(0, i)).padStart(3, '0')} · ${STATE.update?.date || ''}` });
+}
+function openMsg(m) {
+  const me = MEE.name; READ.add('m:' + m.id); MAILQ = MAILQ.filter((x) => x.key !== 'm:' + m.id); renderMessages(); renderMailbox();
+  const to = (m.to || []).map((n) => (n === me ? 'you' : n)).join(', ');
+  openReader({ theme: 'note', title: m.from === me ? `To ${to},` : `From ${m.from}${m.intercepted ? ' to ' + to : ''}`, body: m.text, time: `${m.time}${m.from === me ? ' · You passed this note' : ''}`, stamp: m.intercepted ? 'Intercepted' : '' });
 }
 function openLetter() {
   const q = unreadLetters()[0]; if (!q) return; LETTER = q; OPENED.add(q.id); saveOpened();
@@ -1178,6 +1202,10 @@ function closeLetter(next) {
 function setCount(el, n) { if (!el) return; const was = +el.textContent || 0; el.textContent = n || ''; if (n > was && !CALM()) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); } }
 function initials(name) { return name.replace(/"[^"]*"/g, '').split(/\s+/).filter((w) => /^[A-ZÉÓŁ]/.test(w)).map((w) => w[0]).join('').slice(0, 2); }
 const opt = (arr, sel) => arr.map((d) => `<option${d === sel ? ' selected' : ''}>${esc(d)}</option>`).join('');
+const PEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>';
+const PLANE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5 2.5 7z"/><path d="m21 3-11 10"/></svg>';
+const CASE_SVG = '<svg class="case" viewBox="0 0 32 28" aria-hidden="true"><rect x="2" y="8" width="28" height="18" rx="2.5" fill="#7A4A2A"/><rect x="2" y="8" width="28" height="7" rx="2.5" fill="#8E5A34"/><path d="M11 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" fill="none" stroke="#3A2414" stroke-width="2.2"/><rect x="7" y="13" width="4" height="4" rx="1" fill="#D8B24A"/><rect x="21" y="13" width="4" height="4" rx="1" fill="#D8B24A"/></svg>';
+const OVERLAYS = () => ['letterpop', 'reader', 'brief', 'compose', 'mcompose', 'lap'].map($).filter(Boolean);
 const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button" data-z="feat" class="featbtn" aria-pressed="${SHOW_FEAT}" aria-label="Show map features" title="Show map features (trenches, bunkers, factories)">${fIcon('fort')}</button><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="reset" aria-label="Reset view">FIT</button></div>`;
 const DATECARD = `<div class="date glass num"><span class="date-line"></span><small class="countdown">Next crisis update in <b>15:00</b></small></div>`;
 
@@ -1290,6 +1318,7 @@ function skeleton(p) {
   ${STAFFMAP ? staffModals(p) : ''}</section>`;
   if (VIEW === 'delegate') body = `<section class="view dview"><div class="dlayout">
     <div class="stage" id="stage-del"><div class="loading">Loading the map…</div><div class="overlay" id="ov-del"></div>${DATECARD}
+      <button type="button" class="briefbtn glass" id="brief-btn" aria-haspopup="dialog">${CASE_SVG}<span><b>Portfolio</b><small>Your powers, assets and secret file</small></span></button>
       <div class="fognote glass"><i></i><span>Fog of war. You see your own and allied forces, plus whatever your patrols and spies have found.</span></div>${ZOOM('del')}</div>
     <aside class="side">
       <div class="who"><div class="badge flagbadge" id="who-flag"></div><div><b id="who-name"></b><span id="who-role"></span></div></div>
@@ -1297,25 +1326,30 @@ function skeleton(p) {
       <div class="tabs" role="tablist" aria-label="Delegate panels">
         <button type="button" role="tab" id="t-act" aria-selected="true" aria-controls="p-act" title="Act (key 1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg><span class="tl">Act</span></button>
         <button type="button" role="tab" id="t-dir" aria-selected="false" aria-controls="p-dir" title="Directives (key 2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M10 11h6M10 15h6"/></svg><span class="tl">Directives</span><span class="count num" id="c-dir" hidden></span></button>
-        <button type="button" role="tab" id="t-port" aria-selected="false" aria-controls="p-port" title="Portfolio (key 3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="1"/><path d="M9 7V4h6v3"/></svg><span class="tl">Portfolio</span></button>
-        <button type="button" role="tab" id="t-intel" aria-selected="false" aria-controls="p-intel" title="Intel (key 4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="tl">Intel</span><span class="count num" id="c-intel"></span></button>
-        <button type="button" role="tab" id="t-msg" aria-selected="false" aria-controls="p-msg" title="Messages (key 5)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="m3 7 9 6 9-6"/></svg><span class="tl">Messages</span><span class="count num" id="c-msg"></span></button>
+        <button type="button" role="tab" id="t-intel" aria-selected="false" aria-controls="p-intel" title="Intel (key 3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="tl">Intel</span><span class="count num" id="c-intel"></span></button>
+        <button type="button" role="tab" id="t-msg" aria-selected="false" aria-controls="p-msg" title="Messages (key 4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="m3 7 9 6 9-6"/></svg><span class="tl">Messages</span><span class="count num" id="c-msg"></span></button>
       </div>
       <div id="p-act" role="tabpanel" aria-labelledby="t-act"><div class="tiles" id="tiles"></div><form class="form" id="form" novalidate></form></div>
       <div id="p-dir" role="tabpanel" aria-labelledby="t-dir" hidden></div>
-      <div id="p-port" role="tabpanel" aria-labelledby="t-port" hidden></div>
       <div id="p-intel" role="tabpanel" aria-labelledby="t-intel" hidden><div class="reqs" id="intel"></div></div>
       <div id="p-msg" role="tabpanel" aria-labelledby="t-msg" hidden>
-        <form class="dform" id="msg-form" novalidate><fieldset class="notepick"><legend>Pass a note to</legend>${ORDER.map((c) => { const rs = ROSTER.filter((r) => r.country === c && r.name !== (AS || p.session?.name)); return rs.length ? `<div class="npc">${flag(c)}${rs.map((r) => `<label><input type="checkbox" value="${esc(r.name)}"><span>${esc(r.name)}</span></label>`).join('')}</div>` : ''; }).join('')}</fieldset>
-          <label for="msg-text">Note<textarea id="msg-text" maxlength="1200" placeholder="Private note. Crisis staff read every note, and enemy spies in your country or theirs may intercept it."></textarea></label>
-          <button type="submit" class="dbtn gold">Pass the note</button></form>
+        <button type="button" class="send launch" id="open-msg">${PEN}Pass a note</button>
         <div class="reqs" id="msgs"></div></div>
     </aside></div>
     <div class="dock"><div class="warbar" id="warbar" aria-live="polite"></div>
     <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div></div>
   </section>`;
   return top + body + `<div class="notices" id="notices" aria-live="polite"></div>
-  <button type="button" class="mailbox" id="mailbox" hidden><span class="mb-env" aria-hidden="true"><i></i></span><span class="mb-txt"><b>Crisis staff replied</b><small id="mb-sub">Click to open</small></span><span class="mb-n num" id="mb-n" hidden></span></button>
+  <button type="button" class="mailbox" id="mailbox" hidden><span class="mb-env" aria-hidden="true"><i></i></span><span class="mb-txt"><b id="mb-title">Crisis staff replied</b><small id="mb-sub">Click to open</small></span><span class="mb-n num" id="mb-n" hidden></span></button>
+  <div class="brief" id="brief" hidden><div class="bstage">
+    <div class="bcase" aria-hidden="true"><div class="bhandle"></div><div class="blid"><i></i><i></i></div><div class="bbox"></div></div>
+    <section class="bpapers" role="dialog" aria-modal="true" aria-labelledby="brief-title"><header><h2 id="brief-title">Portfolio</h2><button type="button" class="lbtn" id="brief-close">Close</button></header><div id="brief-body"></div></section></div></div>
+  <div class="compose" id="compose" hidden><div class="cpaper lined"><header class="chead"><p class="ck">Crisis note</p><p class="cto">To: Crisis staff<span id="c-from"></span></p></header><form id="cform" novalidate></form></div>
+    <button type="button" class="cmin" id="c-restore" hidden>${PEN}<span><b>Crisis note</b><small id="c-minsub">Click the map to mark the spot, then click here</small></span></button></div>
+  <div class="compose" id="mcompose" hidden><div class="cpaper lined torn"><header class="chead"><p class="ck">Pass a note</p></header><form class="mform" id="msg-form" novalidate><fieldset class="notepick"><legend>Pass a note to</legend>${ORDER.map((c) => { const rs = ROSTER.filter((r) => r.country === c && r.name !== (AS || p.session?.name)); return rs.length ? `<div class="npc">${flag(c)}${rs.map((r) => `<label><input type="checkbox" value="${esc(r.name)}"><span>${esc(r.name)}</span></label>`).join('')}</div>` : ''; }).join('')}</fieldset>
+          <label for="msg-text" class="sr">Note</label><textarea id="msg-text" maxlength="1200" placeholder="Private note. Crisis staff read every note, and enemy spies in your country or theirs may intercept it."></textarea>
+          <div class="cbtns"><button type="button" class="lbtn" data-cclose>Cancel</button><button type="submit" class="lbtn main">${PLANE}Pass the note</button></div></form></div></div>
+  <div class="lap" id="lap" hidden><div class="laptop"><div class="lscreen"><div class="docs" id="docs"></div></div><div class="lbase"><i></i></div></div></div>
   <div class="reader" id="reader" hidden><article class="rcard" id="rd-card" role="dialog" aria-modal="true" aria-labelledby="rd-title"><div class="rpaper" id="rd-paper"></div>
     <div class="rbtns"><button type="button" class="lbtn main" id="rd-close">Close</button></div></article></div>
   <div class="letterpop" id="letterpop" hidden><div class="lstage">
@@ -1465,16 +1499,19 @@ let action = 'secret', visibility = 'private', pickedForce = null, drafting = fa
 const myUnits = () => UNITS.filter((x) => x.owner === ME && MEE.commands.includes(x.kind));
 const TO = () => ORDER.filter((n) => n !== ME).map((n) => POWERS[n].label).concat(['Romania', 'Turkey', 'Belgium', 'Netherlands']);
 
-let seenReq = null, seenIntel = null, seenMsg = null, seenSign = null;
+let seenReq = null, seenIntel = null, seenMsg = null, seenSign = null, seenDraft = null;
 function notifyDelegate() {
   const Q = STATE.queue || [], I = STATE.intel || [];
-  if (seenIntel != null && I.length > seenIntel) { notify({ kind: 'intel', title: 'New intel', body: `${I[0].from}: ${I[0].text}`.slice(0, 140), action: { label: 'Open Intel', run: () => showTab('intel') } }); $('t-intel').classList.add('ping'); }
+  if (seenIntel != null && I.length > seenIntel) { I.slice(0, I.length - seenIntel).reverse().forEach((r) => MAILQ.push({ kind: 'intel', key: 'i:' + r.from + '|' + r.text, r })); $('t-intel').classList.add('ping'); }
   const inbox = (STATE.messages || []).filter((m) => m.from !== MEE.name);
-  if (seenMsg != null && inbox.length > seenMsg) { const m = inbox[inbox.length - 1]; notify({ kind: m.intercepted ? 'intel' : 'note', title: m.intercepted ? `Your agent intercepted a note from ${m.from}` : `Note from ${m.from}`, body: (m.text || '').slice(0, 140), action: { label: 'Read it', run: () => showTab('msg') }, ms: 7000 }); $('t-msg').classList.add('ping'); }
+  if (seenMsg != null && inbox.length > seenMsg) { inbox.slice(seenMsg).forEach((m) => MAILQ.push({ kind: 'note', key: 'm:' + m.id, m })); $('t-msg').classList.add('ping'); }
   seenMsg = inbox.length;
   const askSign = (STATE.directives || []).filter((d) => d.status === 'signing' && d.requested.includes(MEE.name) && !d.signed.includes(MEE.name));
   if (seenSign) for (const d of askSign) if (!seenSign.has(d.id)) notify({ kind: 'sign', title: 'You were asked to sign a directive', body: d.title, action: { label: 'Open Directives', run: () => showTab('dir') }, ms: 7000 });
   seenSign = new Set(askSign.map((d) => d.id));
+  const shared = (STATE.directives || []).filter((d) => d.status === 'drafting' && d.owner !== MEE.name && d.authors?.includes(MEE.name));
+  if (seenDraft) for (const d of shared) if (!seenDraft.has(d.id)) notify({ kind: 'sign', title: `${d.owner} invited you to write a directive`, body: d.title || 'Untitled directive', action: { label: 'Open it', run: () => openLaptop(d.id) }, ms: 8000 });
+  seenDraft = new Set(shared.map((d) => d.id));
   seenIntel = I.length; renderMailbox();
 }
 function renderDelegate(first, prev) {
@@ -1486,7 +1523,7 @@ function renderDelegate(first, prev) {
   }
   $('my-money').textContent = `$${POWERS[ME].treasury}M`; $('my-forces').textContent = myUnits().length; $('my-update').textContent = STATE.update.no;
   if (pickedForce && !myUnits().some((u) => u.id === pickedForce)) { pickedForce = null; renderForm(); }
-  renderIntel(); if (!drafting) renderDirectives(); else updateDirCount();
+  renderIntel(); renderDirectives(); if (LAPID) syncDocs();
   if (!first) renderPortfolio();
   if (delGlobe) {
     delGlobe.sync(prev);
@@ -1506,7 +1543,7 @@ function pickGround(lon, lat) {
   const kind = action === 'build' ? BUILD_KIND[$('f-btype')?.value] : null;
   if (action === 'build' && kind !== 'fleet' && holder !== ME) { toast(`You can only build on territory ${POWERS[ME].label} holds.`); return true; }
   const where = rg ? rg.name : country ? (LABEL_TEXT[country] || country) : 'open sea';
-  setPick({ at: [+lon.toFixed(3), +lat.toFixed(3)], where }); renderLoc(); return true;
+  setPick({ at: [+lon.toFixed(3), +lat.toFixed(3)], where }); renderLoc(); if ($('compose').classList.contains('min')) minCompose(false); return true;
 }
 function pickForce(id) {
   const u = UNITS.find((x) => x.id === id); if (!u) return;
@@ -1515,6 +1552,24 @@ function pickForce(id) {
   pickedForce = id; action = 'fleet'; delGlobe.selectedUnit = id; delGlobe.markSelected(id);
   showTab('act'); renderTiles(); renderForm();
 }
+/* Pop-up paper for writing, and the portfolio briefcase */
+function openCompose(id = 'compose') {
+  const el = $(id); el.classList.remove('min', 'closing', 'sent'); $('c-restore').hidden = true;
+  if (id === 'compose') $('c-from').textContent = ` · From: ${MEE.name}`;
+  el.hidden = true; void el.offsetWidth; el.hidden = false;
+  setTimeout(() => (id === 'compose' ? $('f-text') : $('msg-text'))?.focus({ preventScroll: true }), CALM() ? 0 : 320);
+}
+function closeCompose(id = 'compose', sent) {
+  const el = $(id); if (!el || el.hidden) return; el.classList.add(sent ? 'sent' : 'closing'); $('c-restore').hidden = true;
+  if (sent) { const pl = document.createElement('span'); pl.className = 'plane big'; pl.innerHTML = NICON.sent; pl.style.left = '50%'; pl.style.top = '55%'; if (!CALM()) document.body.appendChild(pl); setTimeout(() => pl.remove(), 1200); }
+  setTimeout(() => { el.hidden = true; el.classList.remove('closing', 'sent', 'min'); }, CALM() ? 0 : sent ? 520 : 220);
+}
+function minCompose(on) { const el = $('compose'); el.classList.toggle('min', on); $('c-restore').hidden = !on; if (!on) setTimeout(() => $('f-text')?.focus({ preventScroll: true }), 250); }
+function openBrief() {
+  renderPortfolio(); const el = $('brief'); el.className = 'brief'; el.hidden = true; void el.offsetWidth; el.hidden = false; el.classList.add('opening');
+  setTimeout(() => el.classList.add('open'), CALM() ? 0 : 900); setTimeout(() => $('brief-close').focus({ preventScroll: true }), CALM() ? 0 : 950);
+}
+function closeBrief() { const el = $('brief'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'brief'; }, CALM() ? 0 : 240); }
 function renderTiles() {
   $('tiles').innerHTML = `<div class="quick" role="group" aria-label="Kind of request">${ACTIONS.map((a) => `<button type="button" class="qchip${a.id === 'secret' ? ' main' : ''}" data-a="${a.id}" aria-pressed="${a.id === action}">${a.label}</button>`).join('')}</div>`;
   $('tiles').querySelectorAll('.qchip').forEach((b) => b.addEventListener('click', () => { action = b.dataset.a; setPick(null); renderTiles(); renderForm(); }));
@@ -1527,7 +1582,9 @@ function renderLoc() {
   box.querySelector('.unpick')?.addEventListener('click', () => { setPick(null); renderLoc(); });
 }
 function renderForm() {
-  const f = $('form'); let body = '';
+  const paper = action === 'secret'; const f = paper ? $('cform') : $('form'); let body = '';
+  if (paper) { $('form').innerHTML = `<button type="button" class="send launch" id="open-note">${PEN}${followParent ? 'Write your follow-up' : 'Write a crisis note'}</button><p class="formnote">Your note opens on paper. Anything your character could really do: attack, spy, sabotage, build, propaganda, a treaty, a press release, declaring war.</p>`; $('open-note').addEventListener('click', () => openCompose()); }
+  else $('cform').innerHTML = '';
   if (action === 'fleet') {
     const u = UNITS.find((x) => x.id === pickedForce);
     body = u ? `<div class="picked">${flag(u.owner)}<div><b>${esc(u.name)}</b><span>${KIND_NAME[u.kind]} · strength ${u.str}</span></div><button type="button" class="unpick" aria-label="Clear selected force">✕</button></div>
@@ -1550,7 +1607,10 @@ function renderForm() {
   if (['secret', 'press', 'treaty'].includes(action)) body += `<label for="f-text" class="${action === 'secret' ? 'bigask' : ''}">${{ secret: 'What do you want to do?', press: 'Statement', treaty: 'Terms' }[action]}<textarea id="f-text" maxlength="1200"${action === 'secret' ? ' rows="6"' : ''} placeholder="${{ secret: 'Anything your character could really do: attack, spy, sabotage, build defenses, propaganda, a treaty, a press release, declaring war. For example: Attack the French forces on the Saar front with Army Group C at dawn.', press: 'What do you want to announce?', treaty: 'Who is the treaty with, and what does each side agree to?' }[action]}"></textarea></label>`;
   if (action === 'secret') body += `<p class="formnote">Say who does it, where, how and with what. Public notes are announced to the room, like a press release. Private notes stay between you and crisis staff.</p><label for="f-cost">Budget, if any ($ millions)<input id="f-cost" type="number" min="0" max="9999" value="0"></label><div id="f-loc">${locBlock(false, true)}</div>`;
   const forced = action === 'spy' ? 'private' : action === 'press' ? 'public' : null; const vis = forced || visibility;
-  f.innerHTML = body + (forced ? '' : `<div class="vis" role="group" aria-label="Who can see this"><button type="button" data-v="private" aria-pressed="${vis === 'private'}">Private</button><button type="button" data-v="public" aria-pressed="${vis === 'public'}">Public</button></div>`) + `<button class="send" type="submit">${action === 'spy' ? 'Send agent' : 'Send to crisis staff'}</button>`;
+  const visRow = forced ? '' : `<div class="vis" role="group" aria-label="Who can see this"><button type="button" data-v="private" aria-pressed="${vis === 'private'}">Private</button><button type="button" data-v="public" aria-pressed="${vis === 'public'}">Public</button></div>`;
+  f.innerHTML = paper ? body + `<div class="cfoot">${visRow}<button type="button" class="lbtn" id="c-mark">Mark a spot on the map</button></div><div class="cbtns"><button type="button" class="lbtn" data-cclose>Close</button><button class="lbtn main send" type="submit">${PLANE}Send to crisis staff</button></div>`
+    : body + visRow + `<button class="send" type="submit">${action === 'spy' ? 'Send agent' : 'Send to crisis staff'}</button>`;
+  f.querySelector('#c-mark')?.addEventListener('click', () => minCompose(true));
   f.querySelectorAll('.vis button').forEach((b) => b.addEventListener('click', () => { visibility = b.dataset.v; f.querySelectorAll('.vis button').forEach((x) => x.setAttribute('aria-pressed', x === b)); }));
   f.querySelector('#f-loc .unpick')?.addEventListener('click', () => { setPick(null); renderLoc(); });
   f.querySelector('.unfollow')?.addEventListener('click', () => { followParent = null; renderForm(); });
@@ -1583,7 +1643,7 @@ async function submitAction(e) {
   const ok = await act({ type: 'request', kind: action, title: s, vis: visibility, detail, text: v('f-text') }, { quiet: true });
   btn.disabled = false;
   if (ok) {
-    flyFrom(btn);
+    if (action === 'secret') closeCompose('compose', true); else flyFrom(btn);
     notify({ kind: 'sent', title: { fleet: 'Orders sent!', build: 'Build order sent!', money: 'Transfer sent!', spy: 'Agent sent!' }[action] || (followParent ? 'Follow-up sent!' : 'Crisis note sent!'), body: `${s}. A letter will appear on your map when crisis staff answer.` }); if (action === 'fleet') { pickedForce = null; delGlobe?.markSelected(null); } if (['build', 'op', 'secret'].includes(action)) setPick(null); followParent = null; renderForm(); }
 }
 // Items seen for the first time get a slide-in; the first render of each list never animates.
@@ -1633,7 +1693,7 @@ function renderMessages() {
 function renderPortfolio() {
   const r = MEE; const units = myUnits(); const missing = KINDS.filter((k) => !r.commands.includes(k));
   const boss = (k) => ROSTER.find((x) => x.country === ME && x.commands.includes(k));
-  $('p-port').innerHTML = `
+  $('brief-body').innerHTML = `
     <div class="sec"><h3>Your powers</h3><ul class="plist">${r.commands.map((k) => `<li>${POWER_TEXT[k]}</li>`).join('')}${ALWAYS.map((a) => `<li>${a}</li>`).join('')}</ul></div>
     <div class="sec"><h3>Your assets</h3><ul class="plist">
       ${units.length ? units.map((u) => `<li>${esc(u.name)}<small>${KIND_NAME[u.kind]} · strength ${u.str}${u.traits?.length ? ' · ' + traitText(u) : ''} · ${esc(u.note)}</small></li>`).join('') : '<li>No forces on the map</li>'}
@@ -1652,7 +1712,8 @@ function updateDirCount() {
 function renderDirectives() {
   const me = MEE.name; const box = $('p-dir'); const D = STATE.directives || [];
   const toSign = D.filter((d) => d.status === 'signing' && d.requested.includes(me) && !d.signed.includes(me));
-  const mine = D.filter((d) => d.sponsors.includes(me) || d.signed.includes(me));
+  const drafts = D.filter((d) => d.status === 'drafting');
+  const mine = D.filter((d) => d.status !== 'drafting' && (d.sponsors.includes(me) || d.signed.includes(me)));
   const floor = D.filter((d) => ['floor', 'chair', 'passed', 'failed'].includes(d.status) && !mine.includes(d));
   updateDirCount();
   const card = (d, extra = '') => `<div class="dir tapdir" data-dir="${d.id}" title="Click to read the full directive"><div class="dir-top"><b>${d.no ? 'Directive ' + esc(d.no) + ': ' : ''}${esc(d.title)}</b><span class="pill ${d.status}">${DSTATUS[d.status]}</span></div>
@@ -1662,42 +1723,96 @@ function renderDirectives() {
   box.innerHTML = `
     ${toSign.length ? `<div class="sec"><h3>Asked to sign</h3>${toSign.map((d) => card(d, `<div class="row"><button type="button" class="dbtn gold" data-sign="${d.id}">Sign</button><button type="button" class="dbtn" data-decline="${d.id}">Decline</button></div>`)).join('')}</div>` : ''}
     <div class="sec"><h3>Your directives</h3>
-      ${drafting ? draftForm() : `<button type="button" class="send" id="new-dir">Write a new directive</button>`}
+      <button type="button" class="send launch" id="new-dir">${PEN}Write a new directive</button>
+      ${drafts.map((d) => `<button type="button" class="req tap draftrow" data-open-draft="${d.id}"><b>${esc(d.title || 'Untitled directive')}</b><span class="pill drafting">Draft</span><small>${d.authors.length > 1 ? 'With ' + d.authors.filter((n) => n !== me).map(esc).join(', ') : 'Only you so far'} · ${d.clauses.filter((c) => c.trim()).length} clause${d.clauses.filter((c) => c.trim()).length === 1 ? '' : 's'}</small><i class="chev" aria-hidden="true">›</i></button>`).join('')}
       ${mine.map((d) => card(d, d.status === 'signing' && d.sponsors.includes(me) && d.signed.length >= SIGS_NEEDED ? `<button type="button" class="dbtn gold" data-submit="${d.id}">Submit to the chair</button>` : '')).join('') || '<p class="formnote">You have not sponsored or signed any directives yet.</p>'}
     </div>
     <div class="sec"><h3>Committee floor</h3>${floor.map((d) => card(d)).join('') || '<p class="formnote">Nothing on the floor right now.</p>'}</div>
     <p class="formnote">Directives need ${SIGS_NEEDED} signatures, including sponsors. The chair approves the format, then the committee votes out loud by placard.</p>`;
-  box.querySelector('#new-dir')?.addEventListener('click', () => { drafting = true; renderDirectives(); });
+  box.querySelector('#new-dir')?.addEventListener('click', newDraft);
+  box.querySelectorAll('[data-open-draft]').forEach((b) => b.addEventListener('click', () => openLaptop(b.dataset.openDraft)));
   box.querySelectorAll('[data-sign]').forEach((b) => b.addEventListener('click', () => act({ type: 'dir.sign', id: b.dataset.sign })));
   box.querySelectorAll('[data-decline]').forEach((b) => b.addEventListener('click', () => act({ type: 'dir.decline', id: b.dataset.decline })));
   box.querySelectorAll('[data-submit]').forEach((b) => b.addEventListener('click', () => act({ type: 'dir.submit', id: b.dataset.submit })));
-  if (drafting) bindDraft();
 }
-function draftForm() {
+/* ---------- Directive editor: a shared document on a laptop ---------- */
+let LAPID = null; const docTimers = {}, docPending = {};
+const AUTH_COL = ['#1A73E8', '#D93025', '#188038', '#E37400', '#9334E6', '#007B83', '#C5221F', '#5F6368'];
+const authCol = (n) => { let h = 0; for (const ch of n) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return AUTH_COL[h % AUTH_COL.length]; };
+async function newDraft() {
+  if (!(await act({ type: 'dir.draft' }, { quiet: true }))) return;
+  const d = (STATE.directives || []).find((x) => x.status === 'drafting' && x.owner === MEE.name); if (d) openLaptop(d.id);
+}
+function openLaptop(id) {
+  LAPID = id; const el = $('lap'); buildDocs(); el.className = 'lap'; el.hidden = true; void el.offsetWidth; el.hidden = false;
+  setTimeout(() => { const d = curDraft(); (d && !d.title ? $('dc-title') : $('dc-c0'))?.focus({ preventScroll: true }); }, CALM() ? 0 : 650);
+}
+function closeLaptop() { flushDoc(); const el = $('lap'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'lap'; LAPID = null; }, CALM() ? 0 : 260); }
+const curDraft = () => (STATE.directives || []).find((d) => d.id === LAPID);
+function grow(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
+function buildDocs() {
+  const d = curDraft(); if (!d) return; const me = MEE.name;
+  const others = ROSTER.filter((r) => r.name !== me);
+  $('docs').innerHTML = `<div class="dbar"><span class="dlogo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z" fill="#1A73E8"/><path d="M15 2v5h5" fill="#8AB4F8"/><path d="M9 12h8M9 15h8M9 18h5" stroke="#fff" stroke-width="1.6"/></svg></span>
+      <div class="dname"><b id="dc-name">${esc(d.title || 'Untitled directive')}</b><span id="dc-save">All changes saved</span></div>
+      <div class="davs" id="dc-avs"></div><button type="button" class="dshare" id="dc-share">Share</button><button type="button" class="dx" id="dc-close" aria-label="Close the laptop">✕</button></div>
+    <div class="dmenu" aria-hidden="true"><span>File</span><span>Edit</span><span>View</span><span>Insert</span><span>Format</span><span>Tools</span></div>
+    <div class="dtool"><button type="button" id="dc-add">+ Add clause</button><span class="dsep"></span><span class="dhint">Everyone on this draft can type at once. Changes save by themselves.</span></div>
+    <div class="dsharep" id="dc-sharep" hidden><b>Invite co-authors</b><p>Co-authors can edit with you and become sponsors.</p><div class="npc">${others.map((r) => `<label><input type="checkbox" value="${esc(r.name)}"${d.authors.includes(r.name) ? ' checked disabled' : ''}><span>${esc(r.name)}</span></label>`).join('')}</div><div class="row"><button type="button" class="dbtn gold" id="dc-invite">Invite</button><button type="button" class="dbtn" id="dc-sharex">Done</button></div></div>
+    <div class="dcanvas"><div class="dpage">
+      <p class="dp-head">San Luis Obispo Model United Nations II · Crisis Committee · Draft directive</p>
+      <textarea id="dc-title" class="dp-title" rows="1" maxlength="120" placeholder="Directive title"></textarea>
+      <p class="dp-lead">The committee directs that:</p>
+      <ol class="dp-clauses" id="dc-clauses"></ol>
+    </div></div>
+    <div class="dfoot"><span>Ask to sign <small id="dc-need"></small></span><div class="npc" id="dc-signers">${others.map((r) => `<label${d.authors.includes(r.name) ? ' hidden' : ''}><input type="checkbox" value="${esc(r.name)}"><span>${esc(r.name)}</span></label>`).join('')}</div>
+      <div class="row"><button type="button" class="dbtn gold" id="dc-send">Send for signatures</button><button type="button" class="dbtn" id="dc-discard">${d.owner === me ? 'Discard draft' : 'Leave draft'}</button></div></div>`;
+  const T = $('dc-title'); T.value = d.title; T.addEventListener('input', () => { editDoc('title', T.value); grow(T); }); grow(T);
+  $('dc-close').addEventListener('click', closeLaptop);
+  $('dc-add').addEventListener('click', () => { flushDoc(); act({ type: 'dir.clause.add', id: LAPID }, { quiet: true }).then((ok) => ok && setTimeout(() => { const n = curDraft()?.clauses.length; $('dc-c' + (n - 1))?.focus(); }, 50)); });
+  $('dc-share').addEventListener('click', () => ($('dc-sharep').hidden = !$('dc-sharep').hidden));
+  $('dc-sharex').addEventListener('click', () => ($('dc-sharep').hidden = true));
+  $('dc-invite').addEventListener('click', async () => { const names = [...$('dc-sharep').querySelectorAll('input:checked:not(:disabled)')].map((i) => i.value); if (await act({ type: 'dir.invite', id: LAPID, names })) { buildDocs(); } });
+  $('dc-send').addEventListener('click', async () => { flushDoc(); const asked = [...$('dc-signers').querySelectorAll('input:checked')].map((i) => i.value); if (await act({ type: 'dir.send', id: LAPID, asked }, { quiet: true })) { notify({ kind: 'sent', title: 'Sent for signatures!', body: 'The people you asked will see it in their Directives tab.' }); closeLaptop(); } });
+  $('dc-discard').addEventListener('click', async (e) => { const b = e.currentTarget; if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to confirm'; setTimeout(() => { b.dataset.sure = ''; b.textContent = d.owner === me ? 'Discard draft' : 'Leave draft'; }, 4000); return; } if (await act({ type: 'dir.discard', id: LAPID })) closeLaptop(); });
+  $('dc-signers').addEventListener('change', syncNeed);
+  buildClauses(); syncDocs();
+}
+function buildClauses() {
+  const d = curDraft(); if (!d) return; const box = $('dc-clauses'); const act0 = document.activeElement; const fk = act0?.dataset?.k; const sel = fk != null ? [act0.selectionStart, act0.selectionEnd] : null;
+  box.innerHTML = d.clauses.map((c, i) => `<li><div class="dcl"><textarea id="dc-c${i}" data-k="${i}" rows="1" maxlength="600" placeholder="Who does what, where, and with what forces or money."></textarea><span class="who" id="dc-w${i}" hidden></span>${d.clauses.length > 1 ? `<button type="button" class="dclx" data-rm="${i}" aria-label="Remove clause ${i + 1}">✕</button>` : ''}</div></li>`).join('');
+  box.querySelectorAll('textarea').forEach((t) => { t.value = docPending[t.dataset.k] ?? d.clauses[+t.dataset.k] ?? ''; t.addEventListener('input', () => { editDoc(t.dataset.k, t.value); grow(t); }); grow(t); });
+  box.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => { flushDoc(); act({ type: 'dir.clause.remove', id: LAPID, i: +b.dataset.rm }, { quiet: true }); }));
+  if (fk != null) { const t = $('dc-c' + fk); if (t) { t.focus({ preventScroll: true }); if (sel) t.setSelectionRange(sel[0], sel[1]); } }
+  box.dataset.n = d.clauses.length;
+}
+function editDoc(k, text) {
+  docPending[k] = text; $('dc-save').textContent = 'Saving…'; if (k === 'title') $('dc-name').textContent = text || 'Untitled directive';
+  clearTimeout(docTimers[k]); docTimers[k] = setTimeout(() => sendDoc(k), 450);
+}
+async function sendDoc(k) {
+  if (!(k in docPending) || !LAPID) return; const text = docPending[k]; delete docPending[k];
+  const ok = await act({ type: 'dir.edit', id: LAPID, key: k, text }, { quiet: true });
+  if ($('dc-save')) $('dc-save').textContent = ok ? (Object.keys(docPending).length ? 'Saving…' : 'All changes saved') : 'Could not save. Check the Wi-Fi.';
+}
+function flushDoc() { for (const k of Object.keys(docTimers)) { clearTimeout(docTimers[k]); sendDoc(k); } }
+function syncNeed() { const d = curDraft(); if (!d || !$('dc-need')) return; const asked = $('dc-signers').querySelectorAll('input:checked').length; const left = Math.max(0, SIGS_NEEDED - d.authors.length - asked); $('dc-need').textContent = left ? `(pick ${left} more to reach ${SIGS_NEEDED} names)` : '(enough names)'; }
+// Live updates from co-authors: refresh every field that is not being typed in, and show who is typing where.
+function syncDocs() {
+  if (!LAPID || $('lap').hidden && !$('docs').innerHTML) return; const d = curDraft();
+  if (!d || d.status !== 'drafting') { if (!$('lap').hidden) { notify({ title: d ? 'This draft was sent for signatures' : 'This draft was discarded' }); closeLaptop(); } return; }
   const me = MEE.name;
-  return `<form class="dform" id="dform" novalidate>
-    <label for="d-title">Title<input type="text" id="d-title" maxlength="120" placeholder="For example: Defense of the Polish Corridor"></label>
-    <div id="d-clauses"><label for="d-c0">Clause 1<textarea id="d-c0" maxlength="500" placeholder="Who does what, where, and with what forces or money."></textarea></label></div>
-    <button type="button" class="dbtn" id="d-add">Add a clause</button>
-    <label>Ask for signatures (you need ${SIGS_NEEDED - 1} more)<div class="signers">${ROSTER.filter((r) => r.name !== me).map((r) => `<label><input type="checkbox" value="${esc(r.name)}">${esc(r.name)}</label>`).join('')}</div></label>
-    <div class="row"><button type="submit" class="dbtn gold">Send for signatures</button><button type="button" class="dbtn" id="d-cancel">Cancel</button></div>
-  </form>`;
+  if (+$('dc-clauses').dataset.n !== d.clauses.length) buildClauses();
+  const T = $('dc-title'); if (document.activeElement !== T && !('title' in docPending) && T.value !== d.title) { T.value = d.title; grow(T); $('dc-name').textContent = d.title || 'Untitled directive'; }
+  d.clauses.forEach((c, i) => { const t = $('dc-c' + i); if (t && document.activeElement !== t && !(String(i) in docPending) && t.value !== c) { t.value = c; grow(t); } });
+  const now = Date.now() + SKEW;
+  d.clauses.forEach((_, i) => { const w = $('dc-w' + i), ty = d.typing?.[i]; const on = ty && ty.by !== me && now - ty.at < 7000; w.hidden = !on; if (on) { w.textContent = ty.by.split(' ').slice(-1)[0]; w.style.setProperty('--c', authCol(ty.by)); } });
+  const ty = d.typing?.title; T.classList.toggle('others', !!(ty && ty.by !== me && now - ty.at < 7000)); if (ty) T.style.setProperty('--c', authCol(ty.by));
+  $('dc-avs').innerHTML = d.authors.map((n) => `<span style="--c:${authCol(n)}" title="${esc(n)}${n === me ? ' (you)' : ''}">${esc(initials(n))}</span>`).join('');
+  $('dc-signers').querySelectorAll('label').forEach((l) => { l.hidden = d.authors.includes(l.querySelector('input').value); });
+  syncNeed();
 }
-function bindDraft() {
-  const f = $('dform'); let n = 1;
-  f.querySelector('#d-add').addEventListener('click', () => { if (n >= 8) return; f.querySelector('#d-clauses').insertAdjacentHTML('beforeend', `<label for="d-c${n}">Clause ${n + 1}<textarea id="d-c${n}" maxlength="500"></textarea></label>`); n++; });
-  f.querySelector('#d-cancel').addEventListener('click', () => { drafting = false; renderDirectives(); });
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const title = f.querySelector('#d-title').value.trim(); const clauses = [...f.querySelectorAll('textarea')].map((t) => t.value.trim()).filter(Boolean);
-    const asked = [...f.querySelectorAll('.signers input:checked')].map((i) => i.value);
-    if (!title || !clauses.length) { toast('Add a title and at least one clause.'); return; }
-    if (asked.length < SIGS_NEEDED - 1) { toast(`Ask at least ${SIGS_NEEDED - 1} people to sign.`); return; }
-    drafting = false; const ok = await act({ type: 'dir.create', title, clauses, asked });
-    if (!ok) { drafting = true; } renderDirectives();
-  });
-}
-function showTab(t) { $('t-' + t).classList.remove('ping'); ['act', 'dir', 'port', 'intel', 'msg'].forEach((o) => { $('t-' + o).setAttribute('aria-selected', o === t); $('p-' + o).hidden = o !== t; }); }
+function showTab(t) { $('t-' + t).classList.remove('ping'); ['act', 'dir', 'intel', 'msg'].forEach((o) => { $('t-' + o).setAttribute('aria-selected', o === t); $('p-' + o).hidden = o !== t; }); }
 
 
 /* ---------- Map editor (staff) ---------- */
@@ -2270,32 +2385,40 @@ export function start(root, props) {
     g.dirty = true;
   }));
   if (VIEW === 'delegate') {
-    const TABS = ['act', 'dir', 'port', 'intel', 'msg'];
+    const TABS = ['act', 'dir', 'intel', 'msg'];
     TABS.forEach((t) => $('t-' + t).addEventListener('click', () => showTab(t)));
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !$('reader').hidden) { closeReader(); return; }
+      if (e.key === 'Escape' && !$('brief').hidden) { closeBrief(); return; }
+      if (e.key === 'Escape' && !$('lap').hidden) { closeLaptop(); return; }
+      if (e.key === 'Escape' && !$('compose').hidden && !$('compose').classList.contains('min')) { closeCompose(); return; }
+      if (e.key === 'Escape' && !$('mcompose').hidden) { closeCompose('mcompose'); return; }
       if (e.key === 'Escape' && !$('letterpop').hidden) { closeLetter(); return; }
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
-      if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && /^[1-5]$/.test(e.key) && $('letterpop').hidden && $('reader').hidden) showTab(TABS[+e.key - 1]);
+      if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && /^[1-4]$/.test(e.key) && OVERLAYS().every((x) => x.hidden)) showTab(TABS[+e.key - 1]);
     });
-    $('mailbox').addEventListener('click', openLetter);
-    $('intel').addEventListener('click', (e) => { const b = e.target.closest('[data-intel]'); if (!b) return; const r = INTEL_LIST[+b.dataset.intel]; if (!r) return; READ.add('i:' + r.from + '|' + r.text); b.classList.remove('unread');
-      openReader({ theme: 'dossier', kicker: 'Intelligence report', title: r.from, rel: r.rel, body: r.text, file: `File ${String(INTEL_LIST.length - +b.dataset.intel).padStart(3, '0')} · ${STATE.update?.date || ''}` }); });
-    $('msgs').addEventListener('click', (e) => { const b = e.target.closest('[data-msg]'); if (!b) return; const m = MSG_LIST[+b.dataset.msg]; if (!m) return; READ.add('m:' + m.id); b.classList.remove('unread'); const me = MEE.name;
-      const to = (m.to || []).map((n) => (n === me ? 'you' : n)).join(', ');
-      openReader({ theme: 'note', title: m.from === me ? `To ${to},` : `From ${m.from}${m.intercepted ? ' to ' + to : ''}`, body: m.text, time: `${m.time}${m.from === me ? ' · You passed this note' : ''}`, stamp: m.intercepted ? 'Intercepted' : '' }); });
+    $('mailbox').addEventListener('click', openMail);
+    $('intel').addEventListener('click', (e) => { const b = e.target.closest('[data-intel]'); const r = b && INTEL_LIST[+b.dataset.intel]; if (r) openIntel(r); });
+    $('msgs').addEventListener('click', (e) => { const b = e.target.closest('[data-msg]'); const m = b && MSG_LIST[+b.dataset.msg]; if (m) openMsg(m); });
+    $('lap').addEventListener('click', (e) => { if (e.target.id === 'lap') closeLaptop(); });
     $('p-dir').addEventListener('click', (e) => { if (e.target.closest('button, input, textarea, label, form')) return; const c = e.target.closest('[data-dir]'); if (!c) return; const d = (STATE.directives || []).find((x) => x.id === c.dataset.dir); if (d) openReader({ theme: 'directive', d }); });
-    $('p-port').addEventListener('click', (e) => { if (!e.target.closest('[data-secret]')) return; openReader({ theme: 'dossier', kicker: 'Eyes only', title: MEE.name, body: SECRET[MEE.name] || 'Crisis staff will give you a secret objective.', file: `Personal file · ${POWERS[ME].label}`, stamp: 'Top secret' }); });
+    $('brief-body').addEventListener('click', (e) => { if (!e.target.closest('[data-secret]')) return; openReader({ theme: 'dossier', kicker: 'Eyes only', title: MEE.name, body: SECRET[MEE.name] || 'Crisis staff will give you a secret objective.', file: `Personal file · ${POWERS[ME].label}`, stamp: 'Top secret' }); });
     $('rd-close').addEventListener('click', closeReader);
+    $('brief-btn').addEventListener('click', openBrief); $('brief-close').addEventListener('click', closeBrief);
+    $('brief').addEventListener('click', (e) => { if (e.target.id === 'brief' || e.target.classList.contains('bstage')) closeBrief(); });
+    $('open-msg').addEventListener('click', () => openCompose('mcompose'));
+    $('c-restore').addEventListener('click', () => minCompose(false));
+    ['compose', 'mcompose'].forEach((id) => $(id).addEventListener('click', (e) => { if (e.target.closest('[data-cclose]') || (e.target.id === id && !$(id).classList.contains('min'))) closeCompose(id); }));
+    $('cform').addEventListener('submit', submitAction);
     $('reader').addEventListener('click', (e) => { if (e.target.id === 'reader') closeReader(); });
     $('lt-close').addEventListener('click', () => closeLetter());
     $('lt-next').addEventListener('click', () => closeLetter(true));
-    $('lt-follow').addEventListener('click', () => { const id = LETTER?.id; closeLetter(); followParent = id; action = 'secret'; setPick(null); showTab('act'); renderTiles(); renderForm(); setTimeout(() => $('f-text')?.focus(), 250); });
+    $('lt-follow').addEventListener('click', () => { const id = LETTER?.id; closeLetter(); followParent = id; action = 'secret'; setPick(null); showTab('act'); renderTiles(); renderForm(); setTimeout(() => openCompose(), 250); });
     $('letterpop').addEventListener('click', (e) => { if (e.target === e.currentTarget || e.target.classList.contains('lstage')) closeLetter(); });
     $('form').addEventListener('submit', submitAction);
     $('msg-form').addEventListener('submit', async (e) => {
       e.preventDefault(); const boxes = [...document.querySelectorAll('.notepick input:checked')]; const to = boxes.map((o) => o.value);
-      if (await act({ type: 'msg.send', to, text: $('msg-text').value }, { quiet: true })) { flyFrom(e.target.querySelector('[type=submit]')); notify({ kind: 'note', title: 'Note passed!', body: `To ${to.join(', ')}. Crisis staff can read every note.` }); $('msg-text').value = ''; boxes.forEach((o) => (o.checked = false)); }
+      if (await act({ type: 'msg.send', to, text: $('msg-text').value }, { quiet: true })) { closeCompose('mcompose', true); notify({ kind: 'note', title: 'Note passed!', body: `To ${to.join(', ')}. Crisis staff can read every note.` }); $('msg-text').value = ''; boxes.forEach((o) => (o.checked = false)); }
     });
   }
   if (STAFFMAP) bindStaff();
