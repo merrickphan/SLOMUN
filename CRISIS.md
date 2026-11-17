@@ -111,7 +111,13 @@ These turn free-form plans into things that show on the map and count in battles
 - **Map features** are 3D props on the globe:
   - trenches, bunkers and barbed wire (each can run as a line between two spots)
   - minefields, anti-aircraft guns, factories, airfields, oil fields, ports, bridges, partisan camps and fires
-- **Each feature has a defense value.** Trenches +1, bunkers +2, wire +1, minefields +1, anti-aircraft guns +1 by default. Each +1 is worth +25% for the side defending near it.
+  - artillery, railway guns, pillboxes, searchlights, barrage balloons, radar, field headquarters, barracks, supply depots, motor pools, field hospitals and checkpoints
+  - supply convoys, railways, anti-tank obstacles, sandbag walls, refugee columns and naval blockades (these can also run as lines)
+  - bomber formations, paratroopers, cavalry, submarines, naval mines, shipyards, radio stations, embassies and prison camps
+  - riots, labor strikes, scorched earth, bombed ruins and flooded land
+- **No labels on the map.** Features and spies are models only. Click one to see what it is (staff and the projector open its card; delegates get a pop-up).
+- **Spies** show as small figures in a trench coat and hat, visible to their own side and to crisis staff.
+- **Each feature has a defense value.** Trenches +1, bunkers +2, pillboxes +2, wire, minefields, anti-aircraft guns, artillery, sandbags, anti-tank obstacles, checkpoints, headquarters, naval mines and flooding +1 by default; a riot is -1. Each +1 is worth +25% for the side defending near it.
 - **The battle calculator adds features automatically** when they sit within about 1.4° of the defending units. Staff can untick any of them. A winning attacker can overrun them, which marks them destroyed.
 - **Build time:** a feature can be ready now or after 1 to 3 crisis updates. Until then it shows as a see-through model with scaffolding. When it finishes, the wire announces it if it is public.
 - **Destroyed features** turn dark, with fire and smoke. Oil fields burn.
