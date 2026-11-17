@@ -728,3 +728,17 @@ button { cursor: pointer; }
 }
 @keyframes readin { from { opacity: 0; transform: translate(calc(var(--ox, 50vw) - 50vw), calc(var(--oy, 50vh) - 50vh)) scale(.35); } }
 @keyframes readout { to { opacity: 0; transform: scale(.94); } }
+/* Notes open from an envelope, like crisis staff replies */
+.reader .lstage { width: min(680px, 100%); }
+.reader:not(.mail) .lenv { display: none; }
+.reader.mail .rcard { position: relative; z-index: 4; visibility: hidden; }
+.reader.mail.opening .rcard, .reader.mail.open .rcard { visibility: visible; }
+@media (prefers-reduced-motion: no-preference) {
+  .reader.mail:not([hidden]) .rcard { animation: none; }
+  .reader.mail.opening .lenv { animation: envin .35s var(--ease) both, envout .35s .8s ease-in forwards; }
+  .reader.mail.opening .lflap { animation: flap .4s .35s ease-in-out forwards; }
+  .reader.mail.opening .lseal { animation: sealoff .25s .3s ease-in forwards; }
+  .reader.mail.opening .rcard { animation: letterup .5s .62s var(--ease) both; }
+  .reader.mail.open .lenv { visibility: hidden; }
+}
+@media (prefers-reduced-motion: reduce) { .reader .lenv { display: none; } .reader.mail .rcard { visibility: visible; } }
