@@ -424,7 +424,12 @@ function paintFog(canvas) {
   }
   // Clear the fog where this delegate can see.
   f.globalCompositeOperation = 'destination-out';
-  for (const n of ALLIES) { const g = A.geo[n]; if (!g) continue; ringPath(f, g.r); f.fillStyle = '#000'; f.fill('evenodd'); f.lineWidth = 60; f.strokeStyle = 'rgba(0,0,0,.6)'; f.stroke(); }
+  // Soft edge around allied land: round joins (miter joins spiked at every border bend), stepped widths fade it out.
+  f.lineJoin = 'round'; f.lineCap = 'round';
+  for (const n of ALLIES) {
+    const g = A.geo[n]; if (!g) continue; ringPath(f, g.r); f.fillStyle = '#000'; f.fill('evenodd');
+    for (const [w, a] of [[64, 0.12], [48, 0.14], [34, 0.16], [20, 0.2], [8, 0.3]]) { f.lineWidth = w; f.strokeStyle = `rgba(0,0,0,${a})`; f.stroke(); }
+  }
   const deg = TW / (LON1 - LON0);
   const clear = (lon, lat, rDeg) => { const x = tx(lon), y = ty(lat), r = rDeg * deg; const g = f.createRadialGradient(x, y, r * 0.35, x, y, r); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); f.fillStyle = g; f.beginPath(); f.arc(x, y, r, 0, Math.PI * 2); f.fill(); };
   for (const u of UNITS) { if (ALLIES.includes(u.owner)) clear(u.at[0], u.at[1], u.kind === 'air' ? 5 : u.kind === 'fleet' ? 4 : 3); else clear(u.at[0], u.at[1], 2.2); }
