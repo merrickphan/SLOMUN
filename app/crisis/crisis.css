@@ -990,3 +990,38 @@ button { cursor: pointer; }
 .side > * { flex-shrink: 0; }
 .who > div { min-width: 0; }
 .who span { display: block; line-height: 1.3; }
+
+/* ===== One typeface (Inter), no all-caps labels, nothing tilted ===== */
+:root { --display: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; --body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+body, body *, .hand, .type, .docs, .docs *, .paper, .paper *, .dpage textarea { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif !important; }
+body * { text-transform: none !important; }
+body *:not(.lbl) { letter-spacing: normal !important; }
+.lbl { letter-spacing: .02em !important; font-weight: 600; }
+/* Small labels that only sat above a title are gone */
+.ck, .lk, .rkick, .vhead { display: none !important; }
+.cto { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+.cto span { font-size: 15px; font-weight: 500; }
+.lkind { font-size: 13px; text-transform: none; }
+.letter .lverdict { font-size: 30px; font-weight: 800; }
+.mb-txt b, .notice .nt b, .briefbtn b, .bpapers h2, .sel-title, .who b, .brand b, .date, .rcard.dossier h3 { font-weight: 700; }
+.nbody, .cpaper #f-text, .cpaper #msg-text { font-size: 18px !important; line-height: 32px !important; }
+.rcard.note h3 { font-size: 22px; line-height: 34px; }
+.tbody { font-size: 16.5px; }
+.dsig b { font-size: 17px; }
+.headline { font-weight: 800; }
+/* Flat: no tilted paper, stamps or wiggles */
+.cpaper, .rcard, .stamp, .tape { transform: none; }
+.stamp { font-size: 20px; }
+@media (prefers-reduced-motion: no-preference) {
+  .mailbox:not([hidden]) { animation: mbbob 3.2s 1.2s ease-in-out infinite; }
+  .mailbox.arrive { animation: mbin .6s cubic-bezier(.3,1.3,.5,1) both, mbbob 3.2s 1.5s ease-in-out infinite; }
+  .compose:not([hidden]):not(.min) .cpaper { animation: paperflat .32s var(--ease) both; }
+  .compose.sent .cpaper { animation: sendflat .4s ease-in forwards; }
+  .reader:not([hidden]) .rcard.note, .reader:not([hidden]) .rcard.dossier, .reader:not([hidden]) .rcard.plain { animation: paperflat .38s var(--ease) both; }
+  .reader:not([hidden]) .stamp { animation: stampflat .4s .45s cubic-bezier(.3,1.4,.5,1) both; }
+  .reader.closing .rcard[class] { animation: readout .22s ease-in forwards !important; }
+}
+@keyframes mbbob { 0%, 84%, 100% { transform: translateX(-50%); } 90% { transform: translate(-50%, -4px); } 95% { transform: translate(-50%, 0); } }
+@keyframes paperflat { from { opacity: 0; transform: translateY(36px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes sendflat { 40% { transform: scale(.97); } 100% { opacity: 0; transform: translateY(-40vh) scale(.3); } }
+@keyframes stampflat { 0% { opacity: 0; transform: scale(2.2); } 100% { opacity: .85; transform: none; } }

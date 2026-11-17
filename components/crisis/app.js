@@ -1673,7 +1673,7 @@ function paperHTML(o) {
 function openReader(o) {
   const el = $('reader'), card = $('rd-card'), paper = $('rd-paper');
   card.className = 'rcard ' + (o.theme || 'plain'); paper.innerHTML = paperHTML(o); paper.style.clipPath = o.theme === 'note' ? tornClip() : '';
-  card.style.setProperty('--tilt', (o.theme === 'note' ? rnd(-2.2, 2.2) : o.theme === 'dossier' ? rnd(-1, 1) : 0).toFixed(2) + 'deg');
+  card.style.setProperty('--tilt', '0deg');
   el.className = 'reader'; el.hidden = true; void el.offsetWidth; el.hidden = false; paper.scrollTop = 0;
   setTimeout(() => $('rd-close').focus({ preventScroll: true }), CALM() ? 0 : 500);
 }
