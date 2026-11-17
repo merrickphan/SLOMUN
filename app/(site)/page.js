@@ -52,18 +52,18 @@ export default function Home() {
             <p className="serif">We look forward to welcoming you to San Luis Obispo MUN II on April 3 and 4, 2027!</p>
             <p className="serif">Sincerely,</p>
             <div className="sg-signatures">
-              <img src="/images/signature-merrick-han.png" alt="Signature of Merrick Han" />
               <img className="sig-diya" src="/images/signature-diya-menon.png" alt="Signature of Diya Menon" />
+              <img src="/images/signature-merrick-han.png" alt="Signature of Merrick Han" />
             </div>
-            <p className="signature">Merrick Han and Diya Menon</p>
+            <p className="signature">Diya Menon and Merrick Han</p>
             <p className="small muted">
               Co-Secretary Generals
               <br />
               San Luis Obispo Model United Nations, Session II
               <br />
-              <a href="mailto:merrickphan2011@gmail.com">merrickphan2011@gmail.com</a>
-              <br />
               <a href="mailto:diyavinilm@gmail.com">diyavinilm@gmail.com</a>
+              <br />
+              <a href="mailto:merrickphan2011@gmail.com">merrickphan2011@gmail.com</a>
             </p>
           </div>
           <div className="portrait">
