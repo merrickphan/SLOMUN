@@ -1316,9 +1316,8 @@ function skeleton(p) {
   </section>`;
   return top + body + `<div class="notices" id="notices" aria-live="polite"></div>
   <button type="button" class="mailbox" id="mailbox" hidden><span class="mb-env" aria-hidden="true"><i></i></span><span class="mb-txt"><b>Crisis staff replied</b><small id="mb-sub">Click to open</small></span><span class="mb-n num" id="mb-n" hidden></span></button>
-  <div class="reader" id="reader" hidden><div class="lstage"><div class="lenv" aria-hidden="true"><div class="lback"></div><div class="lflap"></div><div class="lfront"></div><div class="lseal">S</div></div><article class="rcard" role="dialog" aria-modal="true" aria-labelledby="rd-title">
-    <p class="rkick" id="rd-kicker"></p><h3 id="rd-title"></h3><div class="rtags" id="rd-tags"></div><p class="rbody" id="rd-body"></p>
-    <div class="lbtns"><button type="button" class="lbtn main" id="rd-close">Close</button></div></article></div></div>
+  <div class="reader" id="reader" hidden><article class="rcard" id="rd-card" role="dialog" aria-modal="true" aria-labelledby="rd-title"><div class="rpaper" id="rd-paper"></div>
+    <div class="rbtns"><button type="button" class="lbtn main" id="rd-close">Close</button></div></article></div>
   <div class="letterpop" id="letterpop" hidden><div class="lstage">
     <div class="lenv" aria-hidden="true"><div class="lback"></div><div class="lflap"></div><div class="lfront"></div><div class="lseal">S</div></div>
     <article class="letter" role="dialog" aria-modal="true" aria-labelledby="lt-title">
@@ -1592,17 +1591,33 @@ const SEEN = {};
 function freshKeys(list, keys) { const had = SEEN[list]; SEEN[list] = new Set(keys); return had ? new Set(keys.filter((k) => !had.has(k))) : new Set(); }
 // Long reports open full screen; the lists only show a one-line summary.
 let INTEL_LIST = [], MSG_LIST = []; const READ = new Set();
-let readerTimer = 0;
-function openReader({ kicker, title, tags = [], body, from, mail }) {
-  const el = $('reader'); $('rd-kicker').textContent = kicker; $('rd-title').textContent = title; $('rd-body').textContent = body;
-  $('rd-tags').innerHTML = tags.map((t) => `<span class="rtag ${t.cls || ''}">${esc(t.text)}</span>`).join('');
-  if (from && !CALM()) { const r = from.getBoundingClientRect(); el.style.setProperty('--ox', r.left + r.width / 2 + 'px'); el.style.setProperty('--oy', r.top + r.height / 2 + 'px'); }
-  clearTimeout(readerTimer); el.className = 'reader' + (mail ? ' mail' : '');
-  el.hidden = true; void el.offsetWidth; el.hidden = false;
-  if (mail) { el.classList.add('opening'); readerTimer = setTimeout(() => el.classList.add('open'), CALM() ? 0 : 1050); }
-  setTimeout(() => $('rd-close').focus({ preventScroll: true }), mail && !CALM() ? 1100 : 0);
+// Each kind of document gets its own paper: notes on torn lined paper, intel in a typed secret file, directives as official documents.
+const rnd = (a, b) => a + Math.random() * (b - a);
+function tornClip() {
+  const top = [], bot = []; for (let x = 0; x <= 100; x += 2.5) { top.push(`${x}% ${rnd(0, 9).toFixed(1)}px`); bot.unshift(`${x}% calc(100% - ${rnd(0, 9).toFixed(1)}px)`); }
+  return `polygon(${top.join(',')},${bot.join(',')})`;
 }
-function closeReader() { const el = $('reader'); if (!el || el.hidden) return; clearTimeout(readerTimer); el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'reader'; }, CALM() ? 0 : 220); }
+function paperHTML(o) {
+  const P = (t) => esc(t).replace(/\n/g, '<br>');
+  if (o.theme === 'note') return `<span class="tape" aria-hidden="true"></span><p class="nmeta">${esc(o.time || '')}</p>
+    <h3 id="rd-title" class="hand">${esc(o.title)}</h3><p class="hand nbody">${P(o.body)}</p>${o.stamp ? `<span class="stamp red">${esc(o.stamp)}</span>` : ''}`;
+  if (o.theme === 'dossier') return `<span class="ftab">${esc(o.kicker)}</span><p class="type tsmall">${esc(o.file || '')}</p>
+    <h3 id="rd-title" class="type">${esc(o.title)}</h3>${o.rel ? `<p class="type tsmall">Reliability: <b class="rel-${esc(String(o.rel).toLowerCase())}">${esc(o.rel)}</b></p>` : ''}
+    <p class="type tbody">${P(o.body)}</p><span class="stamp red">${esc(o.stamp || 'Secret')}</span>`;
+  if (o.theme === 'directive') { const d = o.d; return `<p class="dhead">San Luis Obispo Model United Nations II<br>Crisis Committee</p><p class="dno">${d.no ? 'Directive ' + esc(d.no) : 'Draft directive'}</p>
+    <h3 id="rd-title" class="dtitle">${esc(d.title)}</h3><ol class="dclauses">${d.clauses.map((c) => `<li>${esc(c)}</li>`).join('')}</ol>
+    <div class="dsig"><div><span>Sponsors</span><b class="hand">${d.sponsors.map(esc).join(', ')}</b></div><div><span>Signatories</span><b class="hand">${d.signed.filter((n) => !d.sponsors.includes(n)).map(esc).join(', ') || '—'}</b></div></div>
+    ${d.vote ? `<p class="dvote">${esc(d.vote)}</p>` : ''}<span class="stamp ${{ passed: 'green', failed: 'red' }[d.status] || 'blue'}">${esc(DSTATUS[d.status])}</span>`; }
+  return `<p class="rkick">${esc(o.kicker || '')}</p><h3 id="rd-title">${esc(o.title)}</h3><p class="rbody">${P(o.body || '')}</p>`;
+}
+function openReader(o) {
+  const el = $('reader'), card = $('rd-card'), paper = $('rd-paper');
+  card.className = 'rcard ' + (o.theme || 'plain'); paper.innerHTML = paperHTML(o); paper.style.clipPath = o.theme === 'note' ? tornClip() : '';
+  card.style.setProperty('--tilt', (o.theme === 'note' ? rnd(-2.2, 2.2) : o.theme === 'dossier' ? rnd(-1, 1) : 0).toFixed(2) + 'deg');
+  el.className = 'reader'; el.hidden = true; void el.offsetWidth; el.hidden = false; paper.scrollTop = 0;
+  setTimeout(() => $('rd-close').focus({ preventScroll: true }), CALM() ? 0 : 500);
+}
+function closeReader() { const el = $('reader'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'reader'; }, CALM() ? 0 : 240); }
 function renderIntel() {
   const I = STATE.intel || []; setCount($('c-intel'), I.length);
   const fresh = freshKeys('intel', I.map((r) => r.from + '|' + r.text));
@@ -1628,7 +1643,7 @@ function renderPortfolio() {
       <li>${SPECIAL[ME] || "Your government's contacts"}</li>${(STATE.assets || []).map((x) => `<li>${esc(x.text)}<small>Granted by crisis staff after update ${x.update}</small></li>`).join('')}</ul></div>
     <div class="sec"><h3>Not in your portfolio</h3><ul class="plist no">
       ${missing.map((k) => `<li>${KIND_NAME[k]}${boss(k) ? ` (ask ${esc(boss(k).name)})` : ''}</li>`).join('')}${LIMITS_ALWAYS.map((l) => `<li>${l}</li>`).join('')}</ul></div>
-    <div class="secret"><b>Secret objective</b>${esc(SECRET[r.name] || 'Crisis staff will give you a secret objective.')}<small class="formnote" style="display:block;margin-top:6px">Only you and crisis staff can see this.</small></div>`;
+    <button type="button" class="secret secretbtn" data-secret><b>Secret objective</b><span>Open your sealed file</span><small class="formnote" style="display:block;margin-top:6px">Only you and crisis staff can see this.</small></button>`;
 }
 function updateDirCount() {
   const me = MEE.name; const n = (STATE.directives || []).filter((d) => d.status === 'signing' && d.requested.includes(me) && !d.signed.includes(me)).length;
@@ -1640,7 +1655,7 @@ function renderDirectives() {
   const mine = D.filter((d) => d.sponsors.includes(me) || d.signed.includes(me));
   const floor = D.filter((d) => ['floor', 'chair', 'passed', 'failed'].includes(d.status) && !mine.includes(d));
   updateDirCount();
-  const card = (d, extra = '') => `<div class="dir"><div class="dir-top"><b>${d.no ? 'Directive ' + esc(d.no) + ': ' : ''}${esc(d.title)}</b><span class="pill ${d.status}">${DSTATUS[d.status]}</span></div>
+  const card = (d, extra = '') => `<div class="dir tapdir" data-dir="${d.id}" title="Click to read the full directive"><div class="dir-top"><b>${d.no ? 'Directive ' + esc(d.no) + ': ' : ''}${esc(d.title)}</b><span class="pill ${d.status}">${DSTATUS[d.status]}</span></div>
     <ol>${d.clauses.map((c) => `<li>${esc(c)}</li>`).join('')}</ol>
     <small>Sponsors: ${d.sponsors.map(esc).join(', ')}${d.status === 'signing' ? ` · Signatures ${d.signed.length} of ${SIGS_NEEDED}` : ` · Signed by ${d.signed.length}`}${d.vote ? ' · ' + esc(d.vote) : ''}</small>
     ${d.status === 'signing' ? `<div class="sigbar"><i style="width:${Math.min(100, (d.signed.length / SIGS_NEEDED) * 100)}%"></i></div>` : ''}${extra}</div>`;
@@ -2265,9 +2280,12 @@ export function start(root, props) {
     });
     $('mailbox').addEventListener('click', openLetter);
     $('intel').addEventListener('click', (e) => { const b = e.target.closest('[data-intel]'); if (!b) return; const r = INTEL_LIST[+b.dataset.intel]; if (!r) return; READ.add('i:' + r.from + '|' + r.text); b.classList.remove('unread');
-      openReader({ kicker: 'Intelligence report', title: r.from, tags: [{ text: `${r.rel} reliability`, cls: 'rel-' + String(r.rel).toLowerCase() }], body: r.text, from: b }); });
+      openReader({ theme: 'dossier', kicker: 'Intelligence report', title: r.from, rel: r.rel, body: r.text, file: `File ${String(INTEL_LIST.length - +b.dataset.intel).padStart(3, '0')} · ${STATE.update?.date || ''}` }); });
     $('msgs').addEventListener('click', (e) => { const b = e.target.closest('[data-msg]'); if (!b) return; const m = MSG_LIST[+b.dataset.msg]; if (!m) return; READ.add('m:' + m.id); b.classList.remove('unread'); const me = MEE.name;
-      openReader({ kicker: m.intercepted ? 'Intercepted note' : m.from === me ? 'Note you passed' : 'Private note', title: `${m.from === me ? 'You' : m.from} to ${(m.to || []).map((n) => (n === me ? 'you' : n)).join(', ')}`, tags: [{ text: m.time }, ...(m.intercepted ? [{ text: 'Copied by your agent', cls: 'bad' }] : [])], body: m.text, from: b, mail: true }); });
+      const to = (m.to || []).map((n) => (n === me ? 'you' : n)).join(', ');
+      openReader({ theme: 'note', title: m.from === me ? `To ${to},` : `From ${m.from}${m.intercepted ? ' to ' + to : ''}`, body: m.text, time: `${m.time}${m.from === me ? ' · You passed this note' : ''}`, stamp: m.intercepted ? 'Intercepted' : '' }); });
+    $('p-dir').addEventListener('click', (e) => { if (e.target.closest('button, input, textarea, label, form')) return; const c = e.target.closest('[data-dir]'); if (!c) return; const d = (STATE.directives || []).find((x) => x.id === c.dataset.dir); if (d) openReader({ theme: 'directive', d }); });
+    $('p-port').addEventListener('click', (e) => { if (!e.target.closest('[data-secret]')) return; openReader({ theme: 'dossier', kicker: 'Eyes only', title: MEE.name, body: SECRET[MEE.name] || 'Crisis staff will give you a secret objective.', file: `Personal file · ${POWERS[ME].label}`, stamp: 'Top secret' }); });
     $('rd-close').addEventListener('click', closeReader);
     $('reader').addEventListener('click', (e) => { if (e.target.id === 'reader') closeReader(); });
     $('lt-close').addEventListener('click', () => closeLetter());
