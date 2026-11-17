@@ -986,3 +986,7 @@ button { cursor: pointer; }
 }
 @keyframes nupin { 0% { opacity: 0; transform: translateY(30px) scale(.9); } 100% { opacity: 1; transform: none; } }
 @keyframes nupout { to { opacity: 0; transform: translateY(16px) scale(.95); } }
+/* Side panel scrolls instead of squashing its rows into each other */
+.side > * { flex-shrink: 0; }
+.who > div { min-width: 0; }
+.who span { display: block; line-height: 1.3; }
