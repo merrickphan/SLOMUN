@@ -689,3 +689,11 @@ button { cursor: pointer; }
 @keyframes letterup { 0% { opacity: 0; transform: translateY(70px) scale(.55); } 100% { opacity: 1; transform: none; } }
 @keyframes verdictin { 0% { opacity: 0; transform: scale(1.5); } 100% { opacity: 1; transform: none; } }
 @media (max-width: 900px) { .mailbox { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); } }
+/* Figurine gallery */
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.ftile { margin: 0; display: flex; flex-direction: column; background: radial-gradient(ellipse at 50% 40%, rgba(255,255,255,.07), rgba(0,0,0,.25)); border: 1px solid var(--pane-edge); }
+.ftile canvas { width: 100%; height: auto; aspect-ratio: 4 / 3; display: block; }
+.ftile figcaption { padding: 6px 9px 8px; border-top: 1px solid var(--pane-edge); display: flex; flex-direction: column; gap: 1px; }
+.ftile b { font-size: 13.5px; }
+.ftile small { font-size: 11.5px; color: var(--muted); }
+#gal-owner { background: var(--field); border: 1px solid var(--pane-edge); color: var(--text); padding: 4px 6px; margin-left: 6px; }

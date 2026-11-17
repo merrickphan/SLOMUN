@@ -1087,7 +1087,7 @@ const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button"
 const DATECARD = `<div class="date glass num"><span class="date-line"></span><small class="countdown">Next crisis update in <b>15:00</b></small></div>`;
 
 /* ---------- Staff screen: the map plus a request drawer and pop-ups ---------- */
-const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['ev', 'Make something happen'], ['battle', 'Battle'], ['rels', 'Wars and treaties'], ['feat', 'Features and spies'], ['msgs', 'Messages'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
+const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['ev', 'Make something happen'], ['battle', 'Battle'], ['rels', 'Wars and treaties'], ['feat', 'Features and spies'], ['gallery', 'Figurines'], ['msgs', 'Messages'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
 function staffBar() {
   return `<div class="undobar" id="undobar" hidden></div><nav class="stoolbar" aria-label="Staff tools">${MODALS.map(([k, l]) => `<button type="button" class="dbtn" data-modal="${k}">${l}<span class="count num" id="stc-${k}" hidden></span></button>`).join('')}</nav>`;
 }
@@ -1114,6 +1114,7 @@ function staffModals(p) {
     + modal('battle', 'Battle calculator', '<p class="formnote">Tip: click units on the map and choose "Attacker" or "Defender". Battles in approved crisis notes roll by themselves.</p><div id="battle"></div>', true)
     + modal('rels', 'Wars, treaties and conditions', '<div id="rels"></div>')
     + modal('feat', 'Map features, spies and scheduled events', '<p class="formnote">Click any feature on the map to change it, or click the map to build one. Spies show on the map as dark pins.</p><div id="featlist"></div>', true)
+    + modal('gallery', 'Figurine gallery', `<div class="row"><p class="formnote" style="flex:1">Every model the map can show. Units and spies are figures; everything else can be placed from the map or comes from approved notes.</p><label class="formnote">Country colors <select id="gal-owner">${ORDER.map((k) => `<option value="${k}"${k === 'Germany' ? ' selected' : ''}>${POWERS[k].label}</option>`).join('')}</select></label></div><div class="fgrid" id="fgrid"></div>`, true)
     + modal('msgs', 'Messages between delegates', '<div class="reqs" id="staff-msgs"></div>')
     + modal('proj', 'Projector', `<div id="proj"></div><div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button><button type="button" class="dbtn" id="clear-arrows">Clear map pins</button></div>`)
     + modal('codes', 'Access codes', `<p class="formnote">Print these and hand one to each delegate. The staff and projector codes are set in the Vercel project settings.</p><div class="row"><button type="button" class="dbtn" onclick="window.print()">Print</button></div>
@@ -1123,7 +1124,52 @@ function staffModals(p) {
           <div class="row"><button type="button" class="dbtn" id="load-demo">Load demo requests</button></div>
           <div class="row"><input type="text" id="reset-confirm" placeholder="Type RESET" aria-label="Type RESET to confirm"><button type="button" class="dbtn red" id="reset-game">Reset the whole game</button></div>`);
 }
-function openModal(k) { document.querySelectorAll('.smodal').forEach((m) => (m.hidden = m.id !== 'm-' + k)); if (k === 'battle') syncBattleSelects(); }
+function openModal(k) { document.querySelectorAll('.smodal').forEach((m) => (m.hidden = m.id !== 'm-' + k)); if (k === 'battle') syncBattleSelects(); if (k === 'gallery') startGallery(); }
+/* ---------- Figurine gallery: every model turning slowly, drawn by one small offscreen renderer ---------- */
+let GAL = null;
+function galleryItems(owner) {
+  return [
+    ...KINDS.map((k) => ({ name: KIND_NAME[k], sub: 'Unit', make: () => makeFigure({ id: 'gal-' + k, kind: k, owner, str: k === 'air' ? 8 : 6, at: [0, 0] }) })),
+    { name: 'Spy', sub: 'Agent, seen by its own side and staff', make: () => { const f = spyFigure(); bakeFigure(f, null); return f; } },
+    ...Object.entries(FEAT).map(([k, v]) => ({ name: v.name, sub: [v.mod ? `${v.mod > 0 ? '+' : ''}${v.mod} defense` : 'No battle bonus', v.line ? 'can run as a line' : ''].filter(Boolean).join(' · '), make: () => makeProp({ id: 'gal', kind: k, owner, at: [0, 0], ready: 0, ruined: false }) })),
+  ];
+}
+function startGallery() {
+  if (!GAL) {
+    const W = 220, H = 165, pr = Math.min(2, window.devicePixelRatio || 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); renderer.setPixelRatio(pr); renderer.setSize(W, H);
+    const scene = new THREE.Scene(); scene.add(new THREE.AmbientLight(0xffffff, 0.75), new THREE.HemisphereLight(0xdfe8ff, 0x3a3020, 0.6));
+    const sun = new THREE.DirectionalLight(0xfff4e0, 1.1); sun.position.set(3, 6, 4); scene.add(sun);
+    const cam = new THREE.PerspectiveCamera(30, W / H, 0.1, 100); cam.position.set(0, 2.3, 4.6); cam.lookAt(0, 0.05, 0);
+    GAL = { renderer, scene, cam, W, H, pr, tiles: [], raf: 0 };
+    $('gal-owner').addEventListener('change', () => buildGallery());
+    buildGallery();
+  }
+  cancelAnimationFrame(GAL.raf); let last = 0;
+  const loop = (t) => {
+    if ($('m-gallery').hidden) return; GAL.raf = requestAnimationFrame(loop); if (t - last < 33) return; last = t;
+    const box = $('m-gallery').querySelector('.mbody').getBoundingClientRect();
+    GAL.tiles.forEach((tl, i) => {
+      const r = tl.cv.getBoundingClientRect(); if (r.bottom < box.top || r.top > box.bottom) return;
+      tl.pivot.rotation.y = (CALM() ? 0.6 : t * 0.0005) + i * 0.4; GAL.scene.add(tl.pivot); GAL.renderer.render(GAL.scene, GAL.cam); GAL.scene.remove(tl.pivot);
+      tl.ctx.clearRect(0, 0, tl.cv.width, tl.cv.height); tl.ctx.drawImage(GAL.renderer.domElement, 0, 0);
+    });
+  };
+  GAL.raf = requestAnimationFrame(loop);
+}
+function buildGallery() {
+  GAL.tiles.forEach((tl) => tl.pivot.traverse((o) => o.isMesh && o.geometry.dispose()));
+  const grid = $('fgrid'); grid.innerHTML = ''; GAL.tiles = [];
+  for (const it of galleryItems($('gal-owner').value)) {
+    const model = it.make(); const b = new THREE.Box3().setFromObject(model); const size = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
+    const k = 2.3 / Math.max(size.x, size.y * 1.15, size.z, 0.001); model.position.set(-c.x * k, -c.y * k, -c.z * k); model.scale.multiplyScalar(k);
+    const pivot = new THREE.Group(); pivot.add(model);
+    const fig = document.createElement('figure'); fig.className = 'ftile';
+    const cv = document.createElement('canvas'); cv.width = GAL.W * GAL.pr; cv.height = GAL.H * GAL.pr;
+    const cap = document.createElement('figcaption'); cap.innerHTML = `<b>${esc(it.name)}</b><small>${esc(it.sub)}</small>`;
+    fig.append(cv, cap); grid.appendChild(fig); GAL.tiles.push({ pivot, cv, ctx: cv.getContext('2d') });
+  }
+}
 function skeleton(p) {
   const nav = ROLE === 'staff'
     ? `<a class="navlink${STAFFMAP ? ' on' : ''}" href="/crisis/staff">Staff map</a><a class="navlink${VIEW === 'map' && !EDIT ? ' on' : ''}" href="/crisis/map" target="_blank" rel="noopener">Projector</a>
