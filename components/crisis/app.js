@@ -459,7 +459,8 @@ function paintFog(canvas) {
   feather(canvas);
 }
 const D2R = Math.PI / 180;
-const UNIT_SCALE = 0.0021; // size of the 3D unit figures on the globe
+const UNIT_SCALE = 0.00357; // size of the 3D unit figures on the globe
+const PROP_K = UNIT_SCALE / 0.0105; // trenches, forts, factories and their smoke shrink with the units
 const toVec = (lon, lat, r = 1) => new THREE.Vector3(r * Math.cos(lat * D2R) * Math.cos(lon * D2R), r * Math.sin(lat * D2R), -r * Math.cos(lat * D2R) * Math.sin(lon * D2R));
 
 function inRing(lon, lat, ring) {
@@ -548,13 +549,13 @@ class Globe {
   addProps() {
     if (this.propGroup) { this.scene.remove(this.propGroup); this.propGroup.traverse((o) => o.isMesh && o.geometry.dispose()); }
     this.propGroup = new THREE.Group(); this.propGroup.visible = SHOW_FEAT; this.scene.add(this.propGroup);
-    const emit = []; const SPACING = 0.85;
+    const emit = []; const SPACING = 0.85 * PROP_K;
     for (const f of FEATS) {
       const line = f.to && FEAT[f.kind]?.line; const pts = [];
-      if (line) { const d = Math.hypot(f.to[0] - f.at[0], f.to[1] - f.at[1]); const n = Math.max(1, Math.min(14, Math.round(d / SPACING))); for (let i = 0; i < n; i++) { const t = (i + 0.5) / n; pts.push([f.at[0] + (f.to[0] - f.at[0]) * t, f.at[1] + (f.to[1] - f.at[1]) * t]); } }
+      if (line) { const d = Math.hypot(f.to[0] - f.at[0], f.to[1] - f.at[1]); const n = Math.max(1, Math.min(40, Math.round(d / SPACING))); for (let i = 0; i < n; i++) { const t = (i + 0.5) / n; pts.push([f.at[0] + (f.to[0] - f.at[0]) * t, f.at[1] + (f.to[1] - f.at[1]) * t]); } }
       else pts.push(f.at);
       for (const [lo, la] of pts) {
-        const pr = makeProp(f); pr.userData.heading = line ? 0 : 0.6; this.place(pr, lo, la); pr.scale.setScalar(line ? 0.0078 : 0.0095);
+        const pr = makeProp(f); pr.userData.heading = line ? 0 : 0.6; this.place(pr, lo, la); pr.scale.setScalar((line ? 0.0078 : 0.0095) * PROP_K);
         if (line) { const n = pr.position.clone().normalize(); const d = toVec(f.to[0], f.to[1], 1).sub(toVec(f.at[0], f.at[1], 1)); d.addScaledVector(n, -d.dot(n)).normalize(); const vz = new THREE.Vector3(0, 0, 1).applyQuaternion(pr.quaternion); pr.rotateY(Math.atan2(n.dot(vz.clone().cross(d)), vz.dot(d))); }
         this.propGroup.add(pr); pr.updateMatrixWorld(true);
         const east = new THREE.Vector3(-Math.sin(lo * D2R), 0, -Math.cos(lo * D2R));
@@ -573,7 +574,7 @@ class Globe {
     this.fx = { pts, list, PER }; this.stepFx(performance.now());
   }
   stepFx(t) {
-    const { pts, list, PER } = this.fx; const A = pts.geometry.attributes; const T = t / 1000, k = 0.0095; const v = new THREE.Vector3();
+    const { pts, list, PER } = this.fx; const A = pts.geometry.attributes; const T = t / 1000, k = 0.0095 * PROP_K; const v = new THREE.Vector3();
     pts.material.uniforms.uScale.value = this.fxScale || 600;
     list.forEach((e, i) => {
       const fire = e.type === 'fire' || e.type === 'camp', small = e.type === 'camp';
@@ -767,7 +768,7 @@ class Globe {
     const SHIFT = { lbl: 'translate(-50%, -50%)', city: 'translate(6px, -100%)', tok: 'translate(-50%, -50%)', pin: 'translate(-50%, -100%)', feat: 'translate(-50%, -50%)', pulse: 'translate(-50%, -50%)' };
     const bigFeat = zoom > 1.05; if (bigFeat !== this._bigFeat) { this._bigFeat = bigFeat; this.ov.classList.toggle('feat-big', bigFeat); }
     for (const it of this.items) {
-      const p = this.project(it.lon, it.lat, it.kind === 'tok' ? (it.air ? 0.026 : 0.019) * UNIT_SCALE / 0.0105 : it.kind === 'feat' ? 0.012 : 0);
+      const p = this.project(it.lon, it.lat, it.kind === 'tok' ? (it.air ? 0.026 : 0.019) * UNIT_SCALE / 0.0105 : it.kind === 'feat' ? 0.012 * PROP_K : 0);
       let show = p.ok;
       if (show && it.kind === 'city' && zoom < 0.85 && !['London', 'Paris', 'Berlin', 'Warsaw', 'Rome', 'Moscow'].includes(it.el.textContent)) show = false;
       if (show !== it._show) { it.el.style.display = show ? '' : 'none'; it._show = show; }
