@@ -213,19 +213,36 @@ function soldier(owner, kneel) {
   return g;
 }
 function ship(owner, flagHex) {
-  const g = new THREE.Group(); const hull = 0x5E636B, deck = 0x8B7E66, sup = 0x767C85, dark = 0x2C3036;
+  const g = new THREE.Group(); const hull = 0x5E636B, deck = 0x8B7E66, sup = 0x767C85, dark = 0x2C3036, red = 0x7A2E28, boat = 0xD8D4C8;
   const s = new THREE.Shape(); s.moveTo(-1.6, -0.32); s.lineTo(0.9, -0.36); s.quadraticCurveTo(1.5, -0.28, 1.9, 0); s.quadraticCurveTo(1.5, 0.28, 0.9, 0.36); s.lineTo(-1.6, 0.32); s.quadraticCurveTo(-1.8, 0, -1.6, -0.32);
   const hg = new THREE.ExtrudeGeometry(s, { depth: 0.36, bevelEnabled: false }); hg.rotateX(-Math.PI / 2);
   const h = new THREE.Mesh(hg, mat(hull)); g.add(h);
+  const wg = new THREE.ExtrudeGeometry(s, { depth: 0.06, bevelEnabled: false }); wg.rotateX(-Math.PI / 2); const wl = new THREE.Mesh(wg, mat(red)); wl.scale.set(1.005, 1, 1.02); wl.position.y = -0.02; g.add(wl);
   const dg = new THREE.ShapeGeometry(s); dg.rotateX(-Math.PI / 2); const d = new THREE.Mesh(dg, mat(deck)); d.position.y = 0.361; g.add(d);
-  box(0.9, 0.3, 0.42, sup, -0.1, 0.52, 0, g); box(0.5, 0.32, 0.34, sup, 0.1, 0.82, 0, g); box(0.3, 0.2, 0.3, dark, 0.15, 1.08, 0, g);
-  cyl(0.11, 0.13, 0.62, 8, sup, -0.45, 0.88, 0, g); cyl(0.115, 0.115, 0.1, 8, flagHex, -0.45, 1.12, 0, g);
-  cyl(0.025, 0.03, 0.95, 5, dark, 0.28, 1.4, 0, g); box(0.02, 0.02, 0.5, dark, 0.28, 1.65, 0, g);
-  for (const [x, dir] of [[0.95, 1], [0.58, 1], [-1.05, -1]]) {
-    const t = new THREE.Group(); t.position.set(x, 0.48, 0); g.add(t);
-    box(0.34, 0.18, 0.3, sup, 0, 0, 0, t);
-    for (const z of [-0.07, 0.07]) cyl(0.025, 0.025, 0.5, 5, dark, dir * 0.38, 0.02, z, t, 0, 0, Math.PI / 2);
+  // Superstructure: stepped bridge, conning tower, funnels, masts with yards
+  box(1.0, 0.28, 0.46, sup, -0.15, 0.5, 0, g); box(0.62, 0.22, 0.38, sup, 0.05, 0.75, 0, g); box(0.4, 0.2, 0.32, sup, 0.12, 0.96, 0, g);
+  box(0.42, 0.05, 0.36, dark, 0.12, 1.08, 0, g); for (let i = 0; i < 4; i++) box(0.02, 0.05, 0.3, 0x9AB0BE, 0.32, 0.99, 0, g);
+  cyl(0.06, 0.07, 0.16, 8, sup, 0.12, 1.18, 0, g);
+  for (const x of [-0.35, -0.65]) { cyl(0.1, 0.12, 0.62, 10, sup, x, 0.88, 0, g, 0, 0, 0.12); cyl(0.105, 0.105, 0.08, 10, flagHex, x + 0.03, 1.1, 0, g, 0, 0, 0.12); cyl(0.09, 0.09, 0.03, 10, dark, x + 0.04, 1.2, 0, g, 0, 0, 0.12); }
+  cyl(0.022, 0.03, 1.0, 5, dark, 0.3, 1.45, 0, g); box(0.02, 0.02, 0.5, dark, 0.3, 1.7, 0, g); box(0.02, 0.02, 0.3, dark, 0.3, 1.5, 0, g); box(0.08, 0.05, 0.08, sup, 0.3, 1.85, 0, g);
+  cyl(0.018, 0.02, 0.7, 5, dark, -1.05, 0.72, 0, g); box(0.02, 0.02, 0.32, dark, -1.05, 0.95, 0, g);
+  box(0.12, 0.08, 0.04, flagHex, -1.1, 1.0, 0.03, g);
+  // Main turrets with twin barrels, fore and aft
+  for (const [x, dir, y] of [[1.0, 1, 0.48], [0.62, 1, 0.6], [-1.12, -1, 0.48]]) {
+    const t = new THREE.Group(); t.position.set(x, y, 0); g.add(t);
+    if (y > 0.5) cyl(0.17, 0.2, 0.14, 10, sup, 0, -0.08, 0, t);
+    box(0.36, 0.16, 0.3, sup, 0, 0.02, 0, t); box(0.2, 0.1, 0.28, sup, -dir * 0.12, 0.08, 0, t);
+    for (const z of [-0.07, 0.07]) cyl(0.022, 0.028, 0.52, 6, dark, dir * 0.4, 0.04, z, t, 0, 0, Math.PI / 2);
   }
+  // Secondary guns, anti-aircraft guns and lifeboats along the sides
+  for (const z of [-1, 1]) {
+    for (const x of [-0.45, 0.1]) { box(0.14, 0.08, 0.1, sup, x, 0.42, z * 0.26, g); cyl(0.012, 0.014, 0.22, 5, dark, x + 0.14, 0.43, z * 0.27, g, 0, 0, Math.PI / 2); }
+    for (const x of [-0.2, 0.3]) { cyl(0.04, 0.045, 0.04, 8, dark, x, 0.66, z * 0.22, g); cyl(0.008, 0.008, 0.14, 4, dark, x + 0.04, 0.72, z * 0.22, g, 0, 0, -0.7); }
+    for (const x of [-0.75, -0.5]) { box(0.2, 0.06, 0.07, boat, x, 0.69, z * 0.25, g); box(0.18, 0.02, 0.05, 0x5A4A36, x, 0.72, z * 0.25, g); }
+    box(1.5, 0.04, 0.012, 0x9A9EA4, 0, 0.4, z * 0.33, g);
+    cyl(0.03, 0.03, 0.02, 6, dark, 1.55, 0.25, z * 0.22, g, Math.PI / 2);
+  }
+  box(0.12, 0.05, 0.05, dark, -1.62, 0.39, 0, g);
   return g;
 }
 const ARMOR = { 'Germany': 0x4E5446, 'United Kingdom': 0x7A6E48, 'France': 0x6E785A, 'Poland': 0x6B6A48, 'USSR': 0x56613C, 'Italy': 0x8A7E5A, 'Finland': 0x5E6258, 'Japan': 0x6E6A48, 'United States': 0x5E6640 };
@@ -253,16 +270,27 @@ function tank(owner) {
   return g;
 }
 function plane(owner, flagHex) {
-  const g = new THREE.Group(); const c = AIR[owner], dark = 0x222428, glass = 0x2E4A66;
-  const body = cyl(0.13, 0.17, 1.7, 6, c, 0, 0, 0, g, Math.PI / 2); body.scale.set(1, 1, 0.9);
-  cyl(0.03, 0.16, 0.3, 6, c, 0, 0, -0.98, g, -Math.PI / 2);
-  cyl(0.05, 0.13, 0.18, 6, dark, 0, 0, 0.94, g, Math.PI / 2);
-  box(0.6, 0.04, 0.05, dark, 0, 0, 1.03, g, 0, 0, 0.5);
-  box(2.3, 0.06, 0.44, c, 0, -0.04, 0.18, g);
-  box(0.3, 0.065, 0.3, flagHex, -0.95, -0.03, 0.18, g); box(0.3, 0.065, 0.3, flagHex, 0.95, -0.03, 0.18, g);
-  box(0.82, 0.05, 0.28, c, 0, 0.02, -0.82, g);
-  box(0.05, 0.36, 0.3, c, 0, 0.2, -0.86, g);
-  box(0.2, 0.14, 0.34, glass, 0, 0.18, 0.18, g);
+  const g = new THREE.Group(); const c = AIR[owner], dark = 0x222428, glass = 0x6E8EA8, under = 0x9AA2A8, prop = 0x1A1A1A;
+  const body = cyl(0.13, 0.17, 1.7, 8, c, 0, 0, 0, g, Math.PI / 2); body.scale.set(1, 1, 0.9);
+  cyl(0.03, 0.16, 0.3, 8, c, 0, 0, -0.98, g, -Math.PI / 2);
+  cyl(0.16, 0.17, 0.26, 10, dark, 0, 0, 0.84, g, Math.PI / 2);
+  for (const x of [-0.17, 0.17]) for (const z of [0.66, 0.74]) box(0.03, 0.03, 0.05, 0x5A4A3A, x, -0.02, z, g);
+  cyl(0.02, 0.07, 0.12, 8, 0xB0B0A8, 0, 0, 1.02, g, Math.PI / 2);
+  box(0.7, 0.05, 0.08, prop, 0, 0, 1.04, g, 0, 0, 0.5); box(0.7, 0.05, 0.08, prop, 0, 0, 1.04, g, 0, 0, 2.07);
+  // Wings: tapered, with underside color, ailerons and wing guns
+  const wing = new THREE.Shape(); wing.moveTo(-1.18, 0.02); wing.lineTo(-1.15, 0.3); wing.lineTo(1.15, 0.3); wing.lineTo(1.18, 0.02); wing.lineTo(0.2, -0.2); wing.lineTo(-0.2, -0.2); wing.closePath();
+  const wgeo = new THREE.ExtrudeGeometry(wing, { depth: 0.05, bevelEnabled: false }); wgeo.rotateX(Math.PI / 2); const w = new THREE.Mesh(wgeo, mat(c)); w.position.set(0, -0.02, 0.06); g.add(w);
+  box(2.2, 0.01, 0.4, under, 0, -0.075, 0.2, g);
+  for (const x of [-0.8, 0.8]) box(0.6, 0.012, 0.06, dark, x, -0.015, 0.0, g);
+  for (const x of [-0.5, 0.5]) cyl(0.012, 0.012, 0.22, 4, dark, x, -0.04, 0.42, g, Math.PI / 2);
+  box(0.3, 0.065, 0.3, flagHex, -0.92, -0.02, 0.15, g); box(0.3, 0.065, 0.3, flagHex, 0.92, -0.02, 0.15, g);
+  // Tail: stabilizers, fin with rudder stripe, tail wheel
+  box(0.82, 0.04, 0.28, c, 0, 0.02, -0.82, g); box(0.84, 0.042, 0.06, dark, 0, 0.02, -0.95, g);
+  box(0.05, 0.38, 0.32, c, 0, 0.21, -0.86, g); box(0.055, 0.3, 0.08, flagHex, 0, 0.22, -0.99, g);
+  box(0.12, 0.13, 0.04, flagHex, 0, 0.0, -0.45, g);
+  // Cockpit: canopy with frame, headrest, antenna mast
+  box(0.2, 0.15, 0.42, glass, 0, 0.17, 0.1, g); box(0.21, 0.02, 0.42, dark, 0, 0.245, 0.1, g); box(0.21, 0.16, 0.02, dark, 0, 0.17, 0.0, g);
+  box(0.16, 0.1, 0.24, c, 0, 0.15, -0.22, g); cyl(0.006, 0.01, 0.24, 4, dark, 0, 0.27, -0.42, g, -0.3);
   return g;
 }
 function basePlate(hex) {
@@ -602,10 +630,14 @@ function horse(g, x, z, rider) {
   box(0.12, 0.2, 0.12, rider, x, 0.52, z - 0.03, g); box(0.09, 0.09, 0.09, 0xD8B08A, x, 0.67, z - 0.03, g); box(0.11, 0.04, 0.11, OLIVE, x, 0.73, z - 0.03, g); box(0.012, 0.012, 0.5, C.steel, x + 0.08, 0.6, z + 0.15, g, 0.4);
 }
 function bomber(owner, flagHex) {
-  const g = new THREE.Group(); const c = AIR[owner] || 0x7A7E6A, dark = 0x222428;
-  cyl(0.15, 0.2, 2.2, 8, c, 0, 0, 0, g, Math.PI / 2); cyl(0.04, 0.15, 0.4, 8, 0x8AA8C0, 0, 0, 1.2, g, Math.PI / 2);
-  box(3.0, 0.06, 0.5, c, 0, 0, 0.15, g); for (const x of [-1.0, -0.5, 0.5, 1.0]) { cyl(0.08, 0.09, 0.4, 8, dark, x, -0.02, 0.35, g, Math.PI / 2); }
-  box(1.0, 0.05, 0.3, c, 0, 0.02, -1.0, g); box(0.05, 0.4, 0.3, c, 0, 0.2, -1.0, g); box(0.3, 0.065, 0.3, flagHex, -1.2, 0.01, 0.15, g); box(0.3, 0.065, 0.3, flagHex, 1.2, 0.01, 0.15, g);
+  const g = new THREE.Group(); const c = AIR[owner] || 0x7A7E6A, dark = 0x222428, glass = 0x6E8EA8, prop = 0x1A1A1A;
+  cyl(0.15, 0.2, 2.2, 10, c, 0, 0, 0, g, Math.PI / 2); cyl(0.05, 0.15, 0.4, 10, glass, 0, 0, 1.2, g, Math.PI / 2); box(0.16, 0.12, 0.3, glass, 0, 0.17, 0.75, g);
+  cyl(0.07, 0.07, 0.1, 8, glass, 0, 0.2, -0.2, g); cyl(0.01, 0.01, 0.2, 4, dark, 0.03, 0.27, -0.25, g, Math.PI / 2 - 0.2);
+  box(3.0, 0.06, 0.5, c, 0, 0, 0.15, g); box(3.0, 0.012, 0.08, dark, 0, 0.03, -0.07, g);
+  for (const x of [-1.0, -0.5, 0.5, 1.0]) { cyl(0.08, 0.1, 0.45, 8, dark, x, -0.02, 0.38, g, Math.PI / 2); cyl(0.02, 0.05, 0.08, 6, 0xB0B0A8, x, -0.02, 0.63, g, Math.PI / 2); box(0.44, 0.03, 0.05, prop, x, -0.02, 0.66, g, 0, 0, 0.6); box(0.44, 0.03, 0.05, prop, x, -0.02, 0.66, g, 0, 0, 2.17); }
+  box(1.0, 0.05, 0.3, c, 0, 0.02, -1.0, g); for (const x of [-0.45, 0.45]) { box(0.05, 0.36, 0.26, c, x, 0.18, -1.02, g); box(0.055, 0.12, 0.27, flagHex, x, 0.22, -1.02, g); }
+  box(0.3, 0.065, 0.3, flagHex, -1.2, 0.01, 0.15, g); box(0.3, 0.065, 0.3, flagHex, 1.2, 0.01, 0.15, g);
+  box(0.2, 0.04, 0.5, dark, 0, -0.18, 0.1, g); cyl(0.05, 0.05, 0.12, 6, glass, 0, 0, -1.15, g, Math.PI / 2);
   return g;
 }
 // Spies: a figure in a trench coat and hat, for the agent owner and crisis staff.
