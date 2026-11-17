@@ -243,6 +243,13 @@ function tank(owner) {
   cyl(0.13, 0.15, 0.16, 8, c, -0.12, 1.08, -0.3, g);
   cyl(0.045, 0.05, 0.9, 6, dark, 0, 0.86, 0.68, g, Math.PI / 2);
   box(0.5, 0.14, 0.34, dark, 0, 0.6, -0.9, g);
+  for (const x of [-0.56, 0.56]) box(0.36, 0.03, 1.96, c, x, 0.4, 0, g);
+  cyl(0.11, 0.11, 0.05, 8, dark, -0.12, 1.18, -0.3, g); box(0.16, 0.03, 0.12, c, -0.12, 1.21, -0.38, g, -0.6);
+  cyl(0.008, 0.008, 0.9, 4, dark, 0.26, 1.35, -0.4, g, 0.15);
+  cyl(0.03, 0.03, 0.14, 6, dark, 0.22, 0.62, 0.88, g, Math.PI / 2 - 0.3);
+  for (const x of [-0.24, 0.24]) cyl(0.05, 0.05, 0.16, 6, 0x4A4440, x, 0.62, -1.0, g, Math.PI / 2);
+  box(0.6, 0.04, 0.2, 0x5A4A36, 0, 0.72, -0.58, g); box(0.18, 0.1, 0.3, dark, 0.3, 0.76, 0.3, g);
+  for (const z of [-0.6, -0.1, 0.4]) cyl(0.06, 0.06, 0.06, 8, wheel, -0.56 - 0.02, 0.36, z, g, 0, 0, Math.PI / 2);
   return g;
 }
 function plane(owner, flagHex) {
@@ -327,11 +334,19 @@ const PROP = {
       const s = new THREE.Group(); s.position.z = z; s.rotation.y = r; g.add(s);
       box(0.42, 0.06, 1.0, C.dark, 0, 0.03, 0, s); box(0.12, 0.2, 1.0, C.dirt, -0.27, 0.1, 0, s); box(0.12, 0.2, 1.0, C.dirt, 0.27, 0.1, 0, s);
       for (let i = 0; i < 4; i++) box(0.16, 0.1, 0.22, C.sand, -0.37, 0.24, -0.36 + i * 0.24, s);
+      for (let i = 0; i < 5; i++) box(0.3, 0.015, 0.08, C.wood, 0, 0.07, -0.4 + i * 0.2, s);
+      for (const zz of [-0.45, 0.45]) box(0.03, 0.3, 0.03, C.wood, -0.21, 0.15, zz, s);
     }
+    for (const z of [-0.5, 0.45]) { cyl(0.07, 0.08, 0.05, 10, 0x55594A, 0.02, 0.24, z, g); box(0.1, 0.06, 0.08, 0xD8B08A, 0.02, 0.19, z, g); }
+    cyl(0.02, 0.02, 0.32, 5, C.steel, -0.3, 0.32, 0.1, g, Math.PI / 2 - 0.1); box(0.08, 0.06, 0.12, C.steel, -0.3, 0.3, -0.05, g);
   },
   fort(g) {
     box(1.0, 0.5, 0.9, C.conc, 0, 0.25, 0, g); box(1.1, 0.12, 1.0, C.conc2, 0, 0.56, 0, g); box(0.6, 0.08, 0.04, C.tar, 0, 0.36, -0.46, g);
+    for (const x of [-0.5, 0.5]) box(0.2, 0.4, 0.95, C.conc2, x, 0.2, 0, g, 0, 0, x > 0 ? -0.35 : 0.35);
     cyl(0.04, 0.04, 0.5, 6, C.steel, 0, 0.36, -0.6, g, Math.PI / 2);
+    cyl(0.16, 0.18, 0.14, 10, C.conc2, 0.25, 0.69, 0.15, g); box(0.18, 0.03, 0.02, C.tar, 0.25, 0.7, 0.0, g);
+    box(0.24, 0.3, 0.03, 0x3A3E44, -0.25, 0.15, 0.46, g); cyl(0.01, 0.01, 0.5, 4, C.steel, -0.35, 0.85, 0.3, g);
+    const net = new THREE.Mesh(new THREE.ConeGeometry(0.7, 0.18, 6, 1, true), mat(0x55603E)); net.position.set(0, 0.7, 0); net.scale.set(1, 1, 0.85); g.add(net);
     for (const z of [-1.0, 1.0]) for (const x of [-0.35, 0, 0.35]) cone(0.13, 0.26, 4, C.conc2, x + (z > 0 ? 0.17 : 0), 0.13, z, g);
   },
   wire(g) {
@@ -345,40 +360,87 @@ const PROP = {
   },
   flak(g) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.14, 6, 14), mat(C.sand)); ring.rotation.x = Math.PI / 2; ring.position.y = 0.12; g.add(ring);
-    box(0.4, 0.2, 0.5, C.steel, 0, 0.2, 0, g); cyl(0.05, 0.06, 1.0, 6, C.steel, 0, 0.62, -0.25, g, -0.75);
+    cyl(0.32, 0.36, 0.08, 10, C.steel, 0, 0.06, 0, g); box(0.4, 0.2, 0.4, C.steel, 0, 0.2, 0, g); box(0.42, 0.24, 0.03, OLIVE, 0, 0.42, -0.18, g, -0.5);
+    for (const x of [-0.06, 0.06]) cyl(0.03, 0.04, 1.0, 6, C.steel, x, 0.62, -0.25, g, -0.75);
+    box(0.08, 0.04, 0.12, C.tar, 0.16, 0.32, 0.12, g);
+    person(g, 0.28, 0.25, OLIVE, 0.75); person(g, -0.3, 0.3, OLIVE, 0.75);
+    for (const [x, z] of [[0.4, -0.35], [-0.42, -0.25]]) box(0.14, 0.1, 0.1, C.wood, x, 0.05, z, g);
   },
   factory(g, st, em) {
+    box(2.2, 0.02, 1.6, 0x55524A, 0, 0.01, 0.05, g);
     box(1.8, 0.6, 1.1, C.brick, 0, 0.3, 0, g);
-    for (let i = 0; i < 3; i++) box(0.6, 0.06, 0.62, C.roof, -0.6 + i * 0.6, 0.72, 0, g, 0, 0, 0.5);
-    for (const x of [-0.55, 0.15]) { cyl(0.11, 0.14, 1.5, 8, C.brick, x, 0.75, 0.45, g); em.push({ x, y: 1.55, z: 0.45, type: st === 'ruined' ? 'black' : 'smoke' }); }
+    for (let i = 0; i < 3; i++) { box(0.6, 0.06, 0.62, C.roof, -0.6 + i * 0.6, 0.72, 0, g, 0, 0, 0.5); box(0.04, 0.2, 1.1, 0x9AB0BE, -0.6 + i * 0.6 + 0.2, 0.72, 0, g, 0, 0, -0.9); }
+    for (let i = 0; i < 6; i++) { box(0.16, 0.14, 0.02, 0x2A3036, -0.75 + i * 0.3, 0.38, -0.56, g); box(0.16, 0.14, 0.02, 0x2A3036, -0.75 + i * 0.3, 0.38, 0.56, g); }
+    box(0.3, 0.32, 0.03, 0x3A2A1E, 0.55, 0.16, -0.565, g); box(0.5, 0.1, 0.02, 0xE8E0C8, -0.2, 0.55, -0.565, g);
+    for (const x of [-0.55, 0.15]) { cyl(0.11, 0.14, 1.5, 8, C.brick, x, 0.75, 0.45, g); cyl(0.12, 0.12, 0.05, 8, 0x2A2A2A, x, 1.5, 0.45, g); em.push({ x, y: 1.55, z: 0.45, type: st === 'ruined' ? 'black' : 'smoke' }); }
+    // Water tower, rail siding and crates
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) rod([0.85 + a * 0.12, 0, -0.45 + b * 0.12], [0.85 + a * 0.08, 0.75, -0.45 + b * 0.08], 0.025, C.steel, g);
+    cyl(0.16, 0.16, 0.24, 12, C.wood, 0.85, 0.87, -0.45, g); cone(0.17, 0.1, 12, C.roof, 0.85, 1.04, -0.45, g);
+    for (const x of [-0.95, -0.82]) box(0.025, 0.03, 1.5, C.steel, x, 0.02, 0.1, g); box(0.22, 0.2, 0.5, 0x6E3A2A, -0.885, 0.13, 0.25, g);
+    for (const [x, z] of [[0.7, 0.68], [0.85, 0.7], [0.77, 0.7]]) box(0.12, 0.12, 0.12, C.wood, x, 0.06 + (x === 0.77 ? 0.12 : 0), z, g);
   },
-  airfield(g) {
+  airfield(g, st, em, f) {
+    box(1.6, 0.012, 3.0, 0x5E6A44, 0, 0.006, 0, g);
     box(0.6, 0.03, 2.8, C.tar, 0, 0.015, 0, g); for (let i = -2; i <= 2; i++) box(0.06, 0.035, 0.24, C.white, 0, 0.02, i * 0.5, g);
+    box(0.3, 0.025, 1.6, C.tar, 0.62, 0.012, 0.3, g);
     const h = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.8, 10, 1, false, 0, Math.PI), mat(C.conc2)); h.rotation.set(0, 0, Math.PI / 2); h.rotation.order = 'ZYX'; h.position.set(0.85, 0, 0.6); h.rotateX(Math.PI / 2); g.add(h);
-    for (const z of [-0.7, -0.1]) { const p = plane('Germany', C.conc2); p.scale.setScalar(0.32); p.position.set(0.8, 0.08, z); p.rotation.y = 1.4; g.add(p); }
+    box(0.02, 0.36, 0.72, 0x3A3E44, 0.45, 0.18, 0.6, g);
+    const c = hexOf(POWERS[f?.owner]?.color || '#888888');
+    for (const z of [-0.7, -0.1]) { const p = plane(f?.owner || 'Germany', c); p.scale.setScalar(0.32); p.position.set(0.8, 0.08, z); p.rotation.y = 1.4; g.add(p); }
+    box(0.26, 0.5, 0.26, C.white, -0.7, 0.25, -0.6, g); box(0.34, 0.16, 0.34, 0x9AB0BE, -0.7, 0.58, -0.6, g); box(0.38, 0.04, 0.38, C.conc2, -0.7, 0.68, -0.6, g);
+    cyl(0.012, 0.012, 0.6, 4, C.steel, -0.7, 0.3, 0.9, g); cone(0.05, 0.22, 6, 0xE07A2A, -0.7, 0.55, 1.0, g, Math.PI / 2);
+    truck(g, -0.55, 0.2, 0.3, 0x8A8A3A);
   },
   oil(g, st, em) {
-    for (const [x, z] of [[-0.5, -0.4], [0.45, 0.3]]) {
-      for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(0.04, 1.3, 0.04, C.steel, x + a * 0.14, 0.62, z + b * 0.14, g, b * 0.1, 0, -a * 0.1);
-      box(0.06, 0.06, 0.4, C.steel, x, 1.2, z, g); if (st === 'ruined') em.push({ x, y: 0.4, z, type: 'fire' }, { x, y: 0.8, z, type: 'black' });
+    box(2.2, 0.02, 2.0, 0x2E2A24, 0, 0.01, 0, g);
+    // Derrick: four legs leaning in, cross braces, crown block, drill shed
+    const dx = -0.5, dz = -0.35, H = 1.75, bw = 0.3, tw = 0.07;
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) rod([dx + a * bw, 0, dz + b * bw], [dx + a * tw, H, dz + b * tw], 0.035, C.steel, g);
+    for (let i = 1; i <= 4; i++) { const y = H * i / 5, w = bw + (tw - bw) * i / 5; for (const [a, b, c, d] of [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]]) rod([dx + a * w, y, dz + b * w], [dx + c * w, y, dz + d * w], 0.02, C.steel, g); }
+    for (let i = 0; i < 4; i++) { const y0 = H * i / 5, y1 = H * (i + 1) / 5, w0 = bw + (tw - bw) * i / 5, w1 = bw + (tw - bw) * (i + 1) / 5; rod([dx - w0, y0, dz - w0], [dx + w1, y1, dz - w1], 0.015, C.steel, g); rod([dx + w0, y0, dz + w0], [dx - w1, y1, dz + w1], 0.015, C.steel, g); }
+    box(0.2, 0.1, 0.2, C.steel, dx, H + 0.05, dz, g); box(0.4, 0.04, 0.4, C.wood, dx, 0.32, dz, g);
+    box(0.34, 0.24, 0.26, C.wood, dx + 0.42, 0.12, dz + 0.1, g); box(0.38, 0.03, 0.3, C.roof, dx + 0.42, 0.26, dz + 0.1, g);
+    // Pumpjack: skid, A-frame, walking beam, horse head, crank and counterweights, motor
+    const px = 0.45, pz = -0.45;
+    box(0.16, 0.06, 0.9, C.steel, px, 0.03, pz, g);
+    rod([px - 0.08, 0.06, pz - 0.05], [px, 0.62, pz], 0.04, 0x8A3A2A, g); rod([px + 0.08, 0.06, pz - 0.05], [px, 0.62, pz], 0.04, 0x8A3A2A, g); rod([px, 0.06, pz + 0.18], [px, 0.62, pz], 0.04, 0x8A3A2A, g);
+    box(0.06, 0.07, 0.95, 0x8A3A2A, px, 0.66, pz - 0.02, g, 0.18);
+    box(0.08, 0.26, 0.1, 0x8A3A2A, px, 0.62, pz - 0.5, g, 0.35);
+    rod([px, 0.6, pz - 0.55], [px, 0.12, pz - 0.6], 0.012, C.steel, g); cyl(0.04, 0.05, 0.12, 8, C.steel, px, 0.09, pz - 0.6, g);
+    for (const sx of [-1, 1]) { box(0.03, 0.22, 0.2, 0x3C3C3C, px + sx * 0.1, 0.24, pz + 0.38, g); }
+    box(0.18, 0.14, 0.16, 0x3E5A3A, px, 0.1, pz + 0.55, g);
+    // Storage tanks with roofs, stripe and ladder
+    for (const [x, z, r] of [[0.5, 0.5, 0.3], [-0.25, 0.62, 0.24]]) {
+      cyl(r, r, 0.5, 18, C.tank, x, 0.25, z, g); cone(r * 1.02, 0.12, 18, 0x9C988C, x, 0.56, z, g); cyl(r * 1.01, r * 1.01, 0.05, 18, 0xB23A2A, x, 0.36, z, g);
+      rod([x + r * 0.7, 0, z + r * 0.75], [x + r * 0.7, 0.5, z + r * 0.75], 0.015, C.steel, g); rod([x + r * 0.85, 0, z + r * 0.6], [x + r * 0.85, 0.5, z + r * 0.6], 0.015, C.steel, g);
     }
-    for (const [x, z] of [[0.55, -0.55], [-0.45, 0.6]]) cyl(0.28, 0.28, 0.4, 14, C.tank, x, 0.2, z, g);
+    // Pipes linking it all
+    cyl(0.025, 0.025, 1.05, 6, 0x6A6A60, 0.0, 0.05, 0.12, g, 0, 0.9, Math.PI / 2); cyl(0.025, 0.025, 0.9, 6, 0x6A6A60, 0.47, 0.05, 0.02, g, Math.PI / 2);
+    if (st === 'ruined') em.push({ x: dx, y: 0.3, z: dz, type: 'fire' }, { x: dx, y: 0.9, z: dz, type: 'black' }, { x: 0.5, y: 0.5, z: 0.5, type: 'fire' }, { x: 0.5, y: 0.9, z: 0.5, type: 'black' });
   },
-  port(g) {
+  port(g, st, em, f) {
     box(0.5, 0.12, 2.4, C.conc2, 0, 0.06, 0, g); box(0.9, 0.12, 0.4, C.conc2, 0.45, 0.06, 0.9, g);
+    for (let i = 0; i < 6; i++) cyl(0.03, 0.035, 0.08, 6, C.tar, 0.22, 0.16, -1.0 + i * 0.4, g);
     box(0.7, 0.45, 0.9, C.brick, -0.65, 0.22, -0.3, g); box(0.76, 0.08, 0.96, C.roof, -0.65, 0.48, -0.3, g);
-    box(0.08, 1.3, 0.08, 0xC8A030, 0.1, 0.7, 0.2, g); box(0.07, 0.07, 1.1, 0xC8A030, 0.1, 1.3, 0.55, g); box(0.02, 0.5, 0.02, C.steel, 0.1, 1.05, 1.05, g);
+    for (let i = 0; i < 3; i++) box(0.02, 0.2, 0.2, 0x3A2A1E, -0.29, 0.12, -0.6 + i * 0.3, g);
+    box(0.08, 1.3, 0.08, 0xC8A030, 0.1, 0.7, 0.2, g); box(0.07, 0.07, 1.1, 0xC8A030, 0.1, 1.3, 0.55, g); box(0.02, 0.5, 0.02, C.steel, 0.1, 1.05, 1.05, g); box(0.16, 0.1, 0.16, C.wood, 0.1, 0.75, 1.05, g);
+    for (const [x, z, h] of [[-0.2, 0.55, 0.36], [-0.05, 0.75, 0.24], [-0.25, -0.95, 0.24]]) box(0.14, h, 0.14, C.wood, x, 0.12 + h / 2, z, g);
+    const sh = ship(f?.owner || 'Germany', hexOf(POWERS[f?.owner]?.color || '#888888')); sh.scale.setScalar(0.4); sh.rotation.y = Math.PI / 2; sh.position.set(0.55, 0.0, -0.4); g.add(sh);
   },
   bridge(g, st) {
     const gap = st === 'ruined';
-    for (const z of [-1.0, 1.0]) box(0.5, 0.1, 0.9, C.conc, 0, 0.42, z * (gap ? 1.05 : 0.6), g, gap ? z * 0.25 : 0);
-    if (!gap) box(0.5, 0.1, 0.6, C.conc, 0, 0.42, 0, g);
-    for (const z of [-0.6, 0.6]) box(0.36, 0.42, 0.18, C.conc2, 0, 0.2, z, g);
+    for (const z of [-1.0, 1.0]) { box(0.5, 0.1, 0.9, C.conc, 0, 0.42, z * (gap ? 1.05 : 0.6), g, gap ? z * 0.25 : 0); }
+    if (!gap) { box(0.5, 0.1, 0.6, C.conc, 0, 0.42, 0, g); for (const x of [-0.24, 0.24]) { box(0.03, 0.12, 2.1, C.steel, x, 0.53, 0, g); for (let i = 0; i < 8; i++) box(0.02, 0.12, 0.02, C.steel, x, 0.53, -1.0 + i * 0.28, g); } }
+    for (const z of [-0.6, 0.6]) { box(0.36, 0.42, 0.18, C.conc2, 0, 0.2, z, g); box(0.42, 0.06, 0.24, C.conc, 0, 0.4, z, g); }
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.04, 4, 12, Math.PI), mat(C.conc2)); arch.rotation.y = Math.PI / 2; arch.position.y = 0.0; if (!gap) g.add(arch);
     box(0.6, 0.02, 2.6, C.water, 0, 0.01, 0, g, 0, 1.57);
   },
   camp(g, st, em) {
     for (const [x, z] of [[-0.45, -0.3], [0.4, -0.35], [0, 0.45]]) cone(0.36, 0.5, 4, C.canvas, x, 0.25, z, g, 0, 0.78);
     box(0.04, 1.1, 0.04, C.wood, 0.6, 0.55, 0.5, g); box(0.02, 0.24, 0.4, 0xC23A2E, 0.6, 0.98, 0.7, g);
+    for (const a of [0, 1.2, 2.4]) box(0.24, 0.04, 0.04, C.wood, 0, 0.03, -0.05, g, 0, a);
+    for (const [x, z] of [[0.25, 0.05], [-0.25, 0.1], [0.05, -0.32]]) person(g, x, z, 0x4A4A3A, 0.7);
+    for (const [x, z] of [[-0.75, 0.3], [0.75, -0.6]]) cone(0.18, 0.5, 6, 0x3E5A34, x, 0.25, z, g);
     em.push({ x: 0, y: 0.08, z: -0.05, type: 'camp' });
   },
   fire(g, st, em) { em.push({ x: 0, y: 0.1, z: 0, type: 'fire' }, { x: 0.3, y: 0.1, z: 0.2, type: 'fire' }, { x: 0, y: 0.5, z: 0, type: 'black' }); },
@@ -386,8 +448,8 @@ const PROP = {
   // ---- More figurines: artillery, logistics, civil unrest, sea and air ----
   artillery(g) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.13, 5, 18, Math.PI * 1.2), mat(C.sand)); ring.rotation.set(Math.PI / 2, 0, Math.PI * 0.9); ring.position.y = 0.1; g.add(ring);
-    for (const x of [-0.42, 0.42]) gun(g, x, 0.1, 0.35);
-    for (const [x, z] of [[-0.7, 0.55], [0.75, 0.5]]) box(0.22, 0.14, 0.16, C.wood, x, 0.07, z, g);
+    for (const x of [-0.42, 0.42]) { gun(g, x, 0.1, 0.35); person(g, x + 0.22, 0.45, OLIVE, 0.7); }
+    for (const [x, z] of [[-0.7, 0.55], [0.75, 0.5]]) { box(0.22, 0.14, 0.16, C.wood, x, 0.07, z, g); for (let i = 0; i < 3; i++) cyl(0.025, 0.025, 0.12, 6, 0xB08A3A, x - 0.06 + i * 0.06, 0.2, z, g); }
   },
   railgun(g, st, em, f) {
     track(g, 2.6); box(0.62, 0.22, 1.9, C.steel, 0, 0.32, 0, g); box(0.5, 0.42, 0.9, OLIVE, 0, 0.62, 0.15, g);
@@ -516,6 +578,7 @@ const PROP = {
 const OLIVE = 0x5A5E44, KHAKI = 0x8A7E58;
 const BEAM = new THREE.MeshBasicMaterial({ color: 0xFFF2B0, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide });
 const WATER = new THREE.MeshStandardMaterial({ color: 0x3E6A8E, transparent: true, opacity: 0.8, roughness: 0.2, metalness: 0.1, flatShading: true });
+function rod(a, b, t, hex, g) { const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A); const m = new THREE.Mesh(new THREE.BoxGeometry(t, d.length(), t), mat(hex)); m.position.copy(A).add(B).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); g.add(m); return m; }
 function sph(r, hex, x, y, z, parent, sx = 1, sy = 1, sz = 1) { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 7), mat(hex)); m.position.set(x, y, z); m.scale.set(sx, sy, sz); parent.add(m); return m; }
 function person(g, x, z, shirt, s = 1, y = 0) { box(0.16 * s, 0.24 * s, 0.12 * s, 0x3A342C, x, y + 0.12 * s, z, g); box(0.2 * s, 0.24 * s, 0.14 * s, shirt, x, y + 0.36 * s, z, g); box(0.12 * s, 0.12 * s, 0.12 * s, 0xD8B08A, x, y + 0.54 * s, z, g); }
 function gun(g, x, z, k = 0.35) {
@@ -1327,7 +1390,7 @@ function renderSel() {
   }
   if (selected.type === 'unit') {
     const u = UNITS.find((x) => x.id === selected.id); if (!u) { selected = { type: 'country', id: 'Poland' }; return renderSel(); }
-    const p = POWERS[u.owner]; const K = { fleet: ['NAV', 'Naval force', 'capital ships'], army: ['INF', 'Infantry', 'divisions'], armor: ['ARM', 'Armor', u.owner === 'USSR' || u.owner === 'Poland' ? 'brigades' : 'divisions'], air: ['AIR', 'Air force', `(about ${u.str * 100} aircraft)`] }[u.kind];
+    const p = POWERS[u.owner]; const K = { fleet: ['NAV', 'Naval force', 'capital ships'], army: ['INF', 'Infantry', 'divisions'], armor: ['TNK', 'Tanks', u.owner === 'USSR' || u.owner === 'Poland' ? 'brigades' : 'divisions'], air: ['AIR', 'Air force', `(about ${u.str * 100} aircraft)`] }[u.kind];
     box.innerHTML = `<div class="badge flagbadge">${flag(u.owner)}<em>${K[0]}</em></div><div><div class="sel-title">${esc(u.name)}</div><div class="sel-sub">${p.label} · ${K[1]}</div><div class="stats"><div><span>Strength</span> <b class="num">${u.str} ${K[2]}</b></div>${u.traits?.length ? `<div><span>Traits</span> ${traitText(u)}</div>` : ''}<div><span>Orders</span> ${esc(u.note)}</div></div></div>`;
     return;
   }
