@@ -104,6 +104,13 @@ Staff no longer have to build effects by hand for most requests.
 - **Interception:** an agent in a country has an even chance of copying each note sent to or from that country's delegates. The copy appears in the spy owner's Notes tab marked "Intercepted by your agent". The sender is never told. Staff see who intercepted what.
 - **Recall or capture:** staff open Features and spies, then click **Recall**, or **Caught** to post an arrest headline.
 
+## Game clock
+
+- **The date runs by itself** on every screen. At normal speed 12 real hours take the war from 3 September 1939, 17:00 to 1 December 1941, which is about 27 game hours per real minute (a game day every 53 seconds).
+- **Staff control it** from the **Clock** button on the staff map: pause and start, half, normal, double or four times speed, or jump to any date. Pause it for breaks and lunch.
+- **A new game starts with the clock running.** A game saved before the clock existed starts paused at 3 September 1939; press Start the clock.
+- **Crisis updates** fill in the current game date automatically. Staff can still type a different one.
+
 ## Delegate screen
 
 - **Portfolio** is the briefcase button at the top left of the map. It opens to show the delegate's powers, assets, limits and a sealed secret file.

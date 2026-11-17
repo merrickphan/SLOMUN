@@ -1053,3 +1053,9 @@ body *:not(.lbl) { letter-spacing: normal !important; }
 .staffmap .stoolbar .dbtn { background: rgba(255,255,255,.05); border-color: var(--pane-edge); }
 .staffmap .stoolbar .dbtn:hover { background: rgba(255,255,255,.12); }
 .staffmap .sdrawer .shead { border-color: var(--pane-edge); }
+/* Game clock pop-up */
+.clocknow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 12px 14px; background: rgba(255,255,255,.05); border: 1px solid var(--pane-edge); }
+.clocknow b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.clocknow span { font-size: 13px; font-weight: 700; padding: 2px 10px; }
+.clocknow span.on { background: rgba(111,208,140,.18); color: #BFF0CC; } .clocknow span.off { background: rgba(240,112,90,.18); color: #FFB3A6; }
+#clk-date, #clk-time, #clk-speed { background: var(--field); border: 1px solid var(--pane-edge); color: var(--text); padding: 5px 8px; margin-left: 4px; color-scheme: dark; }

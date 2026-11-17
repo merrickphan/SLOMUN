@@ -1210,7 +1210,7 @@ const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button"
 const DATECARD = `<div class="date glass num"><span class="date-line"></span><small class="countdown">Next crisis update in <b>15:00</b></small></div>`;
 
 /* ---------- Staff screen: the map plus a request drawer and pop-ups ---------- */
-const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['ev', 'Make something happen'], ['battle', 'Battle'], ['rels', 'Wars and treaties'], ['feat', 'Features and spies'], ['gallery', 'Figurines'], ['msgs', 'Messages'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
+const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['ev', 'Make something happen'], ['battle', 'Battle'], ['rels', 'Wars and treaties'], ['feat', 'Features and spies'], ['gallery', 'Figurines'], ['msgs', 'Messages'], ['clock', 'Clock'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
 function staffBar() {
   return `<div class="undobar" id="undobar" hidden></div><nav class="stoolbar" aria-label="Staff tools">${MODALS.map(([k, l]) => `<button type="button" class="dbtn" data-modal="${k}">${l}<span class="count num" id="stc-${k}" hidden></span></button>`).join('')}</nav>`;
 }
@@ -1239,6 +1239,11 @@ function staffModals(p) {
     + modal('feat', 'Map features, spies and scheduled events', '<p class="formnote">Click any feature on the map to change it, or click the map to build one. Spies show on the map as dark pins.</p><div id="featlist"></div>', true)
     + modal('gallery', 'Figurine gallery', `<div class="row"><p class="formnote" style="flex:1">Every model the map can show. Units and spies are figures; everything else can be placed from the map or comes from approved notes.</p><label class="formnote">Country colors <select id="gal-owner">${ORDER.map((k) => `<option value="${k}"${k === 'Germany' ? ' selected' : ''}>${POWERS[k].label}</option>`).join('')}</select></label></div><div class="fgrid" id="fgrid"></div>`, true)
     + modal('msgs', 'Messages between delegates', '<div class="reqs" id="staff-msgs"></div>')
+    + modal('clock', 'Game clock', `<p class="formnote">The date runs on its own. At normal speed, 12 real hours take the war from 3 September 1939 to about 1 December 1941 (a game day every 53 seconds). Pause it for breaks and lunch.</p>
+          <div class="clocknow"><b id="clk-now"></b><span id="clk-state"></span></div>
+          <div class="row"><button type="button" class="dbtn gold" id="clk-toggle">Pause</button>
+            <label class="formnote">Speed <select id="clk-speed"><option value="0.5">Half (late 1940 after 12 hours)</option><option value="1" selected>Normal (late 1941 after 12 hours)</option><option value="2">Double</option><option value="4">Four times</option></select></label></div>
+          <div class="row"><label class="formnote">Jump to <input type="date" id="clk-date" min="1930-01-01" max="1949-12-31"></label><input type="time" id="clk-time" value="12:00" step="3600" aria-label="Time of day"><button type="button" class="dbtn" id="clk-set">Set the date</button></div>`)
     + modal('proj', 'Projector', `<div id="proj"></div><div class="row"><button type="button" class="dbtn" id="replay-flash">Replay the last update as a flash</button><button type="button" class="dbtn" id="cd-restart">Restart countdown (15 min)</button><button type="button" class="dbtn" id="clear-arrows">Clear map pins</button></div>`)
     + modal('codes', 'Access codes', `<p class="formnote">Print these and hand one to each delegate. The staff and projector codes are set in the Vercel project settings.</p><div class="row"><button type="button" class="dbtn" onclick="window.print()">Print</button></div>
           <div class="codes-wrap"><table class="codes"><thead><tr><th>Delegate</th><th>Country</th><th>Code</th></tr></thead><tbody>${(p.codes || []).map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(POWERS[c.country].label)}</td><td class="code">${esc(c.code)}</td></tr>`).join('')}</tbody></table></div>`)
@@ -1247,7 +1252,14 @@ function staffModals(p) {
           <div class="row"><button type="button" class="dbtn" id="load-demo">Load demo requests</button></div>
           <div class="row"><input type="text" id="reset-confirm" placeholder="Type RESET" aria-label="Type RESET to confirm"><button type="button" class="dbtn red" id="reset-game">Reset the whole game</button></div>`);
 }
-function openModal(k) { document.querySelectorAll('.smodal').forEach((m) => (m.hidden = m.id !== 'm-' + k)); if (k === 'battle') syncBattleSelects(); if (k === 'gallery') startGallery(); }
+function openModal(k) { document.querySelectorAll('.smodal').forEach((m) => (m.hidden = m.id !== 'm-' + k)); if (k === 'battle') syncBattleSelects(); if (k === 'gallery') startGallery(); if (k === 'cu' && $('cu-date')) $('cu-date').value = S.gameDateText(gameNow()); if (k === 'clock') syncClockUI(true); }
+const gameNow = () => S.gameTime(STATE?.clock, Date.now() + SKEW);
+function syncClockUI(fill) {
+  if (!$('clk-now') || !STATE?.clock) return; const c = STATE.clock;
+  $('clk-now').textContent = S.gameDateText(gameNow()); $('clk-state').textContent = c.running ? (Math.abs(c.rate / S.CLOCK_RATE - 1) < 0.01 ? 'Running' : `Running at ${+(c.rate / S.CLOCK_RATE).toFixed(2)}x`) : 'Paused';
+  $('clk-state').className = c.running ? 'on' : 'off'; $('clk-toggle').textContent = c.running ? 'Pause the clock' : 'Start the clock';
+  if (fill) { $('clk-date').value = new Date(gameNow()).toISOString().slice(0, 10); const sp = $('clk-speed'); const k = String(+(c.rate / S.CLOCK_RATE).toFixed(2)); if ([...sp.options].some((o) => o.value === k)) sp.value = k; }
+}
 /* ---------- Figurine gallery: every model turning slowly, drawn by one small offscreen renderer ---------- */
 let GAL = null;
 function galleryItems(owner) {
@@ -1419,7 +1431,7 @@ function renderCommon(first) {
   const s = STATE;
   $('treasuries').innerHTML = ORDER.map((n) => { const p = POWERS[n]; return `<button type="button" class="chip num" data-c="${n}">${flag(n)}<b>$${p.treasury}M</b><small>${p.short}</small></button>`; }).join('');
   if (VIEW === 'map') document.querySelectorAll('#treasuries .chip').forEach((b) => b.addEventListener('click', () => select('country', b.dataset.c)));
-  document.querySelectorAll('.date-line').forEach((e) => (e.textContent = s.update?.date || ''));
+  paintDate();
   const sig = (s.wire || []).join('|');
   if ($('track') && sig !== wireSig) { wireSig = sig; const items = s.wire.map((w) => `<span>${esc(w)}</span>`).join(''); $('track').innerHTML = items + items; }
   if ($('update-card')) $('update-card').innerHTML = `<span class="card-title">Crisis Update ${s.update.no}</span><b style="display:block;color:var(--text);margin-bottom:2px">${esc(s.update.title)}</b>${esc(s.update.text)}`;
@@ -1436,7 +1448,14 @@ function renderWarbar() {
   el.innerHTML = group('war', 'At war with') + group('alliance', 'Allied with') + group('pact', 'Pact with') + group('trade', 'Trade deal') + group('tension', 'Tension with')
     + (st.length ? `<div class="wgroup"><span>${esc(POWERS[ME].label)}</span>${st.map((x) => `<b class="schip ${x.tone}">${esc(x.label)}</b>`).join('')}</div>` : '') || '<div class="wgroup"><span>At peace with everyone</span></div>';
 }
+// The game date on every screen, recomputed each second from the shared clock.
+function paintDate() {
+  if (!STATE) return; const txt = STATE.clock ? S.gameDateText(gameNow()) + (ROLE === 'staff' && !STATE.clock.running ? ' · paused' : '') : STATE.update?.date || '';
+  document.querySelectorAll('.date-line').forEach((e) => { if (e.textContent !== txt) e.textContent = txt; });
+  if (!$('m-clock')?.hidden) syncClockUI(false);
+}
 function tickCountdown() {
+  paintDate();
   if (!STATE) return; const left = Math.max(0, Math.round((STATE.countdownEnd - (Date.now() + SKEW)) / 1000));
   const txt = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; document.querySelectorAll('.countdown b').forEach((e) => (e.textContent = txt));
   document.querySelectorAll('.date').forEach((e) => e.classList.toggle('urgent', left > 0 && left <= 60));
@@ -2300,6 +2319,9 @@ function renderEvPlan() {
 }
 
 function bindStaff() {
+  $('clk-toggle')?.addEventListener('click', () => act({ type: 'clock', do: STATE.clock?.running ? 'pause' : 'run' }).then(() => syncClockUI(true)));
+  $('clk-speed')?.addEventListener('change', (e) => act({ type: 'clock', do: 'speed', k: +e.target.value }));
+  $('clk-set')?.addEventListener('click', () => act({ type: 'clock', do: 'set', date: $('clk-date').value, time: $('clk-time').value }).then(() => syncClockUI(true)));
   document.querySelectorAll('[data-modal]').forEach((b) => b.addEventListener('click', () => openModal(b.dataset.modal)));
   document.querySelectorAll('.smodal').forEach((m) => m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-close]')) m.hidden = true; }));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelectorAll('.smodal').forEach((m) => (m.hidden = true)); });
