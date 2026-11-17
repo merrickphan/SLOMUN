@@ -34,27 +34,47 @@ function ringPath(ctx, rings) { ctx.beginPath(); for (const r of rings) { r.forE
 const WW = 4096 * TEXK, WH = 2048 * TEXK; // the whole world (8192 px where the GPU allows); Europe gets its own sharper patch
 const PAL = ['#C9A44A', '#5FAE6A', '#B06A9E', '#5E8FC9', '#C97A4A', '#7FA84A', '#9A6FC0', '#4FA6A0', '#C05A5A', '#8E9A4A'];
 function worldColor(n) { if (POWERS[ownerOf(n)] || NEUTRALS[n]) return colorOf(n); let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PAL[h % PAL.length]; }
+// The world border data is coarse (0.1 degree steps), so smooth it once (Chaikin corner cutting) to drop the stair steps.
+let WSMOOTH = null;
+function smoothRing(r, n = 2) {
+  let pts = r; for (let k = 0; k < n; k++) { const out = []; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); } pts = out; }
+  return pts;
+}
+const wgeoSmooth = () => WSMOOTH || (WSMOOTH = Object.fromEntries(Object.entries(A.wgeo).map(([n, rings]) => [n, rings.map((r) => (r.length > 3 ? smoothRing(r) : r))])));
+// Satellite ground, sea, country tints and borders never change during a game: paint them once and reuse.
+let WORLD_BASE = null;
+function worldBase() {
+  if (WORLD_BASE) return WORLD_BASE;
+  const X = (lon) => (lon + 180) / 360 * WW, Y = (lat) => (90 - lat) / 180 * WH; const G = wgeoSmooth();
+  const base = document.createElement('canvas'); base.width = WW; base.height = WH; const ctx = base.getContext('2d');
+  ctx.filter = 'saturate(1.15) contrast(1.06) brightness(0.96)'; ctx.drawImage(imgs.world, 0, 0, WW, WH); ctx.filter = 'none';
+  // Tints and borders go on their own layer, then the sharp coastline mask trims everything that spills into the sea.
+  const lay = document.createElement('canvas'); lay.width = WW; lay.height = WH; const l = lay.getContext('2d');
+  const path = (rings) => { l.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? l.lineTo(X(x), Y(y)) : l.moveTo(X(x), Y(y))); l.closePath(); } };
+  for (const [n, rings] of Object.entries(G)) { path(rings); l.fillStyle = worldColor(n); l.globalAlpha = 0.34; l.fill('evenodd'); }
+  l.globalAlpha = 1; l.lineJoin = 'round'; l.lineCap = 'round';
+  for (const rings of Object.values(G)) { path(rings); l.strokeStyle = 'rgba(10,20,40,0.4)'; l.lineWidth = 2 * TEXK; l.stroke(); l.strokeStyle = 'rgba(225,240,255,0.5)'; l.lineWidth = 0.8 * TEXK; l.stroke(); }
+  l.globalCompositeOperation = 'destination-out'; l.drawImage(imgs.wwater, 0, 0, WW, WH);
+  ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = 0.85; ctx.drawImage(lay, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.55; ctx.drawImage(lay, 0, 0); ctx.globalAlpha = 1;
+  // Sea on top so the coast is exactly the mask's coast.
+  l.globalCompositeOperation = 'copy'; l.fillStyle = '#0D1A3E'; l.fillRect(0, 0, WW, WH); l.globalCompositeOperation = 'destination-in'; l.drawImage(imgs.wwater, 0, 0, WW, WH);
+  ctx.globalAlpha = 0.95; ctx.drawImage(lay, 0, 0); ctx.globalAlpha = 1;
+  lay.width = lay.height = 0;
+  return (WORLD_BASE = base);
+}
 function paintWorld(canvas, dark) {
   const ctx = canvas.getContext('2d'); const X = (lon) => (lon + 180) / 360 * WW, Y = (lat) => (90 - lat) / 180 * WH;
-  ctx.filter = 'saturate(1.15) contrast(1.06) brightness(0.96)'; ctx.drawImage(imgs.world, 0, 0, WW, WH); ctx.filter = 'none';
-  const sea = document.createElement('canvas'); sea.width = WW; sea.height = WH; const s = sea.getContext('2d');
-  s.fillStyle = '#0D1A3E'; s.fillRect(0, 0, WW, WH); s.globalCompositeOperation = 'destination-in'; s.drawImage(imgs.wwater, 0, 0, WW, WH);
-  ctx.globalAlpha = 0.95; ctx.drawImage(sea, 0, 0); ctx.globalAlpha = 1;
-  const path = (rings) => { ctx.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))); ctx.closePath(); } };
-  for (const [n, rings] of Object.entries(A.wgeo)) {
-    path(rings); ctx.save(); ctx.clip('evenodd'); ctx.fillStyle = worldColor(n);
-    ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = 0.3; ctx.fillRect(0, 0, WW, WH);
-    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.24; ctx.fillRect(0, 0, WW, WH); ctx.restore();
-  }
-  ctx.globalAlpha = 1; ctx.lineJoin = 'round';
-  for (const rings of Object.values(A.wgeo)) { path(rings); ctx.strokeStyle = 'rgba(10,20,40,0.35)'; ctx.lineWidth = 1.8 * TEXK; ctx.stroke(); ctx.strokeStyle = 'rgba(225,240,255,0.45)'; ctx.lineWidth = 0.7 * TEXK; ctx.stroke(); }
+  ctx.globalCompositeOperation = 'copy'; ctx.drawImage(worldBase(), 0, 0); ctx.globalCompositeOperation = 'source-over';
   if (dark) {
     const fog = document.createElement('canvas'); fog.width = WW; fog.height = WH; const f = fog.getContext('2d');
-    f.fillStyle = 'rgba(28,33,44,0.8)'; f.fillRect(0, 0, WW, WH); f.globalCompositeOperation = 'destination-out'; f.fillStyle = '#000';
-    for (const [n, rings] of Object.entries(A.wgeo)) { if (!ALLIES.includes(ownerOf(n))) continue; f.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? f.lineTo(X(x), Y(y)) : f.moveTo(X(x), Y(y))); f.closePath(); } f.fill('evenodd'); }
+    f.fillStyle = 'rgba(28,33,44,0.8)'; f.fillRect(0, 0, WW, WH); f.globalCompositeOperation = 'destination-out'; f.fillStyle = '#000'; f.lineJoin = 'round';
+    for (const [n, rings] of Object.entries(wgeoSmooth())) {
+      if (!ALLIES.includes(ownerOf(n))) continue; f.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? f.lineTo(X(x), Y(y)) : f.moveTo(X(x), Y(y))); f.closePath(); } f.fill('evenodd');
+      for (const [w, a] of [[16, 0.15], [9, 0.2], [4, 0.3]]) { f.lineWidth = w * TEXK; f.strokeStyle = `rgba(0,0,0,${a})`; f.stroke(); }
+    }
     const circ = (lo, la, d) => { const x = X(lo), y = Y(la), r = d / 360 * WW; const g = f.createRadialGradient(x, y, r * 0.35, x, y, r); g.addColorStop(0, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)'); f.fillStyle = g; f.beginPath(); f.arc(x, y, r, 0, Math.PI * 2); f.fill(); };
     for (const u of UNITS) { if (ALLIES.includes(u.owner)) circ(u.at[0], u.at[1], u.kind === 'fleet' || u.kind === 'air' ? 6 : 4); else circ(u.at[0], u.at[1], 2.5); }
-    ctx.drawImage(fog, 0, 0);
+    ctx.drawImage(fog, 0, 0); fog.width = fog.height = 0;
   }
 }
 
@@ -794,8 +814,55 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const $ = (id) => document.getElementById(id);
 let EDIT = false, STAFFMAP = false, placing = null, VIEW, ROLE, AS, STATE = null, VER = 0, SKEW = 0, lastFlashId, MEE = null, ME = null;
 let selected = { type: 'country', id: 'Poland' };
-let toastTimer;
-function toast(msg) { const t = $('toast'); if (!t) return; t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3200); }
+/* ---------- Pop-up notices and the crisis staff verdict card ---------- */
+const NI = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const NICON = {
+  sent: NI('<path d="M21 3 3 10.5l7 2.5 2.5 7z"/><path d="m21 3-11 10"/>'),
+  approved: NI('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
+  rejected: NI('<path d="M6 6l12 12M18 6 6 18"/>'),
+  note: NI('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="m3 7 9 6 9-6"/>'),
+  intel: NI('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  sign: NI('<path d="M4 20h16"/><path d="M15.5 4.5l4 4L9 19H5v-4z"/>'),
+  error: NI('<path d="M12 8v5M12 16.5v.5"/><path d="M10.3 3.9 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'),
+  info: NI('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/>'),
+};
+const CALM = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function notify({ kind = 'info', title, body = '', action, ms = 5200 }) {
+  const box = $('notices'); if (!box || !title) return;
+  const n = document.createElement('div'); n.className = `notice ${kind}`; n.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  n.innerHTML = `<span class="ni">${NICON[kind] || NICON.info}</span><div class="nt"><b>${esc(title)}</b>${body ? `<small>${esc(body)}</small>` : ''}${action ? `<button type="button" class="nlink">${esc(action.label)} →</button>` : ''}</div><button type="button" class="nx" aria-label="Dismiss">✕</button><i class="nbar" style="animation-duration:${ms}ms"></i>`;
+  const close = () => { if (n.classList.contains('out')) return; n.classList.add('out'); setTimeout(() => n.remove(), CALM() ? 0 : 280); };
+  n.querySelector('.nx').addEventListener('click', close);
+  n.querySelector('.nbar').addEventListener('animationend', close); // pauses while hovered
+  if (CALM()) setTimeout(close, ms);
+  if (action) n.querySelector('.nlink').addEventListener('click', () => { action.run(); close(); });
+  box.prepend(n); while (box.children.length > 4) box.lastChild.remove();
+}
+function toast(msg, kind = 'info') { notify({ kind, title: msg }); }
+// A paper plane that lifts off a button after something is sent.
+function flyFrom(el) {
+  if (!el || CALM()) return; const r = el.getBoundingClientRect(); const p = document.createElement('span'); p.className = 'plane'; p.innerHTML = NICON.sent;
+  p.style.left = r.left + r.width / 2 - 11 + 'px'; p.style.top = r.top + r.height / 2 - 11 + 'px'; document.body.appendChild(p); setTimeout(() => p.remove(), 1100);
+  el.classList.add('did'); setTimeout(() => el.classList.remove('did'), 1400);
+}
+// Crisis staff answered one of your notes: a stamped response card, one at a time.
+const VQ = []; let vOpen = false, vTimer = null;
+function verdict(q) { VQ.push(q); if (!vOpen) nextVerdict(); }
+function nextVerdict() {
+  const el = $('vpop'); const q = VQ.shift(); if (!el || !q) { vOpen = false; return; } vOpen = true;
+  const ok = q.status === 'approved';
+  $('vp-title').textContent = q.title; $('vp-reply').textContent = q.reply || (ok ? 'Crisis staff approved your plan.' : 'Crisis staff turned this one down.');
+  $('vp-out').textContent = q.outcome && q.outcome !== q.status ? 'Outcome: ' + q.outcome : ''; $('vp-out').hidden = !$('vp-out').textContent;
+  const st = $('vp-stamp'); st.textContent = ok ? 'Approved' : 'Denied'; el.className = 'vpop ' + (ok ? 'ok' : 'no');
+  el.hidden = true; void el.offsetWidth; el.hidden = false; $('vp-ok').focus({ preventScroll: true });
+  clearTimeout(vTimer); vTimer = setTimeout(closeVerdict, 10000);
+}
+function closeVerdict() {
+  const el = $('vpop'); if (!el || el.hidden) return; clearTimeout(vTimer); el.classList.add('out');
+  setTimeout(() => { el.hidden = true; el.classList.remove('out'); nextVerdict(); }, CALM() ? 0 : 260);
+}
+// Count badges pop when their number goes up.
+function setCount(el, n) { if (!el) return; const was = +el.textContent || 0; el.textContent = n || ''; if (n > was && !CALM()) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); } }
 function initials(name) { return name.replace(/"[^"]*"/g, '').split(/\s+/).filter((w) => /^[A-ZÉÓŁ]/.test(w)).map((w) => w[0]).join('').slice(0, 2); }
 const opt = (arr, sel) => arr.map((d) => `<option${d === sel ? ' selected' : ''}>${esc(d)}</option>`).join('');
 const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button" data-z="feat" class="featbtn" aria-pressed="${SHOW_FEAT}" aria-label="Show map features" title="Show map features (trenches, bunkers, factories)">${fIcon('fort')}</button><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="reset" aria-label="Reset view">FIT</button></div>`;
@@ -869,12 +936,12 @@ function skeleton(p) {
       <div class="who"><div class="badge flagbadge" id="who-flag"></div><div><b id="who-name"></b><span id="who-role"></span></div></div>
       <div class="myres num"><div><b id="my-money"></b><span>Treasury</span></div><div><b id="my-forces"></b><span>Forces</span></div><div><b id="my-update"></b><span>Crisis update</span></div></div>
       <div class="tabs" role="tablist" aria-label="Delegate panels">
-        <button type="button" role="tab" id="t-act" aria-selected="true" aria-controls="p-act">Actions</button>
-        <button type="button" role="tab" id="t-dir" aria-selected="false" aria-controls="p-dir">Directives<span class="count num" id="c-dir" hidden></span></button>
-        <button type="button" role="tab" id="t-port" aria-selected="false" aria-controls="p-port">Portfolio</button>
-        <button type="button" role="tab" id="t-intel" aria-selected="false" aria-controls="p-intel">Intel<span class="count num" id="c-intel"></span></button>
-        <button type="button" role="tab" id="t-req" aria-selected="false" aria-controls="p-req">Requests<span class="count num" id="c-req"></span></button>
-        <button type="button" role="tab" id="t-msg" aria-selected="false" aria-controls="p-msg">Notes<span class="count num" id="c-msg"></span></button>
+        <button type="button" role="tab" id="t-act" aria-selected="true" aria-controls="p-act" title="Act (key 1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg><span class="tl">Act</span></button>
+        <button type="button" role="tab" id="t-dir" aria-selected="false" aria-controls="p-dir" title="Directives (key 2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M10 11h6M10 15h6"/></svg><span class="tl">Directives</span><span class="count num" id="c-dir" hidden></span></button>
+        <button type="button" role="tab" id="t-port" aria-selected="false" aria-controls="p-port" title="Portfolio (key 3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="1"/><path d="M9 7V4h6v3"/></svg><span class="tl">Portfolio</span></button>
+        <button type="button" role="tab" id="t-intel" aria-selected="false" aria-controls="p-intel" title="Intel (key 4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="tl">Intel</span><span class="count num" id="c-intel"></span></button>
+        <button type="button" role="tab" id="t-req" aria-selected="false" aria-controls="p-req" title="Crisis notes (key 5)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5 2.5 7z"/></svg><span class="tl">Crisis notes</span><span class="count num" id="c-req"></span></button>
+        <button type="button" role="tab" id="t-msg" aria-selected="false" aria-controls="p-msg" title="Messages (key 6)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="m3 7 9 6 9-6"/></svg><span class="tl">Messages</span><span class="count num" id="c-msg"></span></button>
       </div>
       <div id="p-act" role="tabpanel" aria-labelledby="t-act"><div class="tiles" id="tiles"></div><form class="form" id="form" novalidate></form></div>
       <div id="p-dir" role="tabpanel" aria-labelledby="t-dir" hidden></div>
@@ -887,10 +954,15 @@ function skeleton(p) {
           <button type="submit" class="dbtn gold">Pass the note</button></form>
         <div class="reqs" id="msgs"></div></div>
     </aside></div>
-    <div class="warbar" id="warbar" aria-live="polite"></div>
-    <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div>
+    <div class="dock"><div class="warbar" id="warbar" aria-live="polite"></div>
+    <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div></div>
   </section>`;
-  return top + body + `<div class="toast glass" id="toast" role="status" hidden></div>
+  return top + body + `<div class="notices" id="notices" aria-live="polite"></div>
+  <div class="vpop" id="vpop" hidden><div class="vcard" role="dialog" aria-modal="false" aria-labelledby="vp-title">
+    <div class="vhead"><span>${NICON.note}Crisis staff response</span></div>
+    <h3 id="vp-title"></h3><p id="vp-reply"></p><p class="vout" id="vp-out" hidden></p>
+    <div class="vstamp" id="vp-stamp" aria-hidden="false"></div>
+    <div class="vbtns"><button type="button" class="dbtn" id="vp-view">See all my crisis notes</button><button type="button" class="dbtn gold" id="vp-ok">Got it</button></div></div></div>
   <div class="breaking" id="breaking" hidden role="dialog" aria-modal="true" aria-labelledby="bn-head"><article class="paper">
     <div class="mast"><span id="bn-date"></span><b>The SLOMUN Dispatch</b><span>Special Edition</span></div>
     <span class="extra">Breaking News</span><h2 class="headline" id="bn-head"></h2><p class="deck" id="bn-deck"></p>
@@ -906,16 +978,16 @@ async function fetchState() {
   const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Server error');
   SKEW = j.now - Date.now(); if (!j.unchanged) applyState(j);
 }
-async function act(payload) {
+async function act(payload, opt = {}) {
   try {
     const r = await fetch('/api/crisis/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(AS ? { ...payload, as: AS } : payload) });
     if (r.status === 401) { location.href = '/crisis'; return false; }
     const j = await r.json();
-    if (!r.ok) { toast(j.error || 'That did not work. Try again.'); return false; }
+    if (!r.ok) { toast(j.error || 'That did not work. Try again.', 'error'); return false; }
     if (j.view) { SKEW = j.view.now - Date.now(); applyState(VIEW === 'map' && !EDIT ? null : j.view); }
-    if (j.message) toast(j.message);
+    if (j.message && !opt.quiet) toast(j.message, /^(Sent|Note passed|You signed)/.test(j.message) ? 'sent' : 'info');
     return true;
-  } catch { toast('Could not reach the server. Check the Wi-Fi and try again.'); return false; }
+  } catch { toast('Could not reach the server. Check the Wi-Fi and try again.', 'error'); return false; }
 }
 
 function applyState(v) {
@@ -967,6 +1039,7 @@ function renderWarbar() {
 function tickCountdown() {
   if (!STATE) return; const left = Math.max(0, Math.round((STATE.countdownEnd - (Date.now() + SKEW)) / 1000));
   const txt = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; document.querySelectorAll('.countdown b').forEach((e) => (e.textContent = txt));
+  document.querySelectorAll('.date').forEach((e) => e.classList.toggle('urgent', left > 0 && left <= 60));
 }
 function showFlash(f) {
   $('bn-date').textContent = STATE?.update?.date || ''; $('bn-head').textContent = f.head; $('bn-deck').textContent = f.deck;
@@ -1026,14 +1099,17 @@ let action = 'secret', visibility = 'private', pickedForce = null, drafting = fa
 const myUnits = () => UNITS.filter((x) => x.owner === ME && MEE.commands.includes(x.kind));
 const TO = () => ORDER.filter((n) => n !== ME).map((n) => POWERS[n].label).concat(['Romania', 'Turkey', 'Belgium', 'Netherlands']);
 
-let seenReq = null, seenIntel = null, seenMsg = null;
+let seenReq = null, seenIntel = null, seenMsg = null, seenSign = null;
 function notifyDelegate() {
   const Q = STATE.queue || [], I = STATE.intel || [];
-  if (seenReq) for (const q of Q) { const was = seenReq[q.id]; if (was === 'pending' && q.status !== 'pending') { toast(`Crisis staff ${q.status === 'approved' ? 'approved' : 'answered'} "${q.title}": ${q.reply || ''}`); $('t-req').classList.add('ping'); } }
-  if (seenIntel != null && I.length > seenIntel) { toast(`New intel: ${I[0].from}`); $('t-intel').classList.add('ping'); }
+  if (seenReq) for (const q of Q) { const was = seenReq[q.id]; if (was === 'pending' && q.status !== 'pending') { verdict(q); $('t-req').classList.add('ping'); } }
+  if (seenIntel != null && I.length > seenIntel) { notify({ kind: 'intel', title: 'New intel', body: `${I[0].from}: ${I[0].text}`.slice(0, 140), action: { label: 'Open Intel', run: () => showTab('intel') } }); $('t-intel').classList.add('ping'); }
   const inbox = (STATE.messages || []).filter((m) => m.from !== MEE.name);
-  if (seenMsg != null && inbox.length > seenMsg) { const m = inbox[inbox.length - 1]; toast(m.intercepted ? `Your agent intercepted a note from ${m.from}` : `Note from ${m.from}`); $('t-msg').classList.add('ping'); }
+  if (seenMsg != null && inbox.length > seenMsg) { const m = inbox[inbox.length - 1]; notify({ kind: m.intercepted ? 'intel' : 'note', title: m.intercepted ? `Your agent intercepted a note from ${m.from}` : `Note from ${m.from}`, body: (m.text || '').slice(0, 140), action: { label: 'Read it', run: () => showTab('msg') }, ms: 7000 }); $('t-msg').classList.add('ping'); }
   seenMsg = inbox.length;
+  const askSign = (STATE.directives || []).filter((d) => d.status === 'signing' && d.requested.includes(MEE.name) && !d.signed.includes(MEE.name));
+  if (seenSign) for (const d of askSign) if (!seenSign.has(d.id)) notify({ kind: 'sign', title: 'You were asked to sign a directive', body: d.title, action: { label: 'Open Directives', run: () => showTab('dir') }, ms: 7000 });
+  seenSign = new Set(askSign.map((d) => d.id));
   seenReq = Object.fromEntries(Q.map((q) => [q.id, q.status])); seenIntel = I.length;
 }
 function renderDelegate(first, prev) {
@@ -1139,21 +1215,29 @@ async function submitAction(e) {
   if (action === 'treaty') detail.with = v('f-with');
   if (action === 'secret') Object.assign(detail, { cost: +v('f-cost') || 0, ...(pickLoc ? { at: pickLoc.at, where: pickLoc.where } : {}), ...(followParent ? { parent: followParent } : {}) });
   const btn = e.target.querySelector('.send'); btn.disabled = true;
-  const ok = await act({ type: 'request', kind: action, title: s, vis: visibility, detail, text: v('f-text') });
+  const ok = await act({ type: 'request', kind: action, title: s, vis: visibility, detail, text: v('f-text') }, { quiet: true });
   btn.disabled = false;
-  if (ok) { if (action === 'fleet') { pickedForce = null; delGlobe?.markSelected(null); } if (['build', 'op', 'secret'].includes(action)) setPick(null); followParent = null; renderForm(); }
+  if (ok) {
+    flyFrom(btn);
+    notify({ kind: 'sent', title: { fleet: 'Orders sent!', build: 'Build order sent!', money: 'Transfer sent!', spy: 'Agent sent!' }[action] || (followParent ? 'Follow-up sent!' : 'Crisis note sent!'), body: `${s}. Crisis staff will answer soon.`, action: { label: 'Track it', run: () => showTab('req') } }); if (action === 'fleet') { pickedForce = null; delGlobe?.markSelected(null); } if (['build', 'op', 'secret'].includes(action)) setPick(null); followParent = null; renderForm(); }
 }
+// Items seen for the first time get a slide-in; the first render of each list never animates.
+const SEEN = {};
+function freshKeys(list, keys) { const had = SEEN[list]; SEEN[list] = new Set(keys); return had ? new Set(keys.filter((k) => !had.has(k))) : new Set(); }
 function renderIntel() {
-  const I = STATE.intel || []; $('c-intel').textContent = I.length || '';
-  $('intel').innerHTML = I.map((r) => `<div class="req"><b>${esc(r.from)}</b><span class="pill rel-${esc(r.rel).toLowerCase()}">${esc(r.rel)}</span><small>${esc(r.text)}</small></div>`).join('') || '<p class="formnote">No intelligence yet. Send spies to learn more.</p>';
+  const I = STATE.intel || []; setCount($('c-intel'), I.length);
+  const fresh = freshKeys('intel', I.map((r) => r.from + '|' + r.text));
+  $('intel').innerHTML = I.map((r) => `<div class="req${fresh.has(r.from + '|' + r.text) ? ' new' : ''}"><b>${esc(r.from)}</b><span class="pill rel-${esc(r.rel).toLowerCase()}">${esc(r.rel)}</span><small>${esc(r.text)}</small></div>`).join('') || '<p class="formnote">No intelligence yet. Send spies to learn more.</p>';
 }
 function renderReqs() {
-  const R = STATE.queue || []; $('c-req').textContent = R.length || '';
-  $('reqs').innerHTML = R.map((r) => `<div class="req"><b>${r.detail?.parent ? '↳ ' : ''}${esc(r.title)}</b><span class="pill ${r.status}">${esc(r.outcome || r.status)}</span><small>${r.vis === 'public' ? 'Public' : 'Private'} · Sent ${esc(r.time)}${r.reply ? ' · Crisis staff: ' + esc(r.reply) : ''}</small>${r.status !== 'pending' ? `<button type="button" class="dbtn" data-follow="${r.id}" style="grid-column:1/-1;justify-self:start">Follow up</button>` : ''}</div>`).join('') || '<p class="formnote">No requests yet. Pick an action to send your first one.</p>';
+  const R = STATE.queue || []; setCount($('c-req'), R.length);
+  const fresh = freshKeys('req', R.map((r) => r.id + r.status));
+  $('reqs').innerHTML = R.map((r) => `<div class="req${fresh.has(r.id + r.status) ? ' new' : ''}"><b>${r.detail?.parent ? '↳ ' : ''}${esc(r.title)}</b><span class="pill ${r.status}">${esc(r.outcome || r.status)}</span><small>${r.vis === 'public' ? 'Public' : 'Private'} · Sent ${esc(r.time)}${r.reply ? ' · Crisis staff: ' + esc(r.reply) : ''}</small>${r.status !== 'pending' ? `<button type="button" class="dbtn" data-follow="${r.id}" style="grid-column:1/-1;justify-self:start">Follow up</button>` : ''}</div>`).join('') || '<p class="formnote">No requests yet. Pick an action to send your first one.</p>';
 }
 function renderMessages() {
-  const M = (STATE.messages || []).slice().reverse(); const me = MEE.name;
-  $('msgs').innerHTML = M.map((m) => `<div class="req msg${m.from === me ? ' mine' : ''}${m.intercepted ? ' intercepted' : ''}">${m.intercepted ? `<span class="pill rejected">Intercepted by your agent</span>` : ''}<b>${m.from === me ? 'You' : esc(m.from)} → ${(m.to || []).map((n) => n === me ? 'you' : esc(n)).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No notes yet. Pass private notes to other delegates to plan together. Crisis staff read everything, and spies can intercept notes.</p>';
+  const M = (STATE.messages || []).slice().reverse(); const me = MEE.name; setCount($('c-msg'), M.filter((m) => m.from !== me).length);
+  const fresh = freshKeys('msg', M.map((m) => m.id));
+  $('msgs').innerHTML = M.map((m) => `<div class="req msg${fresh.has(m.id) ? ' new' : ''}${m.from === me ? ' mine' : ''}${m.intercepted ? ' intercepted' : ''}">${m.intercepted ? `<span class="pill rejected">Intercepted by your agent</span>` : ''}<b>${m.from === me ? 'You' : esc(m.from)} → ${(m.to || []).map((n) => n === me ? 'you' : esc(n)).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small></div>`).join('') || '<p class="formnote">No notes yet. Pass private notes to other delegates to plan together. Crisis staff read everything, and spies can intercept notes.</p>';
 }
 function renderPortfolio() {
   const r = MEE; const units = myUnits(); const missing = KINDS.filter((k) => !r.commands.includes(k));
@@ -1172,7 +1256,7 @@ function renderPortfolio() {
 }
 function updateDirCount() {
   const me = MEE.name; const n = (STATE.directives || []).filter((d) => d.status === 'signing' && d.requested.includes(me) && !d.signed.includes(me)).length;
-  const cd = $('c-dir'); cd.textContent = n; cd.hidden = !n;
+  const cd = $('c-dir'); setCount(cd, n); cd.hidden = !n;
 }
 function renderDirectives() {
   const me = MEE.name; const box = $('p-dir'); const D = STATE.directives || [];
@@ -1676,7 +1760,8 @@ async function decideQ(q, ok, btn) {
     try { const j = await assist({ kind: 'request', id: q.id, decision: ok ? 'approve' : 'reject', reply }); if (j.result) b = j.result; } catch (e) { toast(e.message + ' Using the earlier suggestion.'); }
   }
   const dec = !ok ? (q.type === 'spy' ? 'spy-fail' : 'reject') : q.type === 'fleet' ? ($('sec-' + q.id)?.checked ? 'move-secret' : 'move-public') : q.type === 'spy' ? 'spy-ok' : 'approve';
-  const done = await act({ type: 'decide', id: q.id, dec, reply: reply || b.reply || '', effects: [...(b.effects || []), ...manual], headline: b.headline, flash: b.flash, when: readWhen(box) });
+  const done = await act({ type: 'decide', id: q.id, dec, reply: reply || b.reply || '', effects: [...(b.effects || []), ...manual], headline: b.headline, flash: b.flash, when: readWhen(box) }, { quiet: true });
+  if (done) notify({ kind: ok ? 'approved' : 'rejected', title: ok ? 'Approved and sent back' : 'Rejected and sent back', body: `${q.from}: ${q.title}` });
   if (!done) { card.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = false)); btn.textContent = ok ? 'Approve' : 'Reject'; }
 }
 let evPlan = null;
@@ -1774,6 +1859,9 @@ export function start(root, props) {
   if (VIEW === 'map' && ROLE === 'staff' && new URLSearchParams(location.search).get('edit') === '1') { location.replace('/crisis/staff'); return () => {}; }
   if (VIEW === 'staff') { VIEW = 'map'; EDIT = true; STAFFMAP = true; selected = { type: 'none' }; }
   root.innerHTML = skeleton(props);
+  // Floating panels sit between the top bar and the bottom dock; keep their heights in CSS variables.
+  const measure = () => { const t = root.querySelector('.topbar'), d = root.querySelector('.dock') || root.querySelector('.map-view:not(.staffmap) > .bottom'); document.documentElement.style.setProperty('--topH', (t?.offsetHeight || 0) + 'px'); document.documentElement.style.setProperty('--botH', (d?.offsetHeight || 0) + 'px'); };
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null; root.querySelectorAll('.topbar, .dock, .map-view > .bottom').forEach((e) => ro?.observe(e)); measure();
   if (STAFFMAP) renderBattleShell();
   if (EDIT) bindEdit();
   let stopped = false, timer, failures = 0;
@@ -1791,11 +1879,20 @@ export function start(root, props) {
     g.dirty = true;
   }));
   if (VIEW === 'delegate') {
-    ['act', 'dir', 'port', 'intel', 'req', 'msg'].forEach((t) => $('t-' + t).addEventListener('click', () => showTab(t)));
+    const TABS = ['act', 'dir', 'port', 'intel', 'req', 'msg'];
+    TABS.forEach((t) => $('t-' + t).addEventListener('click', () => showTab(t)));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('vpop').hidden) { closeVerdict(); return; }
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+      if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && /^[1-6]$/.test(e.key)) showTab(TABS[+e.key - 1]);
+    });
+    $('vp-ok').addEventListener('click', closeVerdict);
+    $('vp-view').addEventListener('click', () => { showTab('req'); closeVerdict(); });
+    $('vpop').addEventListener('click', (e) => { if (e.target.id === 'vpop') closeVerdict(); });
     $('form').addEventListener('submit', submitAction);
     $('msg-form').addEventListener('submit', async (e) => {
       e.preventDefault(); const boxes = [...document.querySelectorAll('.notepick input:checked')]; const to = boxes.map((o) => o.value);
-      if (await act({ type: 'msg.send', to, text: $('msg-text').value })) { $('msg-text').value = ''; boxes.forEach((o) => (o.checked = false)); }
+      if (await act({ type: 'msg.send', to, text: $('msg-text').value }, { quiet: true })) { flyFrom(e.target.querySelector('[type=submit]')); notify({ kind: 'note', title: 'Note passed!', body: `To ${to.join(', ')}. Crisis staff can read every note.` }); $('msg-text').value = ''; boxes.forEach((o) => (o.checked = false)); }
     });
     $('reqs').addEventListener('click', (e) => { const b = e.target.closest('[data-follow]'); if (!b) return; followParent = b.dataset.follow; action = 'secret'; setPick(null); showTab('act'); renderTiles(); renderForm(); $('f-text')?.focus(); });
   }
@@ -1835,5 +1932,5 @@ export function start(root, props) {
       console.error(e);
     }
   })();
-  return () => { stopped = true; clearTimeout(timer); clearInterval(cd); [mapGlobe, delGlobe].forEach((g) => g && cancelAnimationFrame(g.raf)); };
+  return () => { stopped = true; ro?.disconnect(); clearTimeout(timer); clearInterval(cd); [mapGlobe, delGlobe].forEach((g) => g && cancelAnimationFrame(g.raf)); };
 }

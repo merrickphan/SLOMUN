@@ -499,3 +499,142 @@ button { cursor: pointer; }
 .npc input { position: absolute; opacity: 0; pointer-events: none; }
 .req.msg.intercepted { border-left: 3px solid #C23A2E; }
 .req.msg.intercepted > .pill { grid-column: 1 / -1; justify-self: start; }
+
+/* ===== Glass war room: see-through panels over a full-screen map, pop-up notices, stamped verdicts ===== */
+:root {
+  --pane: rgba(22, 26, 33, 0.56);
+  --pane-strong: rgba(22, 26, 33, 0.74);
+  --pane-edge: rgba(255, 255, 255, 0.11);
+  --field: rgba(8, 10, 14, 0.42);
+  --blur: blur(14px) saturate(1.35);
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --topH: 56px; --botH: 64px;
+}
+.glass, .side, .topbar, .bottom, .warbar, .stoolbar, .sdrawer, .editcard, .mbox, .notice, .vcard, .btray, .placebar {
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+}
+.glass { background: var(--pane); border: 1px solid var(--pane-edge); box-shadow: 0 8px 28px rgba(0,0,0,.28); }
+.topbar { background: rgba(26, 29, 36, 0.62); border-bottom: 1px solid var(--pane-edge); }
+.side { background: var(--pane); border: 1px solid var(--pane-edge); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+.bottom { background: rgba(14, 16, 21, 0.6); }
+.warbar { background: rgba(10, 12, 16, 0.55); }
+.sdrawer, .editcard { background: var(--pane-strong); }
+.stoolbar { background: rgba(26, 29, 36, 0.7) !important; }
+.mbox { background: rgba(30, 33, 40, 0.86); border-color: var(--pane-edge); }
+.smodal { background: rgba(0,0,0,.4); }
+.form select, .form input[type=number], .form textarea, .dform input[type=text], .dform textarea, .playas select { background: var(--field); border-color: var(--pane-edge); }
+.req, .dir, .plist li, .myres div, .chip { background: rgba(255,255,255,.035); }
+.qcard, .chair-row, .projrow { background: rgba(20, 23, 29, 0.6); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --pane: rgba(28, 32, 40, 0.9); --pane-strong: rgba(28, 32, 40, 0.95); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --pane: rgba(28, 32, 40, 0.96); --pane-strong: rgba(28, 32, 40, 0.98); }
+  .topbar, .bottom, .warbar { background: #23262C; }
+}
+
+/* Full-screen map on laptops and the projector: bars and panels float over the globe. */
+@media (min-width: 901px) {
+  .crisis-root:has(.dview), .crisis-root:has(.map-view:not(.staffmap)) { position: relative; height: 100dvh; overflow: hidden; }
+  .crisis-root:has(.dview) > .topbar, .crisis-root:has(.map-view:not(.staffmap)) > .topbar { position: absolute; inset: 0 0 auto; z-index: 25; }
+  .dview, .map-view:not(.staffmap) { position: relative; flex: 1; min-height: 0; }
+  .dview .dlayout { position: absolute; inset: 0; display: block; }
+  .dview .dlayout .stage, .map-view:not(.staffmap) .stage { position: absolute; inset: 0; min-height: 0; }
+  .dview .side { position: absolute; z-index: 8; top: calc(var(--topH) + 12px); bottom: calc(var(--botH) + 12px); right: max(12px, env(safe-area-inset-right, 0px)); width: 372px; padding: 14px; }
+  .dview .dock, .map-view:not(.staffmap) > .bottom { position: absolute; left: 0; right: 0; bottom: 0; z-index: 9; }
+  .dview .stage .date { top: calc(var(--topH) + 12px); left: calc((100% - 396px) / 2); }
+  .dview .stage .zoom { right: 396px; bottom: calc(var(--botH) + 12px); }
+  .dview .stage .fognote { bottom: calc(var(--botH) + 12px); }
+  .map-view:not(.staffmap) .stage .date, .map-view:not(.staffmap) .stage .queuecard, .map-view:not(.staffmap) .stage .update { top: calc(var(--topH) + 12px); }
+  .map-view:not(.staffmap) .stage .floorcard { top: calc(var(--topH) + 182px); }
+  .map-view:not(.staffmap) .stage .selcard, .map-view:not(.staffmap) .stage .zoom, .map-view:not(.staffmap) .stage .hint { bottom: calc(var(--botH) + 12px); }
+  .crisis-root:has(.dview) .notices { right: 396px; }
+}
+
+/* Tabs: icon over label, gold underline slides in */
+.tabs button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px 7px; position: relative; transition: color .18s, background-color .18s; }
+.tabs button svg { width: 18px; height: 18px; opacity: .75; transition: transform .2s var(--ease), opacity .18s; }
+.tabs button .tl { font-size: 12px; }
+.tabs button:hover { color: var(--text); background: rgba(255,255,255,.04); }
+.tabs button[aria-selected="true"] svg { opacity: 1; color: var(--gold); }
+.tabs button .count { position: absolute; top: 4px; right: calc(50% - 22px); margin: 0; background: var(--gold); color: #15110A; font-weight: 700; }
+.tabs button .count:empty { display: none; }
+.tabs button.ping::after { position: absolute; top: 6px; left: calc(50% + 8px); margin: 0; }
+
+/* Pop-up notices (top right) */
+.notices { position: fixed; z-index: 60; top: calc(var(--topH) + 12px); right: max(14px, env(safe-area-inset-right, 0px)); width: min(360px, calc(100vw - 28px)); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.notice { --nc: #9EC5FF; position: relative; overflow: hidden; pointer-events: auto; display: grid; grid-template-columns: 34px minmax(0, 1fr) 22px; gap: 10px; align-items: start; padding: 11px 12px 13px; background: rgba(20, 23, 30, 0.8); border: 1px solid var(--pane-edge); border-left: 3px solid var(--nc); box-shadow: 0 14px 36px rgba(0,0,0,.45); }
+.notice.sent { --nc: var(--gold); } .notice.approved { --nc: var(--good); } .notice.rejected, .notice.error { --nc: var(--bad); }
+.notice.note { --nc: #C9B6FF; } .notice.intel { --nc: #FFB86B; } .notice.sign { --nc: var(--gold); }
+.notice .ni { width: 34px; height: 34px; display: grid; place-items: center; color: var(--nc); background: color-mix(in srgb, var(--nc) 16%, transparent); border-radius: 50% !important; }
+.notice .ni svg { width: 18px; height: 18px; }
+.notice .nt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.notice .nt b { font-size: 14px; line-height: 1.25; }
+.notice .nt small { font-size: 12.5px; color: #C9CFDA; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.notice .nlink { align-self: flex-start; margin-top: 4px; background: none; border: 0; padding: 0; color: var(--nc); font-weight: 700; font-size: 12.5px; }
+.notice .nlink:hover { text-decoration: underline; }
+.notice .nx { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 2px; line-height: 1; }
+.notice .nx:hover { color: var(--text); }
+.notice .nbar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--nc); opacity: .7; transform-origin: left; animation: nbar linear forwards; }
+.notice:hover .nbar { animation-play-state: paused; }
+@keyframes nbar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* Crisis staff verdict: a response card with a rubber stamp */
+.vpop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px; background: radial-gradient(ellipse at center, rgba(0,0,0,.25), rgba(0,0,0,.55)); }
+.vcard { --vc: var(--good); position: relative; width: min(470px, 100%); padding: 20px 22px 18px; background: rgba(24, 27, 34, 0.86); border: 1px solid var(--pane-edge); border-top: 4px solid var(--vc); box-shadow: 0 30px 80px rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+.vpop.no .vcard { --vc: var(--bad); }
+.vhead span { display: inline-flex; align-items: center; gap: 7px; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.vhead svg { width: 16px; height: 16px; }
+.vcard h3 { margin: 0; padding-right: 120px; font-family: var(--display); font-weight: 700; font-size: 22px; line-height: 1.1; text-transform: uppercase; letter-spacing: .02em; text-wrap: balance; }
+.vcard p { margin: 0; color: #D5DAE3; font-size: 14.5px; padding-right: 8px; }
+.vcard .vout { font-size: 13px; color: var(--vc); font-weight: 700; }
+.vstamp { position: absolute; top: 34px; right: 18px; padding: 4px 12px; border: 4px double var(--vc); color: var(--vc); font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: .12em; text-transform: uppercase; transform: rotate(-12deg); opacity: .92; mix-blend-mode: screen; pointer-events: none; }
+.vbtns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
+@media (max-width: 520px) { .vcard h3 { padding-right: 0; margin-top: 44px; } .vstamp { top: 16px; font-size: 20px; } }
+
+/* Paper plane after sending */
+.plane { position: fixed; z-index: 80; width: 22px; height: 22px; color: var(--gold); pointer-events: none; filter: drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+.plane svg { width: 100%; height: 100%; }
+.send.did, .dbtn.did { background: var(--good) !important; border-color: var(--good) !important; color: #0E2414 !important; }
+
+/* Countdown under a minute */
+.date.urgent small b { color: var(--bad); }
+
+/* Controls: small lift on hover, press-in on click */
+.dbtn, .send, .qchip, .navlink, .zoom button, .vis button, .tile, .chip, .unpick, .npc label { transition: background-color .16s, border-color .16s, color .16s, transform .12s var(--ease), box-shadow .16s; }
+.send:hover:not(:disabled), .dbtn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,.3); }
+.send:active:not(:disabled), .dbtn:active:not(:disabled), .qchip:active, .zoom button:active, .vis button:active, .npc label:active { transform: scale(.97); }
+.send:disabled { opacity: .6; cursor: progress; }
+.form textarea, .form select, .form input, .dform textarea, .dform input { transition: border-color .16s, box-shadow .16s; }
+.form textarea:focus, .form select:focus, .form input:focus, .dform textarea:focus, .dform input:focus { outline: none; border-color: rgba(245,194,27,.7); box-shadow: 0 0 0 3px rgba(245,194,27,.15); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .notice { animation: nin .42s var(--ease) both; }
+  .notice.out { animation: nout .26s ease-in forwards; }
+  .vpop:not([hidden]) { animation: fade .25s both; }
+  .vpop:not([hidden]) .vcard { animation: vin .45s var(--ease) both; }
+  .vpop:not([hidden]) .vstamp { animation: stamp .5s .35s cubic-bezier(.3,1.5,.5,1) both; }
+  .vpop.out { animation: fadeout .25s forwards; }
+  .plane { animation: fly 1s cubic-bezier(.45,0,.2,1) forwards; }
+  [role="tabpanel"]:not([hidden]) { animation: rise .3s var(--ease) both; }
+  .req.new, .dir.new { animation: rise .5s var(--ease) both; }
+  .req.new { box-shadow: inset 3px 0 0 var(--gold); }
+  .count.bump { animation: bump .5s var(--ease); }
+  .tabs button.ping::after { animation: pingdot 1.5s ease-in-out infinite; }
+  .tabs button[aria-selected="true"] svg { transform: translateY(-1px) scale(1.08); }
+  .dview .side { animation: sidein .6s .1s var(--ease) both; }
+  .stage > .glass:not(.date) { animation: fadeup .6s .25s var(--ease) both; }
+  .date.urgent { animation: urgent .9s ease-in-out infinite alternate; }
+}
+@keyframes nin { from { opacity: 0; transform: translateX(28px) scale(.96); } }
+@keyframes nout { to { opacity: 0; transform: translateX(28px) scale(.96); } }
+@keyframes vin { from { opacity: 0; transform: translateY(18px) scale(.94); } }
+@keyframes fadeout { to { opacity: 0; } }
+@keyframes stamp { 0% { opacity: 0; transform: rotate(-4deg) scale(2.6); } 60% { opacity: 1; transform: rotate(-13deg) scale(.92); } 100% { opacity: .92; transform: rotate(-12deg) scale(1); } }
+@keyframes fly { 0% { transform: translate(0, 0) rotate(0) scale(1); opacity: 1; } 100% { transform: translate(150px, -220px) rotate(-18deg) scale(.6); opacity: 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes bump { 40% { transform: scale(1.45); } }
+@keyframes pingdot { 50% { box-shadow: 0 0 0 5px rgba(245,194,27,.25); } }
+@keyframes sidein { from { opacity: 0; transform: translateX(24px); } }
+@keyframes fadeup { from { opacity: 0; transform: translateY(8px); } }
+@keyframes urgent { to { box-shadow: 0 0 0 2px rgba(240,112,90,.55), 0 0 24px rgba(240,112,90,.35); } }
