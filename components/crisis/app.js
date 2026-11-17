@@ -1690,19 +1690,43 @@ function renderMessages() {
   MSG_LIST = M;
   $('msgs').innerHTML = M.map((m, i) => `<button type="button" class="req tap msg${fresh.has(m.id) ? ' new' : ''}${m.from === me ? ' mine' : ''}${m.intercepted ? ' intercepted' : ''}${m.from === me || READ.has('m:' + m.id) ? '' : ' unread'}" data-msg="${i}"><b>${m.intercepted ? 'Intercepted: ' : ''}${m.from === me ? 'You' : esc(m.from)} → ${(m.to || []).map((n) => n === me ? 'you' : esc(n)).join(', ')}</b><span class="formnote">${esc(m.time)}</span><small>${esc(m.text)}</small><i class="chev" aria-hidden="true">›</i></button>`).join('') || '<p class="formnote">No notes yet. Pass private notes to other delegates to plan together. Crisis staff read everything, and spies can intercept notes.</p>';
 }
+// Small still pictures of the 3D models, drawn once by a shared offscreen renderer and reused.
+let THR = null; const THUMBS = {};
+function thumbOf(key, make) {
+  if (key in THUMBS) return THUMBS[key];
+  try {
+    if (!THR) {
+      const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); r.setPixelRatio(2); r.setSize(96, 72);
+      const sc = new THREE.Scene(); sc.add(new THREE.AmbientLight(0xffffff, 0.8), new THREE.HemisphereLight(0xdfe8ff, 0x3a3020, 0.6));
+      const sun = new THREE.DirectionalLight(0xfff4e0, 1.1); sun.position.set(3, 6, 4); sc.add(sun);
+      const cam = new THREE.PerspectiveCamera(30, 96 / 72, 0.1, 100); cam.position.set(0, 2.3, 4.6); cam.lookAt(0, 0.05, 0); THR = { r, sc, cam };
+    }
+    const model = make(); const bb = new THREE.Box3().setFromObject(model); const sz = bb.getSize(new THREE.Vector3()), c = bb.getCenter(new THREE.Vector3());
+    const k = 2.4 / Math.max(sz.x, sz.y * 1.15, sz.z, 0.001); model.position.set(-c.x * k, -c.y * k, -c.z * k); model.scale.multiplyScalar(k);
+    const pivot = new THREE.Group(); pivot.add(model); pivot.rotation.y = 0.7; THR.sc.add(pivot); THR.r.render(THR.sc, THR.cam);
+    const url = THR.r.domElement.toDataURL('image/png'); THR.sc.remove(pivot); pivot.traverse((o) => o.isMesh && o.geometry.dispose());
+    return (THUMBS[key] = url);
+  } catch { return (THUMBS[key] = ''); }
+}
+const unitThumb = (kind, owner) => thumbOf(`u-${kind}-${owner}`, () => makeFigure({ id: 'th-' + kind, kind, owner, str: kind === 'air' ? 8 : 6, at: [0, 0] }));
+const featThumb = (kind, owner) => thumbOf(`f-${kind}-${owner}`, () => makeProp({ id: 'th', kind, owner, at: [0, 0], ready: 0, ruined: false }));
+const spyThumb = () => thumbOf('spy', () => { const f = spyFigure(); bakeFigure(f, null); return f; });
+const pic = (url, dim) => url ? `<img class="pthumb${dim ? ' dim' : ''}" src="${url}" alt="" aria-hidden="true">` : '<span class="pthumb none" aria-hidden="true"></span>';
+const ALWAYS_PIC = [() => spyThumb(), () => featThumb('depot', ME), () => featThumb('radio', ME), () => featThumb('hq', ME)];
 function renderPortfolio() {
   const r = MEE; const units = myUnits(); const missing = KINDS.filter((k) => !r.commands.includes(k));
   const boss = (k) => ROSTER.find((x) => x.country === ME && x.commands.includes(k));
+  const li = (img, html) => `<li class="pli">${img}<div>${html}</div></li>`;
   $('brief-body').innerHTML = `
-    <div class="sec"><h3>Your powers</h3><ul class="plist">${r.commands.map((k) => `<li>${POWER_TEXT[k]}</li>`).join('')}${ALWAYS.map((a) => `<li>${a}</li>`).join('')}</ul></div>
+    <div class="sec"><h3>Your powers</h3><ul class="plist">${r.commands.map((k) => li(pic(unitThumb(k, ME)), POWER_TEXT[k])).join('')}${ALWAYS.map((a, i) => li(pic(ALWAYS_PIC[i]?.()), a)).join('')}</ul></div>
     <div class="sec"><h3>Your assets</h3><ul class="plist">
-      ${units.length ? units.map((u) => `<li>${esc(u.name)}<small>${KIND_NAME[u.kind]} · strength ${u.str}${u.traits?.length ? ' · ' + traitText(u) : ''} · ${esc(u.note)}</small></li>`).join('') : '<li>No forces on the map</li>'}
-      ${FEATS.filter((f) => f.owner === ME).map((f) => `<li>${esc(f.label)}<small>${esc(featTitle(f).split(' · ').slice(2).join(' · ') || 'Ready')}</small></li>`).join('')}
-      <li>$${POWERS[ME].treasury}M national treasury<small>Shared with the other ${POWERS[ME].label} commanders</small></li>
-      ${AGENTS.map((g) => `<li>Agent in ${esc(POWERS[g.target]?.label || g.target)}<small>${esc(g.mission || '')} · reveals forces nearby and can intercept notes</small></li>`).join('')}
+      ${units.length ? units.map((u) => li(pic(unitThumb(u.kind, u.owner)), `${esc(u.name)}<small>${KIND_NAME[u.kind]} · strength ${u.str}${u.traits?.length ? ' · ' + traitText(u) : ''} · ${esc(u.note)}</small>`)).join('') : '<li>No forces on the map</li>'}
+      ${FEATS.filter((f) => f.owner === ME).map((f) => li(pic(featThumb(f.kind, f.owner)), `${esc(f.label)}<small>${esc(featTitle(f).split(' · ').slice(2).join(' · ') || 'Ready')}</small>`)).join('')}
+      ${li(pic(featThumb('depot', ME)), `$${POWERS[ME].treasury}M national treasury<small>Shared with the other ${POWERS[ME].label} commanders</small>`)}
+      ${AGENTS.map((g) => li(pic(spyThumb()), `Agent in ${esc(POWERS[g.target]?.label || g.target)}<small>${esc(g.mission || '')} · reveals forces nearby and can intercept notes</small>`)).join('')}
       <li>${SPECIAL[ME] || "Your government's contacts"}</li>${(STATE.assets || []).map((x) => `<li>${esc(x.text)}<small>Granted by crisis staff after update ${x.update}</small></li>`).join('')}</ul></div>
     <div class="sec"><h3>Not in your portfolio</h3><ul class="plist no">
-      ${missing.map((k) => `<li>${KIND_NAME[k]}${boss(k) ? ` (ask ${esc(boss(k).name)})` : ''}</li>`).join('')}${LIMITS_ALWAYS.map((l) => `<li>${l}</li>`).join('')}</ul></div>
+      ${missing.map((k) => li(pic(unitThumb(k, ME), true), `${KIND_NAME[k]}${boss(k) ? ` (ask ${esc(boss(k).name)})` : ''}`)).join('')}${LIMITS_ALWAYS.map((l) => `<li>${l}</li>`).join('')}</ul></div>
     <button type="button" class="secret secretbtn" data-secret><b>Secret objective</b><span>Open your sealed file</span><small class="formnote" style="display:block;margin-top:6px">Only you and crisis staff can see this.</small></button>`;
 }
 function updateDirCount() {
@@ -2366,7 +2390,7 @@ export function start(root, props) {
   if (VIEW === 'staff') { VIEW = 'map'; EDIT = true; STAFFMAP = true; selected = { type: 'none' }; }
   root.innerHTML = skeleton(props);
   // Floating panels sit between the top bar and the bottom dock; keep their heights in CSS variables.
-  const measure = () => { const t = root.querySelector('.topbar'), d = root.querySelector('.dock') || root.querySelector('.map-view:not(.staffmap) > .bottom'); document.documentElement.style.setProperty('--topH', (t?.offsetHeight || 0) + 'px'); document.documentElement.style.setProperty('--botH', (d?.offsetHeight || 0) + 'px'); };
+  const measure = () => { const t = root.querySelector('.topbar'), d = root.querySelector('.dock') || root.querySelector('.map-view > .bottom'); document.documentElement.style.setProperty('--topH', (t?.offsetHeight || 0) + 'px'); document.documentElement.style.setProperty('--botH', (d?.offsetHeight || 0) + 'px'); };
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null; root.querySelectorAll('.topbar, .dock, .map-view > .bottom').forEach((e) => ro?.observe(e)); measure();
   if (STAFFMAP) renderBattleShell();
   if (EDIT) bindEdit();

@@ -1025,3 +1025,31 @@ body *:not(.lbl) { letter-spacing: normal !important; }
 @keyframes paperflat { from { opacity: 0; transform: translateY(36px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes sendflat { 40% { transform: scale(.97); } 100% { opacity: 0; transform: translateY(-40vh) scale(.3); } }
 @keyframes stampflat { 0% { opacity: 0; transform: scale(2.2); } 100% { opacity: .85; transform: none; } }
+
+/* Portfolio: a small picture of the model beside each power and asset */
+#brief-body .plist li.pli { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center; padding: 6px 10px 6px 6px; }
+.pthumb { width: 64px; height: 48px; object-fit: contain; display: block; background: radial-gradient(ellipse at 50% 45%, #FFFFFF, #E6E2D8); border: 1px solid #E2DED3; }
+.pthumb.none { background: #EFECE4; }
+.pthumb.dim { filter: grayscale(1) opacity(.55); }
+
+/* Staff map: same glass look as the delegate screen, map fills the window */
+@media (min-width: 901px) {
+  .crisis-root:has(.staffmap) { position: relative; height: 100dvh; overflow: hidden; }
+  .crisis-root:has(.staffmap) > .topbar { position: absolute; inset: 0 0 auto; z-index: 25; }
+  .staffmap { position: relative; flex: 1; min-height: 0; }
+  .staffmap .stage { position: absolute; inset: 0; min-height: 0; }
+  .staffmap > .bottom { position: absolute; left: 0; right: 0; bottom: 0; z-index: 9; }
+  .staffmap .stoolbar { position: absolute; z-index: 12; top: calc(var(--topH) + 10px); left: calc(50% + 200px); transform: translateX(-50%); width: max-content; max-width: calc(100% - 470px); justify-content: center; padding: 6px 8px; background: var(--pane) !important; border: 1px solid var(--pane-edge) !important; box-shadow: 0 8px 28px rgba(0,0,0,.3); }
+  .staffmap .undobar { position: absolute; z-index: 13; top: calc(var(--topH) + 62px); left: calc(50% + 200px); transform: translateX(-50%); background: var(--pane); border: 1px solid rgba(245,194,27,.45); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+  .staffmap .sdrawer { top: calc(var(--topH) + 12px); bottom: calc(var(--botH) + 12px); left: max(12px, env(safe-area-inset-left, 0px)); background: var(--pane); border: 1px solid var(--pane-edge); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+  .staffmap .sdrawer.shut { transform: translateX(calc(-100% + 44px - 12px)); }
+  .staffmap .stage .date { top: calc(var(--topH) + 64px); }
+  .staffmap .editcard { top: calc(var(--topH) + 64px); right: 64px; max-height: calc(100% - var(--topH) - var(--botH) - 90px); background: var(--pane-strong); border: 1px solid var(--pane-edge); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+  .staffmap .stage .zoom { bottom: calc(var(--botH) + 12px); }
+  .staffmap .floorcard { bottom: calc(var(--botH) + 64px); }
+  .staffmap .btray { bottom: calc(var(--botH) + 14px); }
+  .staffmap .placebar { top: calc(var(--topH) + 110px); }
+}
+.staffmap .stoolbar .dbtn { background: rgba(255,255,255,.05); border-color: var(--pane-edge); }
+.staffmap .stoolbar .dbtn:hover { background: rgba(255,255,255,.12); }
+.staffmap .sdrawer .shead { border-color: var(--pane-edge); }
