@@ -1032,10 +1032,10 @@ class Globe {
     }
     for (const u of UNITS) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'tok'; b.dataset.id = u.id;
-      b.setAttribute('aria-label', `${u.name}, ${POWERS[u.owner].label}, strength ${u.str}`);
+      b.setAttribute('aria-label', `${u.name}, ${POWERS[u.owner].label}, ${S.realText(u)}`);
       const est = this.opts.fog && !ALLIES.includes(u.owner);
-      if (est) { b.classList.add('spotted'); b.title = u.spotted || 'Spotted'; b.setAttribute('aria-label', `${u.name}, ${POWERS[u.owner].label}, estimated strength ${u.str}. ${u.spotted || ''}`); }
-      b.innerHTML = `${flag(u.owner)}<b class="num">${est ? '~' : ''}${u.str}</b>`;
+      if (est) { b.classList.add('spotted'); b.title = u.spotted || 'Spotted'; b.setAttribute('aria-label', `${u.name}, ${POWERS[u.owner].label}, estimated ${S.realText(u)}. ${u.spotted || ''}`); }
+      b.innerHTML = `${flag(u.owner)}<b class="num">${est ? '~' : ''}${S.realShort(u)}</b>`;
       if (this.opts.onUnit) b.addEventListener('click', (e) => { e.stopPropagation(); this.opts.onUnit(u.id); });
       this.ov.appendChild(b); const [plo, pla] = this.posOf(u); this.items.push({ el: b, lon: plo, lat: pla, kind: 'tok', id: u.id, air: u.kind === 'air' });
     }
@@ -1477,8 +1477,8 @@ function renderSel() {
   }
   if (selected.type === 'unit') {
     const u = UNITS.find((x) => x.id === selected.id); if (!u) { selected = { type: 'country', id: 'Poland' }; return renderSel(); }
-    const p = POWERS[u.owner]; const K = { fleet: ['NAV', 'Naval force', 'capital ships'], army: ['INF', 'Infantry', 'divisions'], armor: ['TNK', 'Tanks', u.owner === 'USSR' || u.owner === 'Poland' ? 'brigades' : 'divisions'], air: ['AIR', 'Air force', `(about ${u.str * 100} aircraft)`] }[u.kind];
-    box.innerHTML = `<div class="badge flagbadge">${flag(u.owner)}<em>${K[0]}</em></div><div><div class="sel-title">${esc(u.name)}</div><div class="sel-sub">${p.label} · ${K[1]}</div><div class="stats"><div><span>Strength</span> <b class="num">${u.str} ${K[2]}</b></div>${u.traits?.length ? `<div><span>Traits</span> ${traitText(u)}</div>` : ''}<div><span>Orders</span> ${esc(u.note)}</div></div></div>`;
+    const p = POWERS[u.owner]; const K = { fleet: ['NAV', 'Naval force', 'capital ships'], army: ['INF', 'Infantry', 'divisions'], armor: ['TNK', 'Tanks', u.owner === 'USSR' || u.owner === 'Poland' ? 'brigades' : 'divisions'], air: ['AIR', 'Air force', 'squadrons'] }[u.kind];
+    box.innerHTML = `<div class="badge flagbadge">${flag(u.owner)}<em>${K[0]}</em></div><div><div class="sel-title">${esc(u.name)}</div><div class="sel-sub">${p.label} · ${K[1]}</div><div class="stats"><div><span>Strength</span> <b class="num">${S.realText(u)}</b>${u.kind === 'air' ? '' : ` <small class="formnote">(${u.str} ${u.kind === 'fleet' ? 'capital ships with escorts' : K[2]})</small>`}</div>${u.traits?.length ? `<div><span>Traits</span> ${traitText(u)}</div>` : ''}<div><span>Orders</span> ${esc(u.note)}</div></div></div>`;
     return;
   }
   const name = selected.id; const owner = ownerOf(name); const p = POWERS[owner];
@@ -1606,7 +1606,7 @@ function renderForm() {
   else $('cform').innerHTML = '';
   if (action === 'fleet') {
     const u = UNITS.find((x) => x.id === pickedForce);
-    body = u ? `<div class="picked">${flag(u.owner)}<div><b>${esc(u.name)}</b><span>${KIND_NAME[u.kind]} · strength ${u.str}</span></div><button type="button" class="unpick" aria-label="Clear selected force">✕</button></div>
+    body = u ? `<div class="picked">${flag(u.owner)}<div><b>${esc(u.name)}</b><span>${KIND_NAME[u.kind]} · ${S.realText(u)}</span></div><button type="button" class="unpick" aria-label="Clear selected force">✕</button></div>
       <label for="f-dest">Destination<select id="f-dest">${opt(DEST_BY_KIND[u.kind])}</select></label>`
       : `<div class="pickprompt">Click one of your forces on the map to select it.<span>${myUnits().length ? 'Your forces: ' + myUnits().map((x) => esc(x.name)).join(', ') : 'You have no forces on the map. Use other actions instead.'}</span></div>`;
   }
@@ -1634,7 +1634,7 @@ function renderForm() {
   f.querySelector('#f-loc .unpick')?.addEventListener('click', () => { setPick(null); renderLoc(); });
   f.querySelector('.unfollow')?.addEventListener('click', () => { followParent = null; renderForm(); });
   f.querySelector('.picked:not(#f-loc .picked) .unpick')?.addEventListener('click', () => { pickedForce = null; if (delGlobe) { delGlobe.selectedUnit = null; delGlobe.markSelected(null); } renderForm(); });
-  if (action === 'build') { const upd = () => { const c = BUILD[f.querySelector('#f-btype').value] * (+f.querySelector('#f-bqty').value || 0); f.querySelector('#f-bcost').textContent = `Cost: $${c}M of your $${POWERS[ME].treasury}M treasury. Each counts as 1 strength.`; }; f.querySelector('#f-btype').addEventListener('change', upd); f.querySelector('#f-bqty').addEventListener('input', upd); upd(); }
+  if (action === 'build') { const upd = () => { const c = BUILD[f.querySelector('#f-btype').value] * (+f.querySelector('#f-bqty').value || 0); f.querySelector('#f-bcost').textContent = `Cost: $${c}M of your $${POWERS[ME].treasury}M treasury. Adds about ${S.realText({ kind: BUILD_KIND[f.querySelector('#f-btype').value], owner: ME }, +f.querySelector('#f-bqty').value || 0)}.`; }; f.querySelector('#f-btype').addEventListener('change', upd); f.querySelector('#f-bqty').addEventListener('input', upd); upd(); }
 }
 function summary() {
   const v = (id) => $(id)?.value;
@@ -1739,7 +1739,7 @@ function renderPortfolio() {
   $('brief-body').innerHTML = `
     <div class="sec"><h3>Your powers</h3><ul class="plist">${r.commands.map((k) => li(pic(unitThumb(k, ME)), POWER_TEXT[k])).join('')}${ALWAYS.map((a, i) => li(pic(ALWAYS_PIC[i]?.()), a)).join('')}</ul></div>
     <div class="sec"><h3>Your assets</h3><ul class="plist">
-      ${units.length ? units.map((u) => li(pic(unitThumb(u.kind, u.owner)), `${esc(u.name)}<small>${KIND_NAME[u.kind]} · strength ${u.str}${u.traits?.length ? ' · ' + traitText(u) : ''} · ${esc(u.note)}</small>`)).join('') : '<li>No forces on the map</li>'}
+      ${units.length ? units.map((u) => li(pic(unitThumb(u.kind, u.owner)), `${esc(u.name)}<small>${KIND_NAME[u.kind]} · ${S.realText(u)}${u.traits?.length ? ' · ' + traitText(u) : ''} · ${esc(u.note)}</small>`)).join('') : '<li>No forces on the map</li>'}
       ${FEATS.filter((f) => f.owner === ME).map((f) => li(pic(featThumb(f.kind, f.owner)), `${esc(f.label)}<small>${esc(featTitle(f).split(' · ').slice(2).join(' · ') || 'Ready')}</small>`)).join('')}
       ${li(pic(featThumb('depot', ME)), `$${POWERS[ME].treasury}M national treasury<small>Shared with the other ${POWERS[ME].label} commanders</small>`)}
       ${AGENTS.map((g) => li(pic(spyThumb()), `Agent in ${esc(POWERS[g.target]?.label || g.target)}<small>${esc(g.mission || '')} · reveals forces nearby and can intercept notes</small>`)).join('')}
@@ -1903,7 +1903,7 @@ function renderEdit() {
     if (u) {
       const secret = !u.shown || u.shown[0] !== u.at[0] || u.shown[1] !== u.at[1]; const inA = battleSel.att.has(u.id), inD = battleSel.def.has(u.id);
       html += `<h3>${flag(u.owner)} ${esc(u.name)}</h3><p class="formnote">${POWERS[u.owner].label} · ${KIND_NAME[u.kind]}${secret ? ' · <b style="color:var(--warn)">projector shows an old position</b>' : ''}</p>${u.basis ? `<p class="formnote" style="color:var(--warn)">Staff note: ${esc(u.basis)}</p>` : ''}
-      <div class="row"><label class="formnote" for="e-str">Strength</label><input type="number" id="e-str" min="1" max="99" value="${u.str}" style="width:70px"><button type="button" class="dbtn" data-e="str">Save</button></div>
+      <div class="row"><label class="formnote" for="e-str">Strength</label><input type="number" id="e-str" min="1" max="99" value="${u.str}" style="width:70px"><span class="formnote">= ${S.realText(u)}</span><button type="button" class="dbtn" data-e="str">Save</button></div>
       <div class="row">${(u.traits || []).map((t) => `<span class="schip ${t.mod > 0 ? 'good' : t.mod < 0 ? 'bad' : ''}">${esc(t.label)} ${t.mod >= 0 ? '+' : ''}${t.mod} <button type="button" data-untrait="${esc(t.label)}" aria-label="Remove">✕</button></span>`).join('') || '<span class="formnote">No traits</span>'}</div>
       <div class="row"><input type="text" id="e-tlabel" maxlength="40" placeholder="Add a trait, e.g. Low on fuel"><input type="number" id="e-tmod" min="-4" max="4" value="1" style="width:56px" aria-label="Battle bonus"><button type="button" class="dbtn" data-e="trait">Add</button></div>
       <div class="row"><button type="button" class="dbtn gold" data-e="move-pub">Move on projector</button><button type="button" class="dbtn green" data-e="move-sec">Move secretly</button>${secret ? '<button type="button" class="dbtn" data-e="reveal">Reveal</button>' : ''}</div>
@@ -1945,7 +1945,7 @@ function ownerOptions(sel) {
 const battleSel = { att: new Set(), def: new Set() };
 function renderBattleTray() {
   const t = $('btray'); if (!t) return; const n = battleSel.att.size + battleSel.def.size; t.hidden = !n; if (!n) return;
-  const names = (set) => [...set].map((id) => { const u = STATE.units.find((x) => x.id === id); return u ? `${flag(u.owner)} ${esc(u.name)} (${u.str})` : ''; }).join(', ') || '<i>pick on the map</i>';
+  const names = (set) => [...set].map((id) => { const u = STATE.units.find((x) => x.id === id); return u ? `${flag(u.owner)} ${esc(u.name)} (${S.realShort(u)})` : ''; }).join(', ') || '<i>pick on the map</i>';
   t.innerHTML = `<b>Battle</b><span>${names(battleSel.att)}</span><b>vs</b><span>${names(battleSel.def)}</span><button type="button" class="dbtn gold" id="bt-open"${battleSel.att.size && battleSel.def.size ? '' : ' disabled'}>Work it out</button><button type="button" class="dbtn" id="bt-clear">Clear</button>`;
 }
 function syncBattleSelects() {
@@ -2189,7 +2189,7 @@ function effText(e) {
     case 'strength': return `${uName(e.unit)} ${+e.delta >= 0 ? '+' : ''}${e.delta} strength`;
     case 'destroy': return `${uName(e.unit)} destroyed`;
     case 'move': return `${uName(e.unit)} moves to ${whereTxt(e.to)}${e.public ? '' : ' (secret)'}`;
-    case 'unit': return `New ${(KIND_NAME[e.kind] || 'unit').toLowerCase()} for ${pl(e.owner)}, strength ${e.str}, at ${whereTxt(e.to)}${e.public ? '' : ' (secret)'}`;
+    case 'unit': return `New ${(KIND_NAME[e.kind] || 'unit').toLowerCase()} for ${pl(e.owner)}, ${S.realText({ kind: e.kind, owner: e.owner }, +e.str || 1)}, at ${whereTxt(e.to)}${e.public ? '' : ' (secret)'}`;
     case 'region': return `${pl(e.owner)} takes ${(e.ids || []).map((id) => REGION[id]?.name || id).join(', ')}`;
     case 'intel': return `Intel to ${pl(e.country)}: ${e.text}`;
     case 'wire': return `Extra headline: ${e.text}`;
@@ -2223,7 +2223,7 @@ function aiBlock(q) {
 let qFilter = 'pending', qCountry = '';
 function qDetail(q) {
   const d = q.detail || {}; let s = '';
-  if (q.type === 'fleet') { const u = STATE.units.find((x) => x.id === d.unit); s = u ? `${esc(u.name)} (${KIND_NAME[u.kind].toLowerCase()}, strength ${u.str}) to <b>${esc(d.dest)}</b>` : ''; }
+  if (q.type === 'fleet') { const u = STATE.units.find((x) => x.id === d.unit); s = u ? `${esc(u.name)} (${KIND_NAME[u.kind].toLowerCase()}, ${S.realText(u)}) to <b>${esc(d.dest)}</b>` : ''; }
   if (q.type === 'spy') s = `Target ${esc(d.target)} · mission: ${esc(d.mission)} · budget $${d.cost}M`;
   if (q.type === 'money') s = `$${d.amount}M from ${POWERS[q.country].label} to ${esc(d.to)} · treasury now $${STATE.treasury[q.country]}M`;
   if (q.type === 'build') s = `${d.qty} × ${esc(d.btype)} · cost $${(BUILD[d.btype] || 0) * d.qty}M${d.where ? ` · in <b>${esc(d.where)}</b>` : ''}`;
