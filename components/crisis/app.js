@@ -1780,7 +1780,7 @@ function buildDocs() {
 }
 function buildClauses() {
   const d = curDraft(); if (!d) return; const box = $('dc-clauses'); const act0 = document.activeElement; const fk = act0?.dataset?.k; const sel = fk != null ? [act0.selectionStart, act0.selectionEnd] : null;
-  box.innerHTML = d.clauses.map((c, i) => `<li><div class="dcl"><textarea id="dc-c${i}" data-k="${i}" rows="1" maxlength="600" placeholder="Who does what, where, and with what forces or money."></textarea><span class="who" id="dc-w${i}" hidden></span>${d.clauses.length > 1 ? `<button type="button" class="dclx" data-rm="${i}" aria-label="Remove clause ${i + 1}">✕</button>` : ''}</div></li>`).join('');
+  box.innerHTML = d.clauses.map((c, i) => `<li><div class="dcl"><textarea id="dc-c${i}" data-k="${i}" rows="1" maxlength="600" placeholder="Who does what, where, and with what forces or money."></textarea><span class="typer" id="dc-w${i}" hidden></span>${d.clauses.length > 1 ? `<button type="button" class="dclx" data-rm="${i}" aria-label="Remove clause ${i + 1}">✕</button>` : ''}</div></li>`).join('');
   box.querySelectorAll('textarea').forEach((t) => { t.value = docPending[t.dataset.k] ?? d.clauses[+t.dataset.k] ?? ''; t.addEventListener('input', () => { editDoc(t.dataset.k, t.value); grow(t); }); grow(t); });
   box.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => { flushDoc(); act({ type: 'dir.clause.remove', id: LAPID, i: +b.dataset.rm }, { quiet: true }); }));
   if (fk != null) { const t = $('dc-c' + fk); if (t) { t.focus({ preventScroll: true }); if (sel) t.setSelectionRange(sel[0], sel[1]); } }

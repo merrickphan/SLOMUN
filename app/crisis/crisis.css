@@ -926,8 +926,8 @@ button { cursor: pointer; }
 .dcl textarea { font-size: 16px; line-height: 1.7; padding-right: 28px; }
 .dclx { position: absolute; right: 0; top: 4px; background: none; border: 0; color: #9AA0A6; font-size: 13px; opacity: 0; transition: opacity .15s; }
 .dcl:hover .dclx, .dcl:focus-within .dclx { opacity: 1; }
-.who { position: absolute; left: -2px; top: -14px; background: var(--c); color: #fff; font: 600 10.5px/1 'Segoe UI', Arial, sans-serif; padding: 3px 6px; border-radius: 3px 3px 3px 0 !important; pointer-events: none; }
-.who::after { content: ""; position: absolute; left: 0; top: 100%; width: 2px; height: 26px; background: var(--c); }
+.typer { position: absolute; left: -2px; top: -14px; background: var(--c); color: #fff; font: 600 10.5px/1 'Segoe UI', Arial, sans-serif; padding: 3px 6px; border-radius: 3px 3px 3px 0 !important; pointer-events: none; }
+.typer::after { content: ""; position: absolute; left: 0; top: 100%; width: 2px; height: 26px; background: var(--c); }
 .dfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; background: #fff; border-top: 1px solid #DADCE0; font-size: 13px; }
 .dfoot > span { font-weight: 600; }
 .dfoot small { font-weight: 400; color: #5F6368; }
@@ -953,7 +953,7 @@ button { cursor: pointer; }
   .lap:not([hidden]) .lscreen { animation: lidup .55s .12s cubic-bezier(.2,.8,.3,1) both; }
   .lap.closing { animation: fadeout .24s forwards; }
   .lap.closing .lscreen { animation: liddown .24s ease-in forwards; }
-  .who:not([hidden]) { animation: fade .2s both; }
+  .typer:not([hidden]) { animation: fade .2s both; }
 }
 @keyframes casein { from { opacity: 0; transform: translateY(40px) scale(.85); } }
 @keyframes lidopen { to { transform: rotateX(-115deg); } }
