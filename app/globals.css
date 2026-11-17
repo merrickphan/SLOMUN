@@ -435,9 +435,6 @@ a.tile-link:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3p
 .fact dd { margin: 0; font-family: var(--display); font-weight: 700; font-size: 26px; line-height: 1.2; }
 .fact dd.tba { font-weight: 600; color: var(--ink-600); font-size: 22px; }
 .briefing { display: flex; justify-content: center; padding: 16px 0 8px; }
-.guide-embed { margin: 8px 0 24px; border: 2px solid var(--ink); background: var(--white); }
-.guide-embed iframe { display: block; width: 100%; height: min(1100px, 85vh); border: 0; }
-@media (max-width: 640px) { .guide-embed { display: none; } }
 .btn-disabled { background: var(--gray-50); color: var(--ink-600); cursor: default; }
 .btn-disabled:hover { transform: none; }
 .back-link { font-family: var(--caps); font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; }

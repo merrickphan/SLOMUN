@@ -49,11 +49,6 @@ export default async function CommitteePage({ params }) {
           <span className="btn btn-disabled" aria-disabled="true">Topic Briefing coming soon</span>
         )}
       </div>
-      {c.guide && (
-        <div className="guide-embed">
-          <iframe src={`${c.guide}#view=FitH`} title={`${c.name} Background Guide`} loading="lazy" />
-        </div>
-      )}
       <hr />
       <Link className="back-link" href="/committees">← All committees</Link>
     </Page>
