@@ -459,6 +459,7 @@ function paintFog(canvas) {
   feather(canvas);
 }
 const D2R = Math.PI / 180;
+const UNIT_SCALE = 0.0042; // size of the 3D unit figures on the globe
 const toVec = (lon, lat, r = 1) => new THREE.Vector3(r * Math.cos(lat * D2R) * Math.cos(lon * D2R), r * Math.sin(lat * D2R), -r * Math.cos(lat * D2R) * Math.sin(lon * D2R));
 
 function inRing(lon, lat, ring) {
@@ -631,7 +632,7 @@ class Globe {
     const Y = new THREE.Vector3(0, 1, 0);
     for (const u of UNITS) {
       const f = makeFigure(u); const [lo, la] = this.posOf(u); this.place(f, lo, la);
-      f.scale.setScalar(0.0105); this.unitGroup.add(f); this.figs[u.id] = f;
+      f.scale.setScalar(UNIT_SCALE); this.unitGroup.add(f); this.figs[u.id] = f;
     }
   }
   // The projector shows where the room believes units are; delegate laptops show true positions.
@@ -759,7 +760,7 @@ class Globe {
     const SHIFT = { lbl: 'translate(-50%, -50%)', city: 'translate(6px, -100%)', tok: 'translate(-50%, -50%)', pin: 'translate(-50%, -100%)', feat: 'translate(-50%, -50%)', pulse: 'translate(-50%, -50%)' };
     const bigFeat = zoom > 1.05; if (bigFeat !== this._bigFeat) { this._bigFeat = bigFeat; this.ov.classList.toggle('feat-big', bigFeat); }
     for (const it of this.items) {
-      const p = this.project(it.lon, it.lat, it.kind === 'tok' ? (it.air ? 0.026 : 0.019) : it.kind === 'feat' ? 0.012 : 0);
+      const p = this.project(it.lon, it.lat, it.kind === 'tok' ? (it.air ? 0.026 : 0.019) * UNIT_SCALE / 0.0105 : it.kind === 'feat' ? 0.012 : 0);
       let show = p.ok;
       if (show && it.kind === 'city' && zoom < 0.85 && !['London', 'Paris', 'Berlin', 'Warsaw', 'Rome', 'Moscow'].includes(it.el.textContent)) show = false;
       if (show !== it._show) { it.el.style.display = show ? '' : 'none'; it._show = show; }

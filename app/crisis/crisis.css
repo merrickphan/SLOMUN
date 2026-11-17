@@ -638,3 +638,6 @@ button { cursor: pointer; }
 @keyframes sidein { from { opacity: 0; transform: translateX(24px); } }
 @keyframes fadeup { from { opacity: 0; transform: translateY(8px); } }
 @keyframes urgent { to { box-shadow: 0 0 0 2px rgba(240,112,90,.55), 0 0 24px rgba(240,112,90,.35); } }
+/* Smaller unit tags to match the smaller unit figures */
+.tok .fl { width: 13px; height: 9px; }
+.tok b { font-size: 9px; line-height: 9px; padding: 0 3px; }
