@@ -31,7 +31,7 @@ const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.on
 function ringPath(ctx, rings) { ctx.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? ctx.lineTo(tx(x), ty(y)) : ctx.moveTo(tx(x), ty(y))); ctx.closePath(); } }
 
 // Whole-world texture painted in the same style as the Europe map, so the globe reads as one surface.
-const WW = 4096, WH = 2048; // the whole world; Europe gets its own sharper patch
+const WW = 4096 * TEXK, WH = 2048 * TEXK; // the whole world (8192 px where the GPU allows); Europe gets its own sharper patch
 const PAL = ['#C9A44A', '#5FAE6A', '#B06A9E', '#5E8FC9', '#C97A4A', '#7FA84A', '#9A6FC0', '#4FA6A0', '#C05A5A', '#8E9A4A'];
 function worldColor(n) { if (POWERS[ownerOf(n)] || NEUTRALS[n]) return colorOf(n); let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PAL[h % PAL.length]; }
 function paintWorld(canvas, dark) {
@@ -47,7 +47,7 @@ function paintWorld(canvas, dark) {
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.24; ctx.fillRect(0, 0, WW, WH); ctx.restore();
   }
   ctx.globalAlpha = 1; ctx.lineJoin = 'round';
-  for (const rings of Object.values(A.wgeo)) { path(rings); ctx.strokeStyle = 'rgba(10,20,40,0.35)'; ctx.lineWidth = 1.8; ctx.stroke(); ctx.strokeStyle = 'rgba(225,240,255,0.45)'; ctx.lineWidth = 0.7; ctx.stroke(); }
+  for (const rings of Object.values(A.wgeo)) { path(rings); ctx.strokeStyle = 'rgba(10,20,40,0.35)'; ctx.lineWidth = 1.8 * TEXK; ctx.stroke(); ctx.strokeStyle = 'rgba(225,240,255,0.45)'; ctx.lineWidth = 0.7 * TEXK; ctx.stroke(); }
   if (dark) {
     const fog = document.createElement('canvas'); fog.width = WW; fog.height = WH; const f = fog.getContext('2d');
     f.fillStyle = 'rgba(28,33,44,0.8)'; f.fillRect(0, 0, WW, WH); f.globalCompositeOperation = 'destination-out'; f.fillStyle = '#000';
@@ -1814,7 +1814,7 @@ export function start(root, props) {
     try {
       const [geo, marble, water, topo, world, wwater, clouds] = await Promise.all([
         fetch('/crisis/geo.json').then((r) => r.json()).then(async (g) => { RSHAPE = await fetch('/crisis/regions.json').then((r) => r.json()); return g; }),
-        ...['marble.webp', 'water.png', 'topo.jpg', 'world.webp', 'wwater.png', 'clouds.jpg'].map((f) => loadImg('/crisis/' + f)),
+        ...['marble.webp', 'water.png', 'topo.jpg', TEXK > 1 ? 'world8k.webp' : 'world.webp', TEXK > 1 ? 'wwater8k.png' : 'wwater.png', 'clouds.jpg'].map((f) => loadImg('/crisis/' + f)),
       ]);
       A = geo; imgs = { marble, water, topo, world, wwater, clouds }; await first;
       if (stopped) return;
