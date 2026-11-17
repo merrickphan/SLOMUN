@@ -500,6 +500,13 @@ class Globe {
     let lastCloud = -1e9, lastFx = -1e9;
     const loop = (t = 0) => {
       let cloudOnly = false;
+      // Glide toward the zoom target: eases in quickly, then settles a moment after the wheel stops.
+      if (this.zt != null) {
+        const dt = Math.min(64, Math.max(0, t - (this._zl ?? t))); const d = this.zt - this.view.dist;
+        if (reduce || Math.abs(d) < 0.0003) { this.view.dist = this.zt; this.zt = null; } else this.view.dist += d * (1 - Math.exp(-dt / 130));
+        this.dirty = true;
+      }
+      this._zl = t;
       if (this.clouds && !reduce && t - lastCloud > 200) { this.clouds.rotation.y = t * 0.000004; lastCloud = t; cloudOnly = !this.dirty; }
       if (this.fx && SHOW_FEAT && !reduce && this.view.dist < 2.4 && t - lastFx > 66 && !document.hidden) { this.stepFx(t); lastFx = t; cloudOnly = cloudOnly || !this.dirty; }
       if (this.dirty || cloudOnly) { this.render(!cloudOnly); this.dirty = false; }
@@ -804,7 +811,12 @@ class Globe {
       }
       drag = null;
     });
-    c.addEventListener('wheel', (e) => { e.preventDefault(); this.view.dist = Math.max(1.05, Math.min(3.6, 1 + (this.view.dist - 1) * (1 + e.deltaY * 0.0015))); this.dirty = true; }, { passive: false });
+    c.addEventListener('wheel', (e) => {
+      e.preventDefault(); const dy = Math.max(-240, Math.min(240, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1)));
+      this.zoomTo(1 + ((this.zt ?? this.view.dist) - 1) * Math.exp(dy * 0.0016));
+    }, { passive: false });
+  }
+  zoomTo(dist) { this.zt = Math.max(1.05, Math.min(3.6, dist)); this.dirty = true;
   }
 }
 /* ====================================================================== */
@@ -1889,9 +1901,9 @@ export function start(root, props) {
   document.querySelectorAll('.zoom').forEach((z) => z.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return; const g = z.dataset.g === 'map' ? mapGlobe : delGlobe; if (!g) return;
     if (b.dataset.z === 'feat') { SHOW_FEAT = !SHOW_FEAT; try { localStorage.setItem('crisis-feat', SHOW_FEAT ? 'on' : 'off'); } catch {} b.setAttribute('aria-pressed', SHOW_FEAT); g.setFeatVisible(SHOW_FEAT); return; }
-    if (b.dataset.z === 'in') g.view.dist = Math.max(1.05, 1 + (g.view.dist - 1) * 0.72);
-    if (b.dataset.z === 'out') g.view.dist = Math.min(3.6, 1 + (g.view.dist - 1) * 1.38);
-    if (b.dataset.z === 'reset') Object.assign(g.view, g.home);
+    if (b.dataset.z === 'in') g.zoomTo(1 + ((g.zt ?? g.view.dist) - 1) * 0.72);
+    if (b.dataset.z === 'out') g.zoomTo(1 + ((g.zt ?? g.view.dist) - 1) * 1.38);
+    if (b.dataset.z === 'reset') { Object.assign(g.view, { ...g.home, dist: g.view.dist }); g.zoomTo(g.home.dist); }
     g.dirty = true;
   }));
   if (VIEW === 'delegate') {
