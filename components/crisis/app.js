@@ -710,15 +710,18 @@ const SMOKE_FS = 'varying float vA; varying vec3 vC; void main(){ vec2 d = gl_Po
 
 /* ---------- Flags (simplified, 1939) ---------- */
 const STAR = (cx, cy, r, fill) => { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.42 : r; d += (i ? 'L' : 'M') + (cx + rr * Math.cos(a)).toFixed(2) + ',' + (cy + rr * Math.sin(a)).toFixed(2); } return `<path d="${d}Z" fill="${fill}"/>`; };
+// More shapes for emblems: a star with any number of points, and a sun with rays.
+const STARN = (cx, cy, r, n, fill, inner = 0.42) => { let d = ''; for (let i = 0; i < n * 2; i++) { const a = -Math.PI / 2 + i * Math.PI / n, rr = i % 2 ? r * inner : r; d += (i ? 'L' : 'M') + (cx + rr * Math.cos(a)).toFixed(2) + ',' + (cy + rr * Math.sin(a)).toFixed(2); } return `<path d="${d}Z" fill="${fill}"/>`; };
+const SUN = (cx, cy, r, rays, fill, core = 0.55) => STARN(cx, cy, r, rays, fill, core) + `<circle cx="${cx}" cy="${cy}" r="${(r * core * 0.9).toFixed(2)}" fill="${fill}"/>`;
 const FLAG_SVG = {
   'United Kingdom': '<rect width="30" height="20" fill="#012169"/><path d="M0,0L30,20M30,0L0,20" stroke="#fff" stroke-width="4"/><path d="M0,0L30,20M30,0L0,20" stroke="#C8102E" stroke-width="1.6"/><path d="M15,0V20M0,10H30" stroke="#fff" stroke-width="6"/><path d="M15,0V20M0,10H30" stroke="#C8102E" stroke-width="3.4"/>',
   'France': '<rect width="10" height="20" fill="#0055A4"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#EF4135"/>',
-  'Germany': '<rect width="30" height="20" fill="#D0141C"/><circle cx="15" cy="10" r="6.6" fill="#fff"/><path d="M11.6,6.6L18.4,13.4M18.4,6.6L11.6,13.4" stroke="#111" stroke-width="2.2" stroke-linecap="square"/>',
+  'Germany': '<rect width="30" height="6.67" fill="#111"/><rect y="6.67" width="30" height="6.67" fill="#fff"/><rect y="13.33" width="30" height="6.67" fill="#DD0000"/>',
   'Poland': '<rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#DC143C"/>',
   'Italy': '<rect width="10" height="20" fill="#009246"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#CE2B37"/><path d="M12.4,6.5H17.6V11.5Q17.6,14 15,15Q12.4,14 12.4,11.5Z" fill="#CE2B37" stroke="#1F4FA0" stroke-width=".8"/><path d="M15,7.5V13.5M13.2,10H16.8" stroke="#fff" stroke-width="1.2"/>',
   'USSR': '<rect width="30" height="20" fill="#CC0000"/>' + STAR(6, 3.6, 1.5, '#FFD700') + '<path d="M4.2,9.6A3,3 0 1 0 8.6,6.6" fill="none" stroke="#FFD700" stroke-width="1.1"/><path d="M4.4,6.4L8.2,10.2M3.7,7.1L5.1,5.7" stroke="#FFD700" stroke-width="1.1"/>',
   'Finland': '<rect width="30" height="20" fill="#fff"/><path d="M11,0V20M0,10H30" stroke="#002F6C" stroke-width="5"/>',
-  'United States': '<rect width="30" height="20" fill="#fff"/>' + [0, 2, 4, 6, 8, 10, 12].map(i => `<rect y="${i * 1.54}" width="30" height="1.54" fill="#B22234"/>`).join('') + '<rect width="13" height="10.8" fill="#3C3B6E"/>' + [2, 5, 8, 11].flatMap(x => [2.2, 5.4, 8.6].map(y => `<circle cx="${x}" cy="${y}" r=".75" fill="#fff"/>`)).join(''),
+  'United States': '<rect width="30" height="20" fill="#fff"/>' + [0, 2, 4, 6, 8, 10, 12].map((i) => `<rect y="${(i * 20 / 13).toFixed(2)}" width="30" height="${(20 / 13).toFixed(2)}" fill="#B22234"/>`).join('') + '<rect width="12" height="10.77" fill="#3C3B6E"/>' + Array.from({ length: 48 }, (_, k) => STAR(0.85 + (k % 8) * 1.47, 0.9 + Math.floor(k / 8) * 1.8, 0.55, '#fff')).join(''),
   'Japan': '<rect width="30" height="20" fill="#fff"/><circle cx="15" cy="10" r="6" fill="#BC002D"/>',
 };
 // Flags for every other country on the map in 1939 (simplified, same 30 x 20 frame as above).
@@ -728,45 +731,45 @@ const NORDIC = (bg, cross, edge) => `<rect width="30" height="20" fill="${bg}"/>
 const UNION = '<rect width="15" height="10" fill="#012169"/><path d="M0,0L15,10M15,0L0,10" stroke="#fff" stroke-width="2"/><path d="M0,0L15,10M15,0L0,10" stroke="#C8102E" stroke-width=".8"/><path d="M7.5,0V10M0,5H15" stroke="#fff" stroke-width="3"/><path d="M7.5,0V10M0,5H15" stroke="#C8102E" stroke-width="1.7"/>';
 const STRIPES = (n, a, b) => Array.from({ length: n }, (_, i) => `<rect y="${(i * 20 / n).toFixed(2)}" width="30" height="${(20 / n + 0.05).toFixed(2)}" fill="${i % 2 ? b : a}"/>`).join('');
 const FLAG_X = {
-  'Afghanistan': V3('#111', '#C8102E', '#007A3D'), 'Albania': '<rect width="30" height="20" fill="#E41E20"/><path d="M15,4l4,3-1,4 3,2-3,2-3-2-3,2-3-2 3-2-1-4z" fill="#111"/>',
-  'Andorra': V3('#10069F', '#FEDD00', '#D50032'), 'Argentina': H3('#74ACDF', '#fff', '#74ACDF') + '<circle cx="15" cy="10" r="2" fill="#F6B40E"/>',
-  'Australia': '<rect width="30" height="20" fill="#012169"/>' + UNION + STAR(7.5, 15, 2.2, '#fff') + STAR(23, 5, 1.2, '#fff') + STAR(20, 10, 1.2, '#fff') + STAR(25, 12, 1.2, '#fff') + STAR(23, 17, 1.2, '#fff'),
+  'Afghanistan': V3('#111', '#C8102E', '#007A3D') + '<circle cx="15" cy="10" r="3.2" fill="none" stroke="#fff" stroke-width=".5"/><path d="M13.4,11.4v-2.2l1.6-1.4 1.6,1.4v2.2z" fill="#fff"/>', 'Albania': '<rect width="30" height="20" fill="#E41E20"/><path d="M15,4.5l1,1.2 1.5-1.2 0.4,1.6 2.3-1 -0.6,2 2.2,0.2 -1.6,1.5 1.6,1.1 -2.3,0.4 0.7,1.8 -2.1-0.6 -0.5,1.7 -1.1-1.2 -0.6,3 -0.9,-2.2 -0.9,2.2 -0.6,-3 -1.1,1.2 -0.5,-1.7 -2.1,0.6 0.7,-1.8 -2.3,-0.4 1.6,-1.1 -1.6,-1.5 2.2,-0.2 -0.6,-2 2.3,1 0.4,-1.6 1.5,1.2z" fill="#111"/>',
+  'Andorra': V3('#10069F', '#FEDD00', '#D50032'), 'Argentina': H3('#74ACDF', '#fff', '#74ACDF') + SUN(15, 10, 2.6, 16, '#F6B40E'),
+  'Australia': '<rect width="30" height="20" fill="#012169"/>' + UNION + STARN(7.5, 15, 2.4, 7, '#fff', 0.45) + STARN(23, 4.5, 1.2, 7, '#fff', 0.45) + STARN(20, 9.5, 1.2, 7, '#fff', 0.45) + STARN(25.5, 8.5, 1.2, 7, '#fff', 0.45) + STARN(23, 16.5, 1.3, 7, '#fff', 0.45) + STAR(24.2, 12, 0.6, '#fff'),
   'Belgium': V3('#111', '#FDDA24', '#EF3340'), 'Bhutan': '<path d="M0,20L30,0V20z" fill="#FF4E12"/><path d="M0,0H30L0,20z" fill="#FFD520"/>',
-  'Bolivia': H3('#D52B1E', '#F9E300', '#007934'), 'Brazil': '<rect width="30" height="20" fill="#009C3B"/><path d="M15,2L28,10L15,18L2,10z" fill="#FFDF00"/><circle cx="15" cy="10" r="4.2" fill="#002776"/>',
+  'Bolivia': H3('#D52B1E', '#F9E300', '#007934'), 'Brazil': '<rect width="30" height="20" fill="#009C3B"/><path d="M15,2L28,10L15,18L2,10z" fill="#FFDF00"/><circle cx="15" cy="10" r="4.2" fill="#002776"/><path d="M10.9,9.2Q15,7.6 19.1,10.6" stroke="#fff" stroke-width=".7" fill="none"/>' + [[13, 12], [15.5, 12.8], [17, 11.4], [14, 13.6], [16.2, 13.9], [12.2, 10.8], [18, 12.6]].map(([x, y]) => STAR(x, y, 0.35, '#fff')).join(''),
   'Brunei': '<rect width="30" height="20" fill="#F7E017"/><path d="M0,3L30,11V17L0,9z" fill="#fff"/><path d="M0,9L30,17V20H28L0,13z" fill="#111"/>',
-  'Bulgaria': H3('#fff', '#00966E', '#D62612'), 'Canada': '<rect width="30" height="20" fill="#C8102E"/>' + UNION + '<rect x="20" y="9" width="4" height="5" fill="#E6D5A8"/>',
+  'Bulgaria': H3('#fff', '#00966E', '#D62612'), 'Canada': '<rect width="30" height="20" fill="#C8102E"/>' + UNION + '<path d="M19.5,7h5v4.5q0,3-2.5,4q-2.5-1-2.5-4z" fill="#F2E6C8"/><path d="M19.5,7h5v2.5h-5z" fill="#C8102E" opacity=".55"/><path d="M20.5,11h3M22,9.6v4" stroke="#2E7D32" stroke-width=".7"/>',
   'Chile': '<rect width="30" height="20" fill="#fff"/><rect y="10" width="30" height="10" fill="#D52B1E"/><rect width="10" height="10" fill="#0039A6"/>' + STAR(5, 5, 2.2, '#fff'),
-  'China': '<rect width="30" height="20" fill="#FE0000"/><rect width="15" height="10" fill="#000095"/><circle cx="7.5" cy="5" r="2.6" fill="#fff"/><circle cx="7.5" cy="5" r="1.6" fill="#000095"/><circle cx="7.5" cy="5" r="1.2" fill="#fff"/>',
+  'China': '<rect width="30" height="20" fill="#FE0000"/><rect width="15" height="10" fill="#000095"/>' + SUN(7.5, 5, 3.4, 12, '#fff', 0.6) + '<circle cx="7.5" cy="5" r="1.85" fill="#000095"/><circle cx="7.5" cy="5" r="1.5" fill="#fff"/>',
   'Colombia': '<rect width="30" height="20" fill="#FCD116"/><rect y="10" width="30" height="5" fill="#003893"/><rect y="15" width="30" height="5" fill="#CE1126"/>',
   'Costa Rica': '<rect width="30" height="20" fill="#002B7F"/><rect y="3.3" width="30" height="13.4" fill="#fff"/><rect y="6.7" width="30" height="6.6" fill="#CE1126"/>',
   'Cuba': STRIPES(5, '#002A8F', '#fff') + '<path d="M0,0L12,10L0,20z" fill="#CF142B"/>' + STAR(4, 10, 2.4, '#fff'),
-  'Denmark': NORDIC('#C8102E', '#fff'), 'Dominican Republic': '<rect width="30" height="20" fill="#fff"/><rect width="13" height="8.5" fill="#002D62"/><rect x="17" width="13" height="8.5" fill="#CE1126"/><rect y="11.5" width="13" height="8.5" fill="#CE1126"/><rect x="17" y="11.5" width="13" height="8.5" fill="#002D62"/>',
-  'Ecuador': '<rect width="30" height="20" fill="#FFD100"/><rect y="10" width="30" height="5" fill="#0072CE"/><rect y="15" width="30" height="5" fill="#EF3340"/>',
+  'Denmark': NORDIC('#C8102E', '#fff'), 'Dominican Republic': '<rect width="30" height="20" fill="#fff"/><rect width="13" height="8.5" fill="#002D62"/><rect x="17" width="13" height="8.5" fill="#CE1126"/><rect y="11.5" width="13" height="8.5" fill="#CE1126"/><rect x="17" y="11.5" width="13" height="8.5" fill="#002D62"/><path d="M14,9h2v2.2q-1,0.6-2,0z" fill="#3E8E3A"/>',
+  'Ecuador': '<rect width="30" height="20" fill="#FFD100"/><rect y="10" width="30" height="5" fill="#0072CE"/><rect y="15" width="30" height="5" fill="#EF3340"/><ellipse cx="15" cy="10" rx="2.2" ry="2.8" fill="#8EC9E8" stroke="#6B4A1E" stroke-width=".4"/><path d="M12.2,7q2.8-1.2 5.6,0l-1.2,0.8q-1.6-0.6-3.2,0z" fill="#5A3A1E"/>',
   'Egypt': '<rect width="30" height="20" fill="#0B8F3A"/><circle cx="14" cy="10" r="5" fill="#fff"/><circle cx="15.6" cy="10" r="4.2" fill="#0B8F3A"/>' + STAR(17.5, 7, 1, '#fff') + STAR(19, 10, 1, '#fff') + STAR(17.5, 13, 1, '#fff'),
   'El Salvador': H3('#0F47AF', '#fff', '#0F47AF'), 'Estonia': H3('#0072CE', '#111', '#fff'),
   'Greece': STRIPES(9, '#0D5EAF', '#fff') + '<rect width="11" height="11.1" fill="#0D5EAF"/><path d="M5.5,0V11.1M0,5.55H11" stroke="#fff" stroke-width="2.2"/>',
-  'Guatemala': V3('#4997D0', '#fff', '#4997D0'), 'Haiti': '<rect width="30" height="10" fill="#00209F"/><rect y="10" width="30" height="10" fill="#D21034"/>',
-  'Honduras': H3('#0073CF', '#fff', '#0073CF'), 'Hungary': H3('#CE2939', '#fff', '#477050'),
-  'Iran': H3('#239F40', '#fff', '#DA0000') + '<circle cx="15" cy="10" r="1.8" fill="#E8B23A"/>', 'Iraq': '<rect width="30" height="20" fill="#fff"/><rect width="30" height="6.67" fill="#111"/><rect y="13.33" width="30" height="6.67" fill="#007A3D"/><path d="M0,0L9,10L0,20z" fill="#CE1126"/>',
+  'Guatemala': V3('#4997D0', '#fff', '#4997D0'), 'Haiti': '<rect width="30" height="10" fill="#00209F"/><rect y="10" width="30" height="10" fill="#D21034"/><rect x="12.5" y="7.5" width="5" height="5" fill="#fff"/><path d="M15,8.2v3.6" stroke="#3E8E3A" stroke-width=".6"/>',
+  'Honduras': H3('#0073CF', '#fff', '#0073CF') + [[15, 10], [12.4, 8.6], [17.6, 8.6], [12.4, 11.4], [17.6, 11.4]].map(([x, y]) => STAR(x, y, 0.8, '#0073CF')).join(''), 'Hungary': H3('#CE2939', '#fff', '#477050'),
+  'Iran': H3('#239F40', '#fff', '#DA0000') + SUN(16, 8.6, 1.5, 12, '#E8B23A', 0.6) + '<path d="M12.6,12.2q0.3-1.8 2.2-1.9h3q1.4,0 1.6-1.4l0.5,0.3q-0.2,1.5-1.5,1.9l0.2,1.9h-0.8l-0.3-1.4h-2.4l-0.5,1.4h-0.8l0.2-1.3q-0.8,0.3-1.4,0.5z" fill="#C9932A"/><path d="M19.6,8.4l1.4-1.2" stroke="#C9932A" stroke-width=".5"/>', 'Iraq': '<rect width="30" height="20" fill="#fff"/><rect width="30" height="6.67" fill="#111"/><rect y="13.33" width="30" height="6.67" fill="#007A3D"/><path d="M0,0L9,6.67V13.33L0,20z" fill="#CE1126"/>' + STARN(3.2, 7.6, 1.2, 7, '#fff', 0.45) + STARN(3.2, 12.4, 1.2, 7, '#fff', 0.45),
   'Ireland': V3('#169B62', '#fff', '#FF883E'), 'Latvia': '<rect width="30" height="20" fill="#9E3039"/><rect y="8" width="30" height="4" fill="#fff"/>',
   'Liberia': STRIPES(11, '#BF0A30', '#fff') + '<rect width="10" height="9.1" fill="#002868"/>' + STAR(5, 4.5, 2.4, '#fff'),
   'Lithuania': H3('#FDB913', '#006A44', '#C1272D'), 'Luxembourg': H3('#EF3340', '#fff', '#00A3E0'),
-  'Mexico': V3('#006847', '#fff', '#CE1126') + '<circle cx="15" cy="10" r="2" fill="#8C5A2B"/>', 'Mongolia': '<rect width="30" height="20" fill="#C4272F"/><path d="M6,5h2v10h-2z M5,3h4v1.5h-4z" fill="#F9CF02"/>',
+  'Mexico': V3('#006847', '#fff', '#CE1126') + '<path d="M13,13.4h4M15,13.4v-2.2M13.6,12.4h2.8" stroke="#3E8E3A" stroke-width=".8" stroke-linecap="round"/><path d="M12.6,11.2q0.4-3.6 3-4.4l1.2-1.2 0.6,0.8-0.9,0.8q1.2,1.3 0.4,3.2l-1,1.2q-1.6,0.3-3.3-0.4z" fill="#7A4A1E"/><path d="M13.4,11.4q-1.4-0.6-1.8-2.2q1,0.4 1.8,0.6" fill="#5C3412"/><path d="M14.2,12q1.2,0.7 2.6-0.2" stroke="#5E8C3A" stroke-width=".45" fill="none"/>' + '<path d="M11.5,14.3q3.5,1.5 7,0" stroke="#3E8E3A" stroke-width=".5" fill="none"/>', 'Mongolia': '<rect width="30" height="20" fill="#C4272F"/><rect x="10" width="10" height="20" fill="#015197"/>' + SUN(15, 6, 1.1, 8, '#F9CF02', 0.6) + '<path d="M14,8.6h2v1h-2zM13.4,10.4h3.2l-1.6,1.2zM14,12.6h2v4h-2z" fill="#F9CF02"/>',
   'Nepal': '<rect width="30" height="20" fill="#DC143C"/><path d="M8,3l8,7h-8l8,7" fill="none" stroke="#003893" stroke-width="1.5"/><circle cx="11" cy="7.5" r="1.4" fill="#fff"/><circle cx="11" cy="14" r="1.6" fill="#fff"/>',
   'Netherlands': H3('#AE1C28', '#fff', '#21468B'), 'New Zealand': '<rect width="30" height="20" fill="#012169"/>' + UNION + STAR(22, 5, 1.3, '#C8102E') + STAR(20, 10, 1.3, '#C8102E') + STAR(25, 9, 1.3, '#C8102E') + STAR(22, 16, 1.4, '#C8102E'),
-  'Nicaragua': H3('#0067C6', '#fff', '#0067C6'), 'Norway': NORDIC('#BA0C2F', '#00205B', '#fff'),
+  'Nicaragua': H3('#0067C6', '#fff', '#0067C6') + '<path d="M15,7.6L17.4,11.8H12.6z" fill="#3E8E3A" stroke="#C9A030" stroke-width=".35"/>', 'Norway': NORDIC('#BA0C2F', '#00205B', '#fff'),
   'Panama': '<rect width="30" height="20" fill="#fff"/><rect x="15" width="15" height="10" fill="#DA121A"/><rect y="10" width="15" height="10" fill="#072357"/>' + STAR(7.5, 5, 2, '#072357') + STAR(22.5, 15, 2, '#DA121A'),
-  'Paraguay': H3('#D52B1E', '#fff', '#0038A8'), 'Peru': V3('#D91023', '#fff', '#D91023'),
-  'Philippines': '<rect width="30" height="10" fill="#0038A8"/><rect y="10" width="30" height="10" fill="#CE1126"/><path d="M0,0L13,10L0,20z" fill="#fff"/><circle cx="4.5" cy="10" r="1.8" fill="#FCD116"/>',
-  'Portugal': '<rect width="30" height="20" fill="#DA291C"/><rect width="12" height="20" fill="#046A38"/><circle cx="12" cy="10" r="3.4" fill="#FFE900"/><circle cx="12" cy="10" r="2" fill="#DA291C"/>',
-  'Romania': V3('#002B7F', '#FCD116', '#CE1126'), 'Saudi Arabia': '<rect width="30" height="20" fill="#006C35"/><path d="M8,8h14M9,13h12" stroke="#fff" stroke-width="1.2"/>',
+  'Paraguay': H3('#D52B1E', '#fff', '#0038A8') + '<circle cx="15" cy="10" r="2" fill="none" stroke="#3E8E3A" stroke-width=".5"/>' + STAR(15, 10, 0.9, '#FCD116'), 'Peru': V3('#D91023', '#fff', '#D91023'),
+  'Philippines': '<rect width="30" height="10" fill="#0038A8"/><rect y="10" width="30" height="10" fill="#CE1126"/><path d="M0,0L13,10L0,20z" fill="#fff"/>' + SUN(4.6, 10, 2.4, 8, '#FCD116', 0.5) + STAR(1.4, 2.6, 0.75, '#FCD116') + STAR(1.4, 17.4, 0.75, '#FCD116') + STAR(10.6, 10, 0.75, '#FCD116'),
+  'Portugal': '<rect width="30" height="20" fill="#DA291C"/><rect width="12" height="20" fill="#046A38"/><circle cx="12" cy="10" r="3.6" fill="none" stroke="#FFE900" stroke-width=".7"/><ellipse cx="12" cy="10" rx="3.6" ry="1.3" fill="none" stroke="#FFE900" stroke-width=".5"/><path d="M12,6.4v7.2" stroke="#FFE900" stroke-width=".5"/><path d="M10.4,8.2h3.2v2.6q0,1.4-1.6,1.9q-1.6-0.5-1.6-1.9z" fill="#fff" stroke="#DA291C" stroke-width=".4"/><path d="M11.2,9h1.6v1.8h-1.6z" fill="#003399"/>',
+  'Romania': V3('#002B7F', '#FCD116', '#CE1126'), 'Saudi Arabia': '<rect width="30" height="20" fill="#006C35"/><path d="M8,7.5c1,-1 2,1 3,0s2,1 3,0 2,1 3,0 2,1 3,0 2,1 3,0" stroke="#fff" stroke-width=".9" fill="none"/><path d="M8.5,13h12l1.2-0.8" stroke="#fff" stroke-width="1" fill="none"/><path d="M9.4,12.2v1.6" stroke="#fff" stroke-width=".8"/>',
   'Siam': '<rect width="30" height="20" fill="#A51931"/><rect y="3.33" width="30" height="13.34" fill="#F4F5F8"/><rect y="6.67" width="30" height="6.66" fill="#2D2A4A"/>',
-  'Spain': '<rect width="30" height="20" fill="#AA151B"/><rect y="5" width="30" height="10" fill="#F1BF00"/>', 'Sweden': NORDIC('#006AA7', '#FECC00'),
+  'Spain': '<rect width="30" height="20" fill="#AA151B"/><rect y="5" width="30" height="10" fill="#F1BF00"/><path d="M8,7.2q1.6-1.2 2.4,0.2q0.8-1.4 2.4-0.2l-0.6,4.4q-1.8,1.2-3.6,0z" fill="#111"/><path d="M9.3,8.2h2.2v2.3q-1.1,0.8-2.2,0z" fill="#AA151B"/><path d="M9.5,8.5h0.9v1h-0.9zM10.4,9.5h0.9v1h-0.9z" fill="#F1BF00"/>', 'Sweden': NORDIC('#006AA7', '#FECC00'),
   'Switzerland': '<rect width="30" height="20" fill="#DA291C"/><path d="M15,5V15M10,10H20" stroke="#fff" stroke-width="3"/>',
   'Tibet': '<rect width="30" height="20" fill="#C8102E"/><path d="M15,13L0,0H8zM15,13L22,0H30zM15,13L30,10V20zM15,13L0,10V20z" fill="#00349C"/><path d="M8,20L15,10L22,20z" fill="#fff"/><circle cx="15" cy="8" r="2.6" fill="#FFD100"/>',
   'Turkey': '<rect width="30" height="20" fill="#E30A17"/><circle cx="11" cy="10" r="5" fill="#fff"/><circle cx="12.3" cy="10" r="4" fill="#E30A17"/>' + STAR(17, 10, 2.2, '#fff'),
-  'Union of South Africa': H3('#E77817', '#fff', '#00247D'), 'Uruguay': STRIPES(9, '#fff', '#0038A8') + '<rect width="11" height="11.1" fill="#fff"/><circle cx="5.5" cy="5.5" r="3" fill="#FCD116"/>',
-  'Venezuela': H3('#FFCC00', '#00247D', '#CF142B'), 'Yemen': '<rect width="30" height="20" fill="#C8102E"/><path d="M8,10h14" stroke="#fff" stroke-width="1.5"/>',
+  'Union of South Africa': H3('#E77817', '#fff', '#00247D') + '<g transform="translate(11.2,7.6) scale(.16)">' + '<rect width="15" height="10" fill="#012169"/><path d="M0,0L15,10M15,0L0,10" stroke="#fff" stroke-width="2"/><path d="M7.5,0V10M0,5H15" stroke="#fff" stroke-width="3"/><path d="M7.5,0V10M0,5H15" stroke="#C8102E" stroke-width="1.7"/>' + '</g><rect x="14" y="8" width="2" height="4" fill="#E77817"/><rect x="14" y="8" width="2" height="1.3" fill="#fff"/><rect x="16.6" y="8" width="2.4" height="4" fill="#C8102E"/><rect x="17.4" y="8" width="1.6" height="4" fill="#007A3D"/><rect x="16.6" y="9.3" width="0.8" height="1.3" fill="#fff"/>', 'Uruguay': STRIPES(9, '#fff', '#0038A8') + '<rect width="11" height="11.1" fill="#fff"/>' + SUN(5.5, 5.5, 3.6, 16, '#FCD116', 0.55),
+  'Venezuela': H3('#FFCC00', '#00247D', '#CF142B') + [-3, -2, -1, 0, 1, 2, 3].map((k) => { const a = (k * 22 - 90) * Math.PI / 180; return STAR(15 + 4.2 * Math.cos(a), 12.6 + 4.2 * Math.sin(a), 0.65, '#fff'); }).join(''), 'Yemen': '<rect width="30" height="20" fill="#C8102E"/><path d="M8,10h14" stroke="#fff" stroke-width="1.5"/>',
   'Yugoslavia': H3('#0C4076', '#fff', '#C6363C'),
 };
 // Map names that fly another country's flag (colonies, mandates, puppet or renamed states).
@@ -785,13 +788,30 @@ const FLAG_OPS = {};
 function flagOps(owner) {
   if (FLAG_OPS[owner]) return FLAG_OPS[owner];
   const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${FLAG_SVG[owner] || FLAG_X[owner] || ''}</svg>`, 'image/svg+xml');
-  return (FLAG_OPS[owner] = [...doc.documentElement.children].map((e) => { const a = (k, d) => e.getAttribute(k) ?? d; const t = e.tagName;
-    const path = t === 'rect' ? (() => { const p = new Path2D(); p.rect(+a('x', 0), +a('y', 0), +a('width', 0), +a('height', 0)); return p; })() : t === 'circle' ? (() => { const p = new Path2D(); p.arc(+a('cx', 0), +a('cy', 0), +a('r', 0), 0, Math.PI * 2); return p; })() : new Path2D(a('d', ''));
-    return { path, fill: a('fill', t === 'path' ? null : '#000'), stroke: a('stroke', null), sw: +a('stroke-width', 1), cap: a('stroke-linecap', 'butt') }; }));
+  const ops = [];
+  // Walk the flag's shapes; groups may move and scale what is inside them.
+  const walk = (el, m, k) => {
+    for (const e of el.children) {
+      const a = (n, d) => e.getAttribute(n) ?? d; const t = e.tagName;
+      if (t === 'g') { const tr = a('transform', ''); const mm = DOMMatrix.fromMatrix(m); const tl = tr.match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/), sc = tr.match(/scale\(([-\d.]+)\)/); if (tl) mm.translateSelf(+tl[1], +tl[2]); if (sc) mm.scaleSelf(+sc[1]); walk(e, mm, k * (sc ? +sc[1] : 1)); continue; }
+      let p = new Path2D();
+      if (t === 'rect') p.rect(+a('x', 0), +a('y', 0), +a('width', 0), +a('height', 0));
+      else if (t === 'circle') p.arc(+a('cx', 0), +a('cy', 0), +a('r', 0), 0, Math.PI * 2);
+      else if (t === 'ellipse') p.ellipse(+a('cx', 0), +a('cy', 0), +a('rx', 0), +a('ry', 0), 0, 0, Math.PI * 2);
+      else if (t === 'path') p = new Path2D(a('d', ''));
+      else continue;
+      const q = new Path2D(); q.addPath(p, m);
+      ops.push({ path: q, fill: a('fill', t === 'path' ? null : '#000'), stroke: a('stroke', null), sw: +a('stroke-width', 1) * k, cap: a('stroke-linecap', 'butt'), alpha: +a('opacity', 1) });
+    }
+  };
+  walk(doc.documentElement, new DOMMatrix(), 1);
+  return (FLAG_OPS[owner] = ops);
 }
 function drawFlag(ctx, owner, x, y, w, h) {
   ctx.save(); ctx.translate(x, y); ctx.scale(w / 30, h / 20);
-  for (const o of flagOps(owner)) { if (o.fill && o.fill !== 'none') { ctx.fillStyle = o.fill; ctx.fill(o.path); } if (o.stroke) { ctx.strokeStyle = o.stroke; ctx.lineWidth = o.sw; ctx.lineCap = o.cap; ctx.stroke(o.path); } }
+  const ga = ctx.globalAlpha;
+  for (const o of flagOps(owner)) { ctx.globalAlpha = ga * o.alpha; if (o.fill && o.fill !== 'none') { ctx.fillStyle = o.fill; ctx.fill(o.path); } if (o.stroke && o.stroke !== 'none') { ctx.strokeStyle = o.stroke; ctx.lineWidth = o.sw; ctx.lineCap = o.cap; ctx.stroke(o.path); } }
+  ctx.globalAlpha = ga;
   ctx.restore();
 }
 // One flag for each piece of land, clipped to the country's outline. The width is corrected for latitude, since
