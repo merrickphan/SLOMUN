@@ -734,12 +734,25 @@ function drawFlag(ctx, owner, x, y, w, h) {
   for (const o of flagOps(owner)) { if (o.fill && o.fill !== 'none') { ctx.fillStyle = o.fill; ctx.fill(o.path); } if (o.stroke) { ctx.strokeStyle = o.stroke; ctx.lineWidth = o.sw; ctx.lineCap = o.cap; ctx.stroke(o.path); } }
   ctx.restore();
 }
-// Fill a territory with its flag, stretched to cover the territory and clipped to its outline.
+// Fill a territory with its flag, clipped to its outline. Widths are corrected for latitude (the map is stretched
+// sideways toward the poles), and large countries get a grid of normal-sized flags instead of one giant stretched one.
 function flagFill(ctx, owner, rings, X, Y, alpha) {
-  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; ctx.beginPath();
-  for (const r of rings) { r.forEach(([lo, la], i) => { const x = X(lo), y = Y(la); if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); }
-  const bw = x1 - x0, bh = y1 - y0; if (bw <= 0 || bh <= 0) return; const fw = Math.max(bw, bh * 1.5), fh = fw / 1.5;
-  ctx.save(); ctx.clip('evenodd'); ctx.globalAlpha = alpha; drawFlag(ctx, owner, x0 + (bw - fw) / 2, y0 + (bh - fh) / 2, fw, fh); ctx.restore();
+  let lo0 = 1e9, la0 = 1e9, lo1 = -1e9, la1 = -1e9; ctx.beginPath();
+  for (const r of rings) { r.forEach(([lo, la], i) => { if (lo < lo0) lo0 = lo; if (lo > lo1) lo1 = lo; if (la < la0) la0 = la; if (la > la1) la1 = la; i ? ctx.lineTo(X(lo), Y(la)) : ctx.moveTo(X(lo), Y(la)); }); ctx.closePath(); }
+  if (lo1 <= lo0 || la1 <= la0) return;
+  const cosAt = (la) => Math.max(0.3, Math.cos(la * Math.PI / 180));
+  const put = (lon, latTop, h) => { const w = h * 1.5 / cosAt(latTop - h / 2); drawFlag(ctx, owner, X(lon), Y(latTop), X(lon + w) - X(lon), Y(latTop - h) - Y(latTop)); return w; };
+  ctx.save(); ctx.clip('evenodd'); ctx.globalAlpha = alpha;
+  const bh = la1 - la0, bw = lo1 - lo0, mid = (la0 + la1) / 2;
+  if (bh <= 9 && bw * cosAt(mid) <= 14) {
+    // One flag covering the territory, at the right shape for its latitude.
+    const h = Math.max(bh, bw * cosAt(mid) / 1.5), w = h * 1.5 / cosAt(mid); put(lo0 + (bw - w) / 2, mid + h / 2, h);
+  } else {
+    // A grid of flags about 6 degrees tall, rows staggered like wallpaper.
+    const H = 6; let row = 0;
+    for (let top = la1 + 1; top > la0; top -= H, row++) { const w = H * 1.5 / cosAt(top - H / 2); for (let lon = lo0 - (row % 2 ? w / 2 : 0); lon < lo1; lon += w) put(lon, top, H); }
+  }
+  ctx.restore();
 }
 const flag = (owner, cls = 'fl') => `<svg class="${cls}" viewBox="0 0 30 20" preserveAspectRatio="none" aria-hidden="true">${FLAG_SVG[ownerOf(owner)] || `<rect width="30" height="20" fill="${colorOf(owner)}"/>`}</svg>`;
 const D2R = Math.PI / 180;
