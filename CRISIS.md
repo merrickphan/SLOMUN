@@ -104,6 +104,26 @@ Staff no longer have to build effects by hand for most requests.
 - **Interception:** an agent in a country has an even chance of copying each note sent to or from that country's delegates. The copy appears in the spy owner's Notes tab marked "Intercepted by your agent". The sender is never told. Staff see who intercepted what.
 - **Recall or capture:** staff open Features and spies, then click **Recall**, or **Caught** to post an arrest headline.
 
+## Delegates and the backroom
+
+21 delegates. Big powers have a political lead plus one or two military commanders; smaller powers have one military commander.
+
+| Country | Political lead | Military |
+|---|---|---|
+| United Kingdom | Neville Chamberlain, Prime Minister | Winston Churchill (navy, air), Edmund Ironside (army, tanks) |
+| France | Édouard Daladier, Prime Minister | Maurice Gamelin (army, tanks, air), François Darlan (navy) |
+| Germany | Joachim von Ribbentrop, Foreign Minister | Gerd von Rundstedt (army, tanks, air), Erich Raeder (navy) |
+| Soviet Union | Vyacheslav Molotov | Georgy Zhukov (all forces) |
+| United States | Franklin D. Roosevelt, President | George C. Marshall (army, tanks, air), Harold Stark (navy) |
+| Japan | Nobuyuki Abe, Prime Minister | Hideki Tojo (army, tanks, air), Isoroku Yamamoto (navy) |
+| Italy | Galeazzo Ciano, Foreign Minister | Pietro Badoglio (all forces) |
+| Poland | (backroom) | Edward Rydz-Śmigły (all forces) |
+| Finland | (backroom) | Carl Gustaf Mannerheim (all forces) |
+
+- **Political leads** declare war, make peace, sign treaties and set budgets. **Military delegates** command forces; for war or peace they ask their political lead, or, where there is none, their head of government in the backroom.
+- **The backroom:** a crisis note can be addressed to someone who is not a delegate (the "To:" line on the paper). Crisis staff answer as that person, and the reply arrives as "Reply from Adolf Hitler". Backroom figures: Hitler, Göring, Canaris, Stalin, Beria, Mussolini, Emperor Hirohito, King George VI, Lord Halifax, President Lebrun, Cordell Hull, President Mościcki, Józef Beck, President Kallio, Aimo Cajander, Chiang Kai-shek, Mao Zedong, Franco, İnönü, Horthy, King Carol II, Per Albin Hansson and Pope Pius XII.
+- **New codes:** the roster changed, so every delegate has a new access code (see Access codes on the staff map). Old delegate logins for removed names stop working.
+
 ## Game clock
 
 - **The date runs by itself** on every screen. At normal speed 12 real hours take the war from 3 September 1939, 17:00 to 1 December 1941, which is about 27 game hours per real minute (a game day every 53 seconds).

@@ -1124,3 +1124,8 @@ body *:not(.lbl) { letter-spacing: normal !important; }
 .ccdl .fl { width: 16px; height: 11px; display: inline-block; vertical-align: -1px; }
 @media (min-width: 901px) { .crisis-root:has(.dview) .citycard { bottom: calc(var(--botH) + 64px); } }
 @media (prefers-reduced-motion: no-preference) { .citycard.pop { animation: paperflat .28s var(--ease) both; } }
+/* Crisis note addressee picker and staff tag */
+#c-to { font: inherit; font-size: 17px; font-weight: 700; color: #1B2340; background: transparent; border: 0; border-bottom: 1px dashed rgba(27,35,64,.4); padding: 2px 4px; max-width: 70%; cursor: pointer; }
+#c-to:focus { outline: none; border-bottom-color: #C8A030; }
+.cto label { font-weight: 700; }
+.qto { font-size: 13px; padding: 4px 8px; background: rgba(245,194,27,.12); border-left: 3px solid var(--gold); }

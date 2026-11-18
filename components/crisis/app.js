@@ -1230,8 +1230,8 @@ function openMsg(m) {
 function openLetter() {
   const q = unreadLetters()[0]; if (!q) return; LETTER = q; OPENED.add(q.id); saveOpened();
   const ok = q.status === 'approved'; const el = $('letterpop');
-  $('lt-title').textContent = q.title.replace(/^(Crisis note|Follow-up): /, '');
-  $('lt-kind').textContent = q.detail?.parent ? 'Your follow-up' : { fleet: 'Your orders', build: 'Your build order', money: 'Your transfer', spy: 'Your spy mission' }[q.type] || 'Your crisis note';
+  $('lt-title').textContent = q.title.replace(/^(Crisis note|Follow-up|Note to [^:]+): /, '');
+  $('lt-kind').textContent = q.detail?.to ? `Reply from ${q.detail.to}` : q.detail?.parent ? 'Your follow-up' : { fleet: 'Your orders', build: 'Your build order', money: 'Your transfer', spy: 'Your spy mission' }[q.type] || 'Your crisis note';
   $('lt-verdict').textContent = ok ? 'Approved' : 'Denied';
   $('lt-reply').textContent = q.reply || (ok ? 'Crisis staff approved your plan.' : 'Crisis staff turned this one down.');
   $('lt-out').textContent = q.outcome && q.outcome !== q.status ? 'Result: ' + q.outcome : ''; $('lt-out').hidden = !$('lt-out').textContent;
@@ -1279,7 +1279,7 @@ function staffModals(p) {
             <label class="check"><input type="checkbox" id="cu-reset" checked> Restart the countdown at <input type="number" id="cu-min" min="1" max="60" value="15" style="width:56px"> minutes</label>
             <button type="submit" class="dbtn gold">Publish to the room</button></form>`)
     + modal('ev', 'Make something happen', `<p class="formnote">Describe any event in plain words. To place units, pins or buildings yourself, just click the map instead.</p>
-          <textarea id="ev-text" maxlength="1500" placeholder="For example: Hitler orders Rommel's panzers to take Warsaw within ten days, and rations fuel for the Luftwaffe."></textarea>
+          <textarea id="ev-text" maxlength="1500" placeholder="For example: Hitler orders Rundstedt's panzers to take Warsaw within ten days, and rations fuel for the Luftwaffe."></textarea>
           <div class="row"><button type="button" class="dbtn gold" id="ev-preview">Preview</button></div><div id="ev-result"></div>
           <div id="free-fx">${fxEditor('free', false, 'Or build the effects by hand')}</div><button type="button" class="dbtn" id="free-apply">Apply the hand-made effects</button>`, true)
     + modal('battle', 'Battle calculator', '<p class="formnote">Tip: click units on the map and choose "Attacker" or "Defender". Battles in approved crisis notes roll by themselves.</p><div id="battle"></div>', true)
@@ -1405,7 +1405,7 @@ function skeleton(p) {
   <div class="brief" id="brief" hidden><div class="bstage">
     <div class="bcase" aria-hidden="true"><div class="bhandle"></div><div class="blid"><i></i><i></i></div><div class="bbox"></div></div>
     <section class="bpapers" role="dialog" aria-modal="true" aria-labelledby="brief-title"><header><h2 id="brief-title">Portfolio</h2><button type="button" class="lbtn" id="brief-close">Close</button></header><div id="brief-body"></div></section></div></div>
-  <div class="compose" id="compose" hidden><div class="cpaper lined"><header class="chead"><p class="ck">Crisis note</p><p class="cto">To: Crisis staff<span id="c-from"></span></p></header><form id="cform" novalidate></form></div>
+  <div class="compose" id="compose" hidden><div class="cpaper lined"><header class="chead"><p class="ck">Crisis note</p><p class="cto"><label for="c-to">To:</label> <select id="c-to"></select><span id="c-from"></span></p></header><form id="cform" novalidate></form></div>
     <button type="button" class="cmin" id="c-restore" hidden>${PEN}<span><b>Crisis note</b><small id="c-minsub">Click the map to mark the spot, then click here</small></span></button></div>
   <div class="compose" id="mcompose" hidden><div class="cpaper lined torn"><header class="chead"><p class="ck">Pass a note</p></header><form class="mform" id="msg-form" novalidate><fieldset class="notepick"><legend>Pass a note to</legend>${ORDER.map((c) => { const rs = ROSTER.filter((r) => r.country === c && r.name !== (AS || p.session?.name)); return rs.length ? `<div class="npc">${flag(c)}${rs.map((r) => `<label><input type="checkbox" value="${esc(r.name)}"><span>${esc(r.name)}</span></label>`).join('')}</div>` : ''; }).join('')}</fieldset>
           <label for="msg-text" class="sr">Note</label><textarea id="msg-text" maxlength="1200" placeholder="Private note. Crisis staff read every note, and enemy spies in your country or theirs may intercept it."></textarea>
@@ -1604,7 +1604,9 @@ function renderDelegate(first, prev) {
   const r = MEE; if (!r) return; notifyDelegate(); renderMessages();
   if (first) {
     $('who-flag').innerHTML = flag(ME) + `<em>${initials(r.name)}</em>`; $('who-name').textContent = r.name;
-    $('who-role').textContent = `${r.role} · ${POWERS[ME].label} · commands ${r.commands.map((k) => KIND_NAME[k].toLowerCase()).join(', ')}`;
+    $('who-role').textContent = r.political ? `${r.role} · ${POWERS[ME].label} · diplomacy, war and peace` : `${r.role} · ${POWERS[ME].label} · commands ${r.commands.map((k) => KIND_NAME[k].toLowerCase()).join(', ')}`;
+    const own = S.BACKROOM.filter((b) => b.country === ME), other = S.BACKROOM.filter((b) => b.country !== ME);
+    $('c-to').innerHTML = `<option value="">Crisis staff</option>${own.length ? `<optgroup label="Your government (backroom)">${own.map((b) => `<option value="${esc(b.name)}">${esc(b.name)}, ${esc(b.title)}</option>`).join('')}</optgroup>` : ''}<optgroup label="Foreign leaders (backroom)">${other.map((b) => `<option value="${esc(b.name)}">${esc(b.name)}, ${esc(b.title)}</option>`).join('')}</optgroup>`;
     renderTiles(); renderForm(); renderPortfolio();
   }
   $('my-money').textContent = `$${POWERS[ME].treasury}M`; $('my-forces').textContent = myUnits().length; $('my-update').textContent = STATE.update.no;
@@ -1738,7 +1740,7 @@ function summary() {
   if (action === 'build') return `Build ${v('f-bqty')} × ${v('f-btype').toLowerCase()}${v('f-city') ? ' in ' + v('f-city') : ''}`;
   if (action === 'op') return `Fund ${v('f-op').toLowerCase()} with $${v('f-cost')}M${pickLoc ? ' near ' + pickLoc.where : ''}`;
   if (action === 'treaty') { const t = (v('f-text') || '').trim(); return t ? `Treaty with ${POWERS[v('f-with')].label}: ${t.length > 50 ? t.slice(0, 47) + '...' : t}` : ''; }
-  const t = (v('f-text') || '').trim(); const kind = { secret: followParent ? 'Follow-up' : 'Crisis note', press: 'Press release', treaty: 'Treaty proposal', propaganda: `Propaganda to ${(v('f-aud') || '').replace(/^People/, 'people')}` }[action];
+  const t = (v('f-text') || '').trim(); const kind = { secret: followParent ? 'Follow-up' : v('c-to') ? `Note to ${v('c-to')}` : 'Crisis note', press: 'Press release', treaty: 'Treaty proposal', propaganda: `Propaganda to ${(v('f-aud') || '').replace(/^People/, 'people')}` }[action];
   return t ? `${kind}: ${t.length > 60 ? t.slice(0, 57) + '...' : t}` : '';
 }
 async function submitAction(e) {
@@ -1751,7 +1753,7 @@ async function submitAction(e) {
   if (action === 'build') { if (!v('f-city')) { toast('Pick a city you hold to build in.'); return; } Object.assign(detail, { btype: v('f-btype'), qty: +v('f-bqty'), city: v('f-city') }); }
   if (action === 'op') Object.assign(detail, { op: v('f-op'), cost: +v('f-cost'), ...(pickLoc ? { at: pickLoc.at, where: pickLoc.where } : {}) });
   if (action === 'treaty') detail.with = v('f-with');
-  if (action === 'secret') Object.assign(detail, { cost: +v('f-cost') || 0, ...(pickLoc ? { at: pickLoc.at, where: pickLoc.where } : {}), ...(followParent ? { parent: followParent } : {}) });
+  if (action === 'secret') Object.assign(detail, { ...(v('c-to') ? { to: v('c-to') } : {}), cost: +v('f-cost') || 0, ...(pickLoc ? { at: pickLoc.at, where: pickLoc.where } : {}), ...(followParent ? { parent: followParent } : {}) });
   const btn = e.target.querySelector('.send'); btn.disabled = true;
   const ok = await act({ type: 'request', kind: action, title: s, vis: visibility, detail, text: v('f-text') }, { quiet: true });
   btn.disabled = false;
@@ -1867,7 +1869,7 @@ function renderPortfolio() {
   const boss = (k) => ROSTER.find((x) => x.country === ME && x.commands.includes(k));
   const li = (img, html) => `<li class="pli">${img}<div>${html}</div></li>`;
   $('brief-body').innerHTML = `
-    <div class="sec"><h3>Your powers</h3><ul class="plist">${r.commands.map((k) => li(pic(unitThumb(k, ME)), POWER_TEXT[k])).join('')}${ALWAYS.map((a, i) => li(pic(ALWAYS_PIC[i]?.()), a)).join('')}</ul></div>
+    <div class="sec"><h3>Your powers</h3><ul class="plist">${r.political ? S.POLITICAL_POWERS.map((t, i) => li(pic([featThumb('embassy', ME), featThumb('hq', ME), featThumb('depot', ME), featThumb('radio', ME)][i]), t)).join('') : ''}${r.commands.map((k) => li(pic(unitThumb(k, ME)), POWER_TEXT[k])).join('')}${ALWAYS.map((a, i) => li(pic(ALWAYS_PIC[i]?.()), a)).join('')}</ul></div>
     <div class="sec"><h3>Your assets</h3><ul class="plist">
       ${units.length ? units.map((u) => li(pic(unitThumb(u.kind, u.owner)), `${esc(u.name)}<small>${KIND_NAME[u.kind]} · ${S.realText(u)}${u.traits?.length ? ' · ' + traitText(u) : ''} · ${esc(u.note)}</small>`)).join('') : '<li>No forces on the map</li>'}
       ${FEATS.filter((f) => f.owner === ME).map((f) => li(pic(featThumb(f.kind, f.owner)), `${esc(f.label)}<small>${esc(featTitle(f).split(' · ').slice(2).join(' · ') || 'Ready')}</small>`)).join('')}
@@ -1875,7 +1877,7 @@ function renderPortfolio() {
       ${AGENTS.map((g) => li(pic(spyThumb()), `Agent in ${esc(POWERS[g.target]?.label || g.target)}<small>${esc(g.mission || '')} · reveals forces nearby and can intercept notes</small>`)).join('')}
       <li>${SPECIAL[ME] || "Your government's contacts"}</li>${(STATE.assets || []).map((x) => `<li>${esc(x.text)}<small>Granted by crisis staff after update ${x.update}</small></li>`).join('')}</ul></div>
     <div class="sec"><h3>Not in your portfolio</h3><ul class="plist no">
-      ${missing.map((k) => li(pic(unitThumb(k, ME), true), `${KIND_NAME[k]}${boss(k) ? ` (ask ${esc(boss(k).name)})` : ''}`)).join('')}${LIMITS_ALWAYS.map((l) => `<li>${l}</li>`).join('')}</ul></div>
+      ${missing.map((k) => li(pic(unitThumb(k, ME), true), `${KIND_NAME[k]}${boss(k) ? ` (ask ${esc(boss(k).name)})` : ''}`)).join('')}${r.political ? '' : `<li>${esc(S.MILITARY_LIMIT(r))}</li>`}${LIMITS_ALWAYS.map((l) => `<li>${l}</li>`).join('')}<li>Backroom: write to leaders who are not delegates (Hitler, Stalin, Mussolini, Chiang Kai-shek and others) by picking them in "To:" on a crisis note</li></ul></div>
     <button type="button" class="secret secretbtn" data-secret><b>Secret objective</b><span>Open your sealed file</span><small class="formnote" style="display:block;margin-top:6px">Only you and crisis staff can see this.</small></button>`;
 }
 function updateDirCount() {
@@ -2388,7 +2390,7 @@ function renderStaff() {
   if (qsig !== queueSig) { queueSig = qsig; keepFx($('queue'), () => keepInputs($('queue'), () => {
     $('queue').innerHTML = list.map((q) => `<div class="qcard${q.status !== 'pending' ? ' done' : ''}" data-q="${q.id}">
       <div class="qtop">${flag(q.country)}<b>${esc(q.from)}</b>${POWERS[q.country].label} · ${esc(q.time)}<span class="pill type">${TYPE_PILL[q.type] || q.type}</span><span class="pill ${q.vis}">${q.vis}</span>${q.status !== 'pending' ? `<span class="pill ${q.status}">${esc(q.outcome || q.status)}</span>` : ''}</div>
-      <div class="qtitle">${esc(q.title)}</div>${qDetail(q) ? `<div class="qdetail">${qDetail(q)}</div>` : ''}${qSpot(q) ? `<button type="button" class="dbtn small" data-show="${q.id}">Show on map</button>` : ''}
+      ${q.detail?.to ? `<div class="qto">To <b>${esc(q.detail.to)}</b> (backroom) · ${esc(S.backroomNamed(q.detail.to)?.title || '')}. Reply as them.</div>` : ''}<div class="qtitle">${esc(q.title)}</div>${qDetail(q) ? `<div class="qdetail">${qDetail(q)}</div>` : ''}${qSpot(q) ? `<button type="button" class="dbtn small" data-show="${q.id}">Show on map</button>` : ''}
       ${q.status === 'pending' ? `${aiBlock(q)}
         <textarea id="r-${q.id}" maxlength="800" aria-label="Reply to ${esc(q.from)}" placeholder="Reply (optional). Describe what happens and the effects are matched to your reply."></textarea>
         ${fxEditor(q.id, false, 'Add your own effects').replace('class="fx"', `class="fx" data-country="${q.country}" data-vis="${q.vis}" data-here="${q.detail?.at ? 1 : 0}"`)}
