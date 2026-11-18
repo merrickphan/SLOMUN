@@ -51,7 +51,7 @@ function worldBase() {
   // Tints and borders go on their own layer, then the sharp coastline mask trims everything that spills into the sea.
   const lay = document.createElement('canvas'); lay.width = WW; lay.height = WH; const l = lay.getContext('2d');
   const path = (rings) => { l.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? l.lineTo(X(x), Y(y)) : l.moveTo(X(x), Y(y))); l.closePath(); } };
-  for (const [n, rings] of Object.entries(G)) { path(rings); l.fillStyle = worldColor(n); l.globalAlpha = 0.34; l.fill('evenodd'); }
+  for (const [n, rings] of Object.entries(G)) { if (POWERS[ownerOf(n)]) { flagFill(l, ownerOf(n), rings, X, Y, 0.5); continue; } path(rings); l.fillStyle = worldColor(n); l.globalAlpha = 0.34; l.fill('evenodd'); }
   l.globalAlpha = 1; l.lineJoin = 'round'; l.lineCap = 'round';
   for (const rings of Object.values(G)) { path(rings); l.strokeStyle = 'rgba(10,20,40,0.4)'; l.lineWidth = 2 * TEXK; l.stroke(); l.strokeStyle = 'rgba(225,240,255,0.5)'; l.lineWidth = 0.8 * TEXK; l.stroke(); }
   l.globalCompositeOperation = 'destination-out'; l.drawImage(imgs.wwater, 0, 0, WW, WH);
@@ -82,10 +82,6 @@ let grainPat = null;
 let BASE_CACHE = null; // set to a canvas on the projector, where countries are clicked often
 function paintTexture(canvas, imgs, sel) {
   const ctx = canvas.getContext('2d');
-  if (BASE_CACHE && BASE_CACHE.ready) {
-    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'copy'; ctx.globalAlpha = 1; ctx.drawImage(BASE_CACHE, 0, 0); ctx.globalCompositeOperation = 'source-over';
-    ctx.setTransform(TEXK, 0, 0, TEXK, 0, 0); return paintOverlays(ctx, canvas, sel);
-  }
   ctx.setTransform(TEXK, 0, 0, TEXK, 0, 0);
   ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.imageSmoothingQuality = 'high';
   // Bright daytime ground.
@@ -100,6 +96,7 @@ function paintTexture(canvas, imgs, sel) {
   ctx.globalAlpha = 0.95; ctx.drawImage(sea, 0, 0); ctx.globalAlpha = 1;
   // See-through country colors.
   for (const [name, g] of Object.entries(A.geo)) {
+    if (POWERS[ownerOf(name)]) { flagFill(ctx, ownerOf(name), g.r, tx, ty, 0.3); continue; }
     ringPath(ctx, g.r);
     ctx.save(); ctx.clip('evenodd');
     ctx.fillStyle = colorOf(name);
@@ -120,18 +117,20 @@ function paintTexture(canvas, imgs, sel) {
     ctx.strokeStyle = 'rgba(10,20,40,0.35)'; ctx.lineWidth = 3.5; ctx.stroke();
     ctx.strokeStyle = 'rgba(225,240,255,0.55)'; ctx.lineWidth = 1.3; ctx.stroke();
   }
-  if (BASE_CACHE && !BASE_CACHE.ready) {
-    BASE_CACHE.width = canvas.width; BASE_CACHE.height = canvas.height; const b = BASE_CACHE.getContext('2d'); b.drawImage(canvas, 0, 0); BASE_CACHE.ready = true;
-  }
-  paintOverlays(ctx, canvas, sel);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); feather(canvas);
 }
-function paintOverlays(ctx, canvas, sel) {
-  ctx.globalAlpha = 1; ctx.lineJoin = 'round';
+// Things that change during the game are drawn on light see-through layers above the map, so a move or an
+// occupation only repaints a small image instead of the 8,000-pixel map (that repaint was the lag).
+const OW = 2048 * TEXK, OH = Math.round(OW * (LAT1 - LAT0) / (LON1 - LON0)), FW = 2048 * TEXK, FH = FW / 2;
+function paintOccupation(canvas, sel) {
+  const ctx = canvas.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const k = canvas.width / TW; ctx.setTransform(k, 0, 0, k, 0, 0); ctx.globalAlpha = 1; ctx.lineJoin = 'round';
   // Occupied regions: stripes in the occupier's color, like wartime maps.
   for (const [id, owner] of Object.entries(CONTROL)) {
     const sh = RSHAPE[id]; if (!sh) continue; const col = POWERS[owner]?.color || NEUTRALS[owner] || '#999';
+    if (POWERS[owner]) flagFill(ctx, owner, sh.r, tx, ty, 0.42);
     ctx.save(); ringPath(ctx, sh.r); ctx.clip('evenodd');
-    ctx.globalAlpha = 0.28; ctx.fillStyle = col; ctx.fillRect(0, 0, TW, TH); ctx.globalAlpha = 0.85; ctx.strokeStyle = col; ctx.lineWidth = 7;
+    ctx.globalAlpha = POWERS[owner] ? 0.12 : 0.28; ctx.fillStyle = col; ctx.fillRect(0, 0, TW, TH); ctx.globalAlpha = 0.7; ctx.strokeStyle = col; ctx.lineWidth = 6;
     const xs = sh.r.flat().map((p) => tx(p[0])), ys = sh.r.flat().map((p) => ty(p[1]));
     const x0 = Math.min(...xs) - 200, x1 = Math.max(...xs) + 200, y0 = Math.min(...ys), y1 = Math.max(...ys);
     for (let x = x0; x < x1; x += 22) { ctx.beginPath(); ctx.moveTo(x, y1 + 10); ctx.lineTo(x + (y1 - y0) + 20, y0 - 10); ctx.stroke(); }
@@ -155,7 +154,23 @@ function paintOverlays(ctx, canvas, sel) {
     ctx.save(); ctx.translate(...p[2]); ctx.rotate(ang); ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(-8, -24); ctx.lineTo(-8, 24); ctx.closePath();
     ctx.fillStyle = col; ctx.strokeStyle = 'rgba(15,15,10,0.8)'; ctx.lineWidth = 5; ctx.stroke(); ctx.fill(); ctx.restore();
   }
-  feather(canvas);
+}
+// Fog of war over the whole globe, in world coordinates.
+function paintFogLayer(canvas) {
+  const f = canvas.getContext('2d'); f.setTransform(1, 0, 0, 1, 0, 0); f.globalCompositeOperation = 'source-over'; f.clearRect(0, 0, FW, FH);
+  const X = (lon) => (lon + 180) / 360 * FW, Y = (lat) => (90 - lat) / 180 * FH, deg = FW / 360;
+  f.fillStyle = 'rgba(28,33,44,0.8)'; f.fillRect(0, 0, FW, FH);
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 700; i++) { const x = rnd() * FW, y = rnd() * FH, r = (1.4 + rnd() * 6) * deg; const g = f.createRadialGradient(x, y, 0, x, y, r); const light = rnd() > 0.5; g.addColorStop(0, light ? 'rgba(120,130,150,0.22)' : 'rgba(5,8,14,0.25)'); g.addColorStop(1, 'rgba(0,0,0,0)'); f.fillStyle = g; f.beginPath(); f.arc(x, y, r, 0, Math.PI * 2); f.fill(); }
+  f.globalCompositeOperation = 'destination-out'; f.lineJoin = 'round'; f.lineCap = 'round';
+  const clearShape = (rings) => { f.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? f.lineTo(X(x), Y(y)) : f.moveTo(X(x), Y(y))); f.closePath(); } f.fillStyle = '#000'; f.fill('evenodd'); for (const [w, a] of [[1.5, 0.12], [1.1, 0.14], [0.8, 0.16], [0.45, 0.2], [0.2, 0.3]]) { f.lineWidth = w * deg; f.strokeStyle = `rgba(0,0,0,${a})`; f.stroke(); } };
+  for (const [n, rings] of Object.entries(wgeoSmooth())) if (ALLIES.includes(ownerOf(n))) clearShape(rings);
+  for (const n of ALLIES) if (A.geo[n]) clearShape(A.geo[n].r);
+  for (const [id, owner] of Object.entries(CONTROL)) if (ALLIES.includes(owner) && RSHAPE[id]) clearShape(RSHAPE[id].r);
+  const clear = (lon, lat, rDeg) => { const x = X(lon), y = Y(lat), r = rDeg * deg; const g = f.createRadialGradient(x, y, r * 0.35, x, y, r); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); f.fillStyle = g; f.beginPath(); f.arc(x, y, r, 0, Math.PI * 2); f.fill(); };
+  for (const u of UNITS) { if (ALLIES.includes(u.owner)) clear(u.at[0], u.at[1], u.kind === 'air' ? 5 : u.kind === 'fleet' ? 4 : 3); else clear(u.at[0], u.at[1], 2.2); }
+  for (const a of AGENTS) { const c = a.at || CAPITAL[a.target]; if (c) clear(c[0], c[1], 2.6); }
+  for (const r of RECON) clear(r.at[0], r.at[1], r.r);
 }
 
 // Fade the detailed map patch into the plain globe so it has no hard edge.
@@ -705,35 +720,28 @@ const FLAG_SVG = {
   'United States': '<rect width="30" height="20" fill="#fff"/>' + [0, 2, 4, 6, 8, 10, 12].map(i => `<rect y="${i * 1.54}" width="30" height="1.54" fill="#B22234"/>`).join('') + '<rect width="13" height="10.8" fill="#3C3B6E"/>' + [2, 5, 8, 11].flatMap(x => [2.2, 5.4, 8.6].map(y => `<circle cx="${x}" cy="${y}" r=".75" fill="#fff"/>`)).join(''),
   'Japan': '<rect width="30" height="20" fill="#fff"/><circle cx="15" cy="10" r="6" fill="#BC002D"/>',
 };
-const flag = (owner, cls = 'fl') => `<svg class="${cls}" viewBox="0 0 30 20" preserveAspectRatio="none" aria-hidden="true">${FLAG_SVG[ownerOf(owner)] || `<rect width="30" height="20" fill="${colorOf(owner)}"/>`}</svg>`;
-function paintFog(canvas) {
-  paintTexture(canvas, imgs, null);
-  const ctx = canvas.getContext('2d');
-  const fog = document.createElement('canvas'); fog.width = TW; fog.height = TH; const f = fog.getContext('2d');
-  f.fillStyle = 'rgba(28,33,44,0.8)'; f.fillRect(0, 0, TW, TH);
-  // Cloudy texture so the fog reads as fog, not a flat tint.
-  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 260; i++) {
-    const x = rnd() * TW, y = rnd() * TH, r = 60 + rnd() * 260; const g = f.createRadialGradient(x, y, 0, x, y, r);
-    const light = rnd() > 0.5; g.addColorStop(0, light ? 'rgba(120,130,150,0.22)' : 'rgba(5,8,14,0.25)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-    f.fillStyle = g; f.beginPath(); f.arc(x, y, r, 0, Math.PI * 2); f.fill();
-  }
-  // Clear the fog where this delegate can see.
-  f.globalCompositeOperation = 'destination-out';
-  // Soft edge around allied land: round joins (miter joins spiked at every border bend), stepped widths fade it out.
-  f.lineJoin = 'round'; f.lineCap = 'round';
-  for (const n of ALLIES) {
-    const g = A.geo[n]; if (!g) continue; ringPath(f, g.r); f.fillStyle = '#000'; f.fill('evenodd');
-    for (const [w, a] of [[64, 0.12], [48, 0.14], [34, 0.16], [20, 0.2], [8, 0.3]]) { f.lineWidth = w; f.strokeStyle = `rgba(0,0,0,${a})`; f.stroke(); }
-  }
-  const deg = TW / (LON1 - LON0);
-  const clear = (lon, lat, rDeg) => { const x = tx(lon), y = ty(lat), r = rDeg * deg; const g = f.createRadialGradient(x, y, r * 0.35, x, y, r); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); f.fillStyle = g; f.beginPath(); f.arc(x, y, r, 0, Math.PI * 2); f.fill(); };
-  for (const u of UNITS) { if (ALLIES.includes(u.owner)) clear(u.at[0], u.at[1], u.kind === 'air' ? 5 : u.kind === 'fleet' ? 4 : 3); else clear(u.at[0], u.at[1], 2.2); }
-  for (const a of AGENTS) { const c = a.at || CAPITAL[a.target]; if (c) clear(c[0], c[1], 2.6); }
-  for (const r of RECON) clear(r.at[0], r.at[1], r.r);
-  ctx.drawImage(fog, 0, 0);
-  feather(canvas);
+// Flags drawn straight onto the map canvases (parsed once from the SVG above; drawing SVG images would block WebGL in some browsers).
+const FLAG_OPS = {};
+function flagOps(owner) {
+  if (FLAG_OPS[owner]) return FLAG_OPS[owner];
+  const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${FLAG_SVG[owner] || ''}</svg>`, 'image/svg+xml');
+  return (FLAG_OPS[owner] = [...doc.documentElement.children].map((e) => { const a = (k, d) => e.getAttribute(k) ?? d; const t = e.tagName;
+    const path = t === 'rect' ? (() => { const p = new Path2D(); p.rect(+a('x', 0), +a('y', 0), +a('width', 0), +a('height', 0)); return p; })() : t === 'circle' ? (() => { const p = new Path2D(); p.arc(+a('cx', 0), +a('cy', 0), +a('r', 0), 0, Math.PI * 2); return p; })() : new Path2D(a('d', ''));
+    return { path, fill: a('fill', t === 'path' ? null : '#000'), stroke: a('stroke', null), sw: +a('stroke-width', 1), cap: a('stroke-linecap', 'butt') }; }));
 }
+function drawFlag(ctx, owner, x, y, w, h) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(w / 30, h / 20);
+  for (const o of flagOps(owner)) { if (o.fill && o.fill !== 'none') { ctx.fillStyle = o.fill; ctx.fill(o.path); } if (o.stroke) { ctx.strokeStyle = o.stroke; ctx.lineWidth = o.sw; ctx.lineCap = o.cap; ctx.stroke(o.path); } }
+  ctx.restore();
+}
+// Fill a territory with its flag, stretched to cover the territory and clipped to its outline.
+function flagFill(ctx, owner, rings, X, Y, alpha) {
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; ctx.beginPath();
+  for (const r of rings) { r.forEach(([lo, la], i) => { const x = X(lo), y = Y(la); if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); }
+  const bw = x1 - x0, bh = y1 - y0; if (bw <= 0 || bh <= 0) return; const fw = Math.max(bw, bh * 1.5), fh = fw / 1.5;
+  ctx.save(); ctx.clip('evenodd'); ctx.globalAlpha = alpha; drawFlag(ctx, owner, x0 + (bw - fw) / 2, y0 + (bh - fh) / 2, fw, fh); ctx.restore();
+}
+const flag = (owner, cls = 'fl') => `<svg class="${cls}" viewBox="0 0 30 20" preserveAspectRatio="none" aria-hidden="true">${FLAG_SVG[ownerOf(owner)] || `<rect width="30" height="20" fill="${colorOf(owner)}"/>`}</svg>`;
 const D2R = Math.PI / 180;
 const UNIT_SCALE = 0.00357; // size of the 3D unit figures on the globe
 const PROP_K = UNIT_SCALE / 0.0105; // trenches, forts, factories and their smoke shrink with the units
@@ -805,8 +813,7 @@ class Globe {
     this.scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.028, 128, 96), mat));
   }
   setTextures(world, patchCanvas, topo) {
-    const wc = document.createElement('canvas'); wc.width = WW; wc.height = WH; paintWorld(wc, this.opts.fog); this.worldCanvas = wc;
-    const wt = new THREE.CanvasTexture(wc); this.worldTex = wt; wt.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    const wt = new THREE.CanvasTexture(worldBase()); this.worldTex = wt; wt.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
     const wspec = new THREE.Texture(imgs.wwater); wspec.needsUpdate = true;
     const base = new THREE.Mesh(new THREE.SphereGeometry(1, 192, 144), new THREE.MeshPhongMaterial({ map: wt, specularMap: wspec, shininess: 18, specular: 0x1c2638 }));
     this.scene.add(base); this.base = base;
@@ -816,6 +823,16 @@ class Globe {
     const geo = new THREE.SphereGeometry(1.0008, 360, 220, (LON0 + 180) * D2R, (LON1 - LON0) * D2R, (90 - LAT1) * D2R, (LAT1 - LAT0) * D2R);
     this.patch = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ map: this.patchTex, bumpMap: bump, bumpScale: 0.02, specularMap: pspec, shininess: 18, specular: 0x1c2638, transparent: true }));
     this.scene.add(this.patch);
+    // Light layers: occupation and selection over Europe, fog over the world (delegates only).
+    this.occCanvas = document.createElement('canvas'); this.occCanvas.width = OW; this.occCanvas.height = OH; paintOccupation(this.occCanvas, null);
+    this.occTex = new THREE.CanvasTexture(this.occCanvas); this.occTex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    const ogeo = new THREE.SphereGeometry(1.0012, 360, 220, (LON0 + 180) * D2R, (LON1 - LON0) * D2R, (90 - LAT1) * D2R, (LAT1 - LAT0) * D2R);
+    this.scene.add(new THREE.Mesh(ogeo, new THREE.MeshLambertMaterial({ map: this.occTex, transparent: true, depthWrite: false })));
+    if (this.opts.fog) {
+      this.fogCanvas = document.createElement('canvas'); this.fogCanvas.width = FW; this.fogCanvas.height = FH; paintFogLayer(this.fogCanvas);
+      this.fogTex = new THREE.CanvasTexture(this.fogCanvas);
+      this.scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.0018, 192, 144), new THREE.MeshBasicMaterial({ map: this.fogTex, transparent: true, depthWrite: false })));
+    }
     const ca = new THREE.Texture(imgs.clouds); ca.needsUpdate = true;
     this.clouds = new THREE.Mesh(new THREE.SphereGeometry(1.012, 128, 96), new THREE.MeshLambertMaterial({ color: 0xffffff, alphaMap: ca, transparent: true, opacity: 0.32, depthWrite: false }));
     this.scene.add(this.clouds);
@@ -907,7 +924,7 @@ class Globe {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       return new THREE.Points(g, new THREE.PointsMaterial({ size, map: tex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: false }));
     };
-    if (this.lights) this.lights.forEach(l => this.scene.remove(l));
+    if (this.lights) this.lights.forEach(l => { this.scene.remove(l); l.geometry.dispose(); });
     const towns = A.towns.concat(A.wtowns).map(([lo, la, v, o]) => [lo, la, 0.8 + (v - 70) / 185 * 0.7, o]);
     const caps = Object.values(CITIES).map(([lo, la]) => [lo, la, 1.6, countryAt(lo, la)]);
     const pr = this.renderer.getPixelRatio(); this.lights = [make(towns, 13 * pr), make(caps, 30 * pr)]; this.lights.forEach(l => this.scene.add(l));
@@ -930,7 +947,7 @@ class Globe {
     f.rotateY(Math.atan2(localNorth.x, localNorth.z) + Math.PI + (f.userData.heading || 0));
   }
   animateUnit(id, from, to, ms = 3200) {
-    const f = this.figs?.[id]; if (!f) return; const it = this.items?.find(x => x.kind === 'tok' && x.id === id);
+    const f = this.figs?.[id]; if (!f) return; const it = this.items?.find(x => x.kind === 'tok' && x.id === id); sfx('move');
     let dlon = to[0] - from[0]; if (dlon > 180) dlon -= 360; if (dlon < -180) dlon += 360;
     const t0 = performance.now(); const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const step = (now) => {
@@ -952,7 +969,7 @@ class Globe {
     if (prev) for (const u of UNITS) { const p = prev[u.id]; if (p && (p.at[0] !== u.at[0] || p.at[1] !== u.at[1])) this.animateUnit(u.id, p.at, u.at); }
   }
   killFigure(id, u) {
-    const f = this.figs[id]; if (!f) return; this.unitGroup.remove(f); this.scene.add(f); delete this.figs[id];
+    const f = this.figs[id]; if (!f) return; this.unitGroup.remove(f); this.scene.add(f); delete this.figs[id]; if (u) sfx('boom');
     if (u) {
       const p = this.project(u.at[0], u.at[1], 0.01);
       if (p.ok) { const b = document.createElement('div'); b.className = 'boom' + (u.kind === 'fleet' ? ' sink' : ''); b.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`; b.innerHTML = `<i></i><span>${u.kind === 'fleet' ? 'Sunk' : u.kind === 'air' ? 'Shot down' : 'Destroyed'}</span>`; this.ov.appendChild(b); setTimeout(() => b.remove(), 2600); }
@@ -990,6 +1007,8 @@ class Globe {
     this.dirty = true;
   }
   refreshTexture() { if (this.patchTex) { this.patchTex.needsUpdate = true; this.dirty = true; } }
+  repaintOcc(sel) { if (!this.occCanvas) return; paintOccupation(this.occCanvas, sel); this.occTex.needsUpdate = true; this.dirty = true; }
+  repaintFog() { if (!this.fogCanvas) return; paintFogLayer(this.fogCanvas); this.fogTex.needsUpdate = true; this.dirty = true; }
   resize() {
     const w = this.stage.clientWidth, h = this.stage.clientHeight; if (!w || !h) return;
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.dirty = true;
@@ -1113,6 +1132,30 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const $ = (id) => document.getElementById(id);
 let EDIT = false, STAFFMAP = false, placing = null, VIEW, ROLE, AS, STATE = null, VER = 0, SKEW = 0, lastFlashId, MEE = null, ME = null;
 let selected = { type: 'country', id: 'Poland' };
+/* ---------- Sound effects, made in the browser (no audio files) ---------- */
+let AC = null, MUTED = (() => { try { return localStorage.getItem('crisis-sound') === 'off'; } catch { return false; } })();
+const audio = () => { if (MUTED) return null; try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); return AC; } catch { return null; } };
+function noiseBuf(ac, sec) { const b = ac.createBuffer(1, Math.ceil(ac.sampleRate * sec), ac.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return b; }
+function tone(ac, freq, t, dur, vol, type = 'sine', to) { const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.setValueAtTime(freq, t); if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.05); }
+function hiss(ac, t, dur, vol, f0, f1, q = 1, type = 'bandpass') { const n = ac.createBufferSource(); n.buffer = noiseBuf(ac, dur); const fl = ac.createBiquadFilter(); fl.type = type; fl.Q.value = q; fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + dur); const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.15); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); n.connect(fl).connect(g).connect(ac.destination); n.start(t); n.stop(t + dur); }
+const SFX = {
+  send: (ac, t) => hiss(ac, t, 0.45, 0.25, 800, 4000, 0.8),                                  // paper whoosh
+  paper: (ac, t) => { hiss(ac, t, 0.18, 0.12, 2500, 1200, 0.7); hiss(ac, t + 0.12, 0.14, 0.08, 3000, 1800, 0.7); }, // paper rustle
+  mail: (ac, t) => { tone(ac, 880, t, 0.35, 0.12); tone(ac, 1318.5, t + 0.12, 0.5, 0.1); },   // soft two-note chime
+  ok: (ac, t) => { tone(ac, 523.3, t, 0.5, 0.1, 'triangle'); tone(ac, 659.3, t + 0.08, 0.5, 0.09, 'triangle'); tone(ac, 784, t + 0.16, 0.7, 0.09, 'triangle'); },
+  no: (ac, t) => { tone(ac, 196, t, 0.45, 0.16, 'square', 150); hiss(ac, t, 0.25, 0.25, 400, 120, 0.6, 'lowpass'); },
+  stamp: (ac, t) => { hiss(ac, t, 0.18, 0.5, 300, 80, 0.5, 'lowpass'); tone(ac, 90, t, 0.18, 0.25, 'sine', 50); },
+  move: (ac, t) => { hiss(ac, t, 2.4, 0.22, 140, 90, 0.9, 'lowpass'); tone(ac, 48, t, 2.4, 0.08, 'sawtooth', 40); }, // engines rumbling
+  boom: (ac, t) => { hiss(ac, t, 1.6, 0.6, 900, 60, 0.5, 'lowpass'); tone(ac, 70, t, 0.8, 0.35, 'sine', 30); },
+  news: (ac, t) => { for (let i = 0; i < 9; i++) hiss(ac, t + i * 0.07, 0.04, 0.2, 3500, 2500, 2); tone(ac, 1568, t + 0.7, 0.9, 0.12); }, // teleprinter and bell
+  pop: (ac, t) => tone(ac, 660, t, 0.18, 0.08, 'sine', 990),
+  tick: (ac, t) => tone(ac, 1200, t, 0.05, 0.06, 'square'),
+  open: (ac, t) => { tone(ac, 220, t, 0.12, 0.08, 'triangle', 330); hiss(ac, t + 0.05, 0.2, 0.08, 1500, 3000, 0.7); },
+};
+const sfxLast = {};
+function sfx(name) { const ac = audio(); if (!ac || !SFX[name]) return; const now = performance.now(); if (now - (sfxLast[name] || 0) < 250) return; sfxLast[name] = now; try { SFX[name](ac, ac.currentTime + 0.01); } catch {} }
+// Browsers only allow sound after a click: unlock it on the first one.
+document.addEventListener('pointerdown', () => { if (!MUTED) audio(); }, { once: true, capture: true });
 /* ---------- Pop-up notices and the crisis staff verdict card ---------- */
 const NI = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const NICON = {
@@ -1136,6 +1179,7 @@ function notify({ kind = 'info', title, body = '', action, ms = 5200 }) {
   if (CALM()) setTimeout(close, ms);
   if (action) n.querySelector('.nlink').addEventListener('click', () => { action.run(); close(); });
   box.prepend(n); while (box.children.length > 4) box.lastChild.remove();
+  sfx({ approved: 'ok', rejected: 'no', error: 'no', sent: 'send', note: 'mail', intel: 'mail' }[kind] || 'pop');
 }
 function toast(msg, kind = 'info') { notify({ kind, title: msg }); }
 // A paper plane that lifts off a button after something is sent.
@@ -1164,7 +1208,7 @@ function renderMailbox() {
     if (top.kind === 'bloc') mb.classList.replace('bloc', 'note');
   }
   $('mb-n').textContent = n; $('mb-n').hidden = n < 2;
-  if (n > was && !mb.hidden && !CALM()) { mb.classList.remove('arrive'); void mb.offsetWidth; mb.classList.add('arrive'); }
+  if (n > was && !mb.hidden) { sfx('mail'); if (!CALM()) { mb.classList.remove('arrive'); void mb.offsetWidth; mb.classList.add('arrive'); } }
 }
 function openMail() {
   const top = mailItems()[0]; if (!top) return;
@@ -1193,7 +1237,7 @@ function openLetter() {
   $('lt-out').textContent = q.outcome && q.outcome !== q.status ? 'Result: ' + q.outcome : ''; $('lt-out').hidden = !$('lt-out').textContent;
   const more = unreadLetters().length; $('lt-next').hidden = !more; $('lt-next').textContent = `Next reply (${more})`;
   el.className = 'letterpop ' + (ok ? 'ok' : 'no'); el.hidden = false; void el.offsetWidth; el.classList.add('opening');
-  letterTimer.forEach(clearTimeout); letterTimer = [setTimeout(() => el.classList.add('open'), CALM() ? 0 : 1050)];
+  sfx('paper'); letterTimer.forEach(clearTimeout); letterTimer = [setTimeout(() => { el.classList.add('open'); sfx(ok ? 'ok' : 'no'); }, CALM() ? 0 : 1050)];
   renderMailbox(); setTimeout(() => $('lt-close').focus({ preventScroll: true }), CALM() ? 0 : 1100);
 }
 function closeLetter(next) {
@@ -1318,7 +1362,7 @@ function skeleton(p) {
   const top = `<header class="topbar">
     <div class="brand"><img src="/images/crest.png" alt="SLOMUN crest"><div><b>Early WWII</b><span>${sub}</span></div></div>
     <div class="hud num" id="treasuries" aria-label="Treasuries"></div>
-    <div class="topnav">${nav}<span class="conn" id="conn"><i></i><span>Live</span></span><button type="button" class="navlink" id="logout">Log out</button></div>
+    <div class="topnav">${nav}<button type="button" class="navlink sndbtn" id="snd-btn" aria-pressed="${!MUTED}" title="Sound effects">${MUTED ? 'Sound off' : 'Sound on'}</button><span class="conn" id="conn"><i></i><span>Live</span></span><button type="button" class="navlink" id="logout">Log out</button></div>
   </header>`;
   let body = '';
   if (VIEW === 'map') body = `<section class="view map-view${STAFFMAP ? ' staffmap' : ''}" id="view-staff-root">${STAFFMAP ? staffBar() : ''}
@@ -1434,7 +1478,7 @@ function applyState(v) {
     const fresh = FEATS.filter((f) => !prevFeat.has(f.id)).slice(0, 2);
     if (mapGlobe && !EDIT) fresh.forEach((f) => mapGlobe.pulse(f.at, '')); if (delGlobe) fresh.forEach((f) => delGlobe.pulse(f.at, ''));
   }
-  if (VIEW === 'map') { renderSel(); if (EDIT) renderEdit(); $('pend-count').textContent = v.pending ?? (v.queue || []).filter((q) => q.status === 'pending').length; renderFloor(); mapGlobe?.sync(prev); if (arrowsChanged && mapGlobe && !first) { paintTexture(patchCanvas, imgs, selected.type === 'country' ? selected.id : null); mapGlobe.refreshTexture(); } }
+  if (VIEW === 'map') { renderSel(); if (EDIT) renderEdit(); $('pend-count').textContent = v.pending ?? (v.queue || []).filter((q) => q.status === 'pending').length; renderFloor(); mapGlobe?.sync(prev); if (arrowsChanged && mapGlobe && !first) mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null); }
   if (VIEW === 'delegate') renderDelegate(first, prev);
   if (STAFFMAP) renderStaff();
 }
@@ -1473,8 +1517,10 @@ function tickCountdown() {
   if (!STATE) return; const left = Math.max(0, Math.round((STATE.countdownEnd - (Date.now() + SKEW)) / 1000));
   const txt = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; document.querySelectorAll('.countdown b').forEach((e) => (e.textContent = txt));
   document.querySelectorAll('.date').forEach((e) => e.classList.toggle('urgent', left > 0 && left <= 60));
+  if (left > 0 && left <= 10 && left !== tickCountdown.last) { tickCountdown.last = left; sfx('tick'); }
 }
 function showFlash(f) {
+  sfx('news');
   $('bn-date').textContent = STATE?.update?.date || ''; $('bn-head').textContent = f.head; $('bn-deck').textContent = f.deck;
   const el = $('breaking'); el.hidden = true; void el.offsetWidth; el.hidden = false;
 }
@@ -1505,7 +1551,7 @@ function renderSel() {
 }
 function select(type, id, region, at) {
   selected = { type, id, region, at: at ? [+at[0].toFixed(3), +at[1].toFixed(3)] : null }; confirmKill = null; if (EDIT) setTimeout(renderEdit, 0);
-  if (mapGlobe) { mapGlobe.selectedUnit = type === 'unit' ? id : null; mapGlobe.markSelected(mapGlobe.selectedUnit); paintTexture(patchCanvas, imgs, type === 'country' ? id : null); mapGlobe.refreshTexture(); }
+  if (mapGlobe) { mapGlobe.selectedUnit = type === 'unit' ? id : null; mapGlobe.markSelected(mapGlobe.selectedUnit); mapGlobe.repaintOcc(type === 'country' ? id : null); }
   renderSel();
 }
 function renderFloor() {
@@ -1572,8 +1618,8 @@ function renderDelegate(first, prev) {
   }
 }
 function repaintFog() {
-  if (!delGlobe || !fogCanvas) return;
-  paintFog(fogCanvas); paintWorld(delGlobe.worldCanvas, true); delGlobe.worldTex.needsUpdate = true; delGlobe.refreshTexture(); delGlobe.addLights(); delGlobe.addPins();
+  if (!delGlobe) return;
+  delGlobe.repaintFog(); delGlobe.repaintOcc(null); delGlobe.addLights(); delGlobe.addPins();
 }
 function setPick(loc) { pickLoc = loc; if (delGlobe) { delGlobe.pick = loc ? { at: loc.at, label: 'Crisis note here' } : null; delGlobe.addPins(); } }
 function pickGround(lon, lat) {
@@ -1616,18 +1662,18 @@ function showCity(name) {
 /* Pop-up paper for writing, and the portfolio briefcase */
 function openCompose(id = 'compose') {
   const el = $(id); el.classList.remove('min', 'closing', 'sent'); $('c-restore').hidden = true;
-  if (id === 'compose') $('c-from').textContent = ` · From: ${MEE.name}`;
+  if (id === 'compose') $('c-from').textContent = ` · From: ${MEE.name}`; sfx('paper');
   el.hidden = true; void el.offsetWidth; el.hidden = false;
   setTimeout(() => (id === 'compose' ? $('f-text') : $('msg-text'))?.focus({ preventScroll: true }), CALM() ? 0 : 320);
 }
 function closeCompose(id = 'compose', sent) {
   const el = $(id); if (!el || el.hidden) return; el.classList.add(sent ? 'sent' : 'closing'); $('c-restore').hidden = true;
-  if (sent) { const pl = document.createElement('span'); pl.className = 'plane big'; pl.innerHTML = NICON.sent; pl.style.left = '50%'; pl.style.top = '55%'; if (!CALM()) document.body.appendChild(pl); setTimeout(() => pl.remove(), 1200); }
+  if (sent) { sfx('send'); const pl = document.createElement('span'); pl.className = 'plane big'; pl.innerHTML = NICON.sent; pl.style.left = '50%'; pl.style.top = '55%'; if (!CALM()) document.body.appendChild(pl); setTimeout(() => pl.remove(), 1200); }
   setTimeout(() => { el.hidden = true; el.classList.remove('closing', 'sent', 'min'); }, CALM() ? 0 : sent ? 520 : 220);
 }
 function minCompose(on) { const el = $('compose'); el.classList.toggle('min', on); $('c-restore').hidden = !on; if (!on) setTimeout(() => $('f-text')?.focus({ preventScroll: true }), 250); }
 function openBrief() {
-  renderPortfolio(); const el = $('brief'); el.className = 'brief'; el.hidden = true; void el.offsetWidth; el.hidden = false; el.classList.add('opening');
+  renderPortfolio(); sfx('open'); const el = $('brief'); el.className = 'brief'; el.hidden = true; void el.offsetWidth; el.hidden = false; el.classList.add('opening');
   setTimeout(() => el.classList.add('open'), CALM() ? 0 : 900); setTimeout(() => $('brief-close').focus({ preventScroll: true }), CALM() ? 0 : 950);
 }
 function closeBrief() { const el = $('brief'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'brief'; }, CALM() ? 0 : 240); }
@@ -1741,7 +1787,7 @@ function openReader(o) {
   const el = $('reader'), card = $('rd-card'), paper = $('rd-paper');
   card.className = 'rcard ' + (o.theme || 'plain'); paper.innerHTML = paperHTML(o); paper.style.clipPath = o.theme === 'note' ? tornClip() : '';
   card.style.setProperty('--tilt', '0deg');
-  el.className = 'reader'; el.hidden = true; void el.offsetWidth; el.hidden = false; paper.scrollTop = 0;
+  el.className = 'reader'; el.hidden = true; void el.offsetWidth; el.hidden = false; paper.scrollTop = 0; sfx('paper'); if (o.stamp || o.theme === 'dossier' || o.theme === 'directive') setTimeout(() => sfx('stamp'), CALM() ? 0 : 600);
   setTimeout(() => $('rd-close').focus({ preventScroll: true }), CALM() ? 0 : 500);
 }
 function closeReader() { const el = $('reader'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'reader'; }, CALM() ? 0 : 240); }
@@ -1871,7 +1917,7 @@ async function newDraft() {
   const d = (STATE.directives || []).find((x) => x.status === 'drafting' && x.owner === MEE.name); if (d) openLaptop(d.id);
 }
 function openLaptop(id) {
-  LAPID = id; const el = $('lap'); buildDocs(); el.className = 'lap'; el.hidden = true; void el.offsetWidth; el.hidden = false;
+  LAPID = id; const el = $('lap'); buildDocs(); sfx('open'); el.className = 'lap'; el.hidden = true; void el.offsetWidth; el.hidden = false;
   setTimeout(() => { const d = curDraft(); (d && !d.title ? $('dc-title') : $('dc-c0'))?.focus({ preventScroll: true }); }, CALM() ? 0 : 650);
 }
 function closeLaptop() { flushDoc(); const el = $('lap'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'lap'; LAPID = null; }, CALM() ? 0 : 260); }
@@ -2501,6 +2547,7 @@ export function start(root, props) {
   if (STAFFMAP) renderBattleShell();
   if (EDIT) bindEdit();
   let stopped = false, timer, failures = 0;
+  $('snd-btn').addEventListener('click', (e) => { MUTED = !MUTED; try { localStorage.setItem('crisis-sound', MUTED ? 'off' : 'on'); } catch {} e.currentTarget.textContent = MUTED ? 'Sound off' : 'Sound on'; e.currentTarget.setAttribute('aria-pressed', !MUTED); if (!MUTED) sfx('pop'); });
   $('logout').addEventListener('click', async () => { await fetch('/api/crisis/logout', { method: 'POST' }); location.href = '/crisis'; });
   $('view-as')?.addEventListener('change', (e) => { if (e.target.value) location.href = '/crisis/delegate?as=' + encodeURIComponent(e.target.value); });
   $('fs-btn')?.addEventListener('click', () => { document.documentElement.requestFullscreen?.().catch(() => toast('Full screen is not available here. Use the browser menu instead.')); });
@@ -2584,16 +2631,15 @@ export function start(root, props) {
       A = geo; imgs = { marble, water, topo, world, wwater, clouds }; await first;
       if (stopped) return;
       if (VIEW === 'map') {
-        BASE_CACHE = document.createElement('canvas'); BASE_CACHE.ready = false;
-        patchCanvas = document.createElement('canvas'); patchCanvas.width = TW * TEXK; patchCanvas.height = TH * TEXK; paintTexture(patchCanvas, imgs, selected.id);
+        patchCanvas = document.createElement('canvas'); patchCanvas.width = TW * TEXK; patchCanvas.height = TH * TEXK; paintTexture(patchCanvas, imgs);
         mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat), [lon, lat]), onUnit: (id) => select('unit', id), onFeature: (id) => select('feature', id), onGround: EDIT ? placeAt : null, pins: STAFFMAP, onSea: EDIT ? (lon, lat) => select('sea', null, null, [lon, lat]) : null });
-        mapGlobe.setTextures(world, patchCanvas, topo);
+        mapGlobe.setTextures(world, patchCanvas, topo); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null);
       } else {
-        fogCanvas = document.createElement('canvas'); fogCanvas.width = TW * TEXK; fogCanvas.height = TH * TEXK; paintFog(fogCanvas);
+        fogCanvas = document.createElement('canvas'); fogCanvas.width = TW * TEXK; fogCanvas.height = TH * TEXK; paintTexture(fogCanvas, imgs);
         const cap = { 'United Kingdom': [-0.13, 51.5], France: [2.35, 48.86], Poland: [21, 52.2], Germany: [13.4, 52.5], USSR: [37.6, 55.75], Italy: [12.5, 41.9], Finland: [24.9, 60.2] }[ME] || [15, 50];
         const home = ME === 'United States' ? { lon: -70, lat: 34.5, dist: 2.9 } : ME === 'Japan' ? { lon: 128, lat: 38.5, dist: 2.1 } : { lon: cap[0], lat: cap[1] + 1.5, dist: 1.75 };
         delGlobe = new Globe($('stage-del'), $('ov-del'), { fog: true, pins: true, onGround: pickGround, lon: home.lon, lat: home.lat - 2.5, dist: home.dist, onUnit: (id) => pickForce(id) });
-        delGlobe.setTextures(world, fogCanvas, topo); fogSig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS, LIVE_ARROWS, CONTROL, RECON]);
+        delGlobe.setTextures(world, fogCanvas, topo); delGlobe.repaintOcc(null); fogSig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS, LIVE_ARROWS, CONTROL, RECON]);
       }
     } catch (e) {
       document.querySelectorAll('.loading').forEach((l) => (l.textContent = 'The 3D map could not load. Reload the page, or try another browser.'));
