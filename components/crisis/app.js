@@ -2,6 +2,9 @@
 // Loaded only in the browser by components/crisis/CrisisClient.js.
 import * as THREE from 'three';
 import { mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import * as S from '@/lib/crisis/scenario';
 import { REGIONS } from '@/lib/crisis/regions';
 import { applyAction as simulateAction, battleOdds } from '@/lib/crisis/engine';
@@ -15,6 +18,7 @@ ROSTER.forEach((r) => POWERS[r.country]?.delegates.push(r.name));
 Object.entries(S.MINORS).forEach(([k, v]) => { POWERS[k] = { ...v, delegates: [], treasury: 0 }; });
 const isMajor = (c) => !!POWERS[c] && !POWERS[c].minor;
 let A = { geo: {}, wgeo: {}, towns: [], wtowns: [], wsub: {}, wlabels: {} };
+let TOWNS = []; // named towns shown as glowing dots: [lon, lat, brightness, country, name]
 let GONE = new Set(); // ids the server says were really destroyed (not just hidden by fog)
 let UNITS = [], ALLIES = [], AGENTS = [], LIVE_ARROWS = [], CONTROL = {}, RSHAPE = {}, MARKERS = [], RECON = [];
 const REGION = Object.fromEntries(REGIONS.map((r) => [r.id, r]));
@@ -115,18 +119,13 @@ function paintTexture(canvas, imgs, sel) {
     for (let x = tx(10); x < tx(25); x += 16) { ctx.beginPath(); ctx.moveTo(x, ty(52)); ctx.lineTo(x + 140, ty(47)); ctx.stroke(); }
     ctx.restore();
   }
-  // Borders: thin light lines.
+  // Borders are drawn as sharp 3D lines on the globe (Globe.addBorders), not painted here, so they stay crisp when zoomed in.
   ctx.globalAlpha = 1; ctx.lineJoin = 'round';
-  for (const [name, g] of Object.entries(A.geo)) {
-    ringPath(ctx, g.r);
-    ctx.strokeStyle = 'rgba(10,20,40,0.35)'; ctx.lineWidth = 3.5; ctx.stroke();
-    ctx.strokeStyle = 'rgba(225,240,255,0.55)'; ctx.lineWidth = 1.3; ctx.stroke();
-  }
   ctx.setTransform(1, 0, 0, 1, 0, 0); feather(canvas);
 }
 // Things that change during the game are drawn on light see-through layers above the map, so a move or an
 // occupation only repaints a small image instead of the 8,000-pixel map (that repaint was the lag).
-const OW = 2048 * TEXK, OH = Math.round(OW * (LAT1 - LAT0) / (LON1 - LON0)), FW = 2048 * TEXK, FH = FW / 2;
+const OW = TEXK === 2 ? 6144 : 2048, OH = Math.round(OW * (LAT1 - LAT0) / (LON1 - LON0)), FW = 2048 * TEXK, FH = FW / 2;
 function paintOccupation(canvas, sel) {
   const ctx = canvas.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
   const k = canvas.width / TW; ctx.setTransform(k, 0, 0, k, 0, 0); ctx.globalAlpha = 1; ctx.lineJoin = 'round';
@@ -951,6 +950,34 @@ class Globe {
     });
     this.scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.028, 128, 96), mat));
   }
+  // See-through preview of a line feature while it is being dragged out.
+  showLineGhost(kind, a, b) {
+    if (this.lineGhost) { this.scene.remove(this.lineGhost); this.lineGhost = null; }
+    if (!kind || !a || !b) { this.dirty = true; return; }
+    const owner = this.opts.lineOwner?.() || 'Germany'; const f = { id: '_ghost', kind, owner, at: a, to: b, label: '', ready: 0 };
+    const g = new THREE.Group(); const d = Math.hypot(b[0] - a[0], b[1] - a[1]); const n = Math.max(1, Math.min(40, Math.round(d / (0.85 * PROP_K))));
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n, lo = a[0] + (b[0] - a[0]) * t, la = a[1] + (b[1] - a[1]) * t;
+      const pr = makeProp(f); pr.userData.heading = 0; this.place(pr, lo, la); pr.scale.setScalar(0.0078 * PROP_K);
+      if (d > 0.01) { const nn = pr.position.clone().normalize(); const dir = toVec(b[0], b[1], 1).sub(toVec(a[0], a[1], 1)); dir.addScaledVector(nn, -dir.dot(nn)).normalize(); const vz = new THREE.Vector3(0, 0, 1).applyQuaternion(pr.quaternion); pr.rotateY(Math.atan2(nn.dot(vz.clone().cross(dir)), vz.dot(dir))); }
+      pr.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.45; o.material.depthWrite = false; if (o.material.color) o.material.color.lerp(new THREE.Color(0xF5C21B), 0.25); } });
+      g.add(pr);
+    }
+    this.lineGhost = g; this.scene.add(g); this.dirty = true;
+  }
+  // Country borders and coasts as screen-space lines: a dark edge under a thin light line, the same width at every zoom.
+  addBorders() {
+    const seen = new Set(), pos = [];
+    for (const g of Object.values(A.geo)) for (const r of g.r) for (let i = 1; i < r.length; i++) {
+      const a = r[i - 1], b = r[i]; const k = a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]) ? `${a}|${b}` : `${b}|${a}`; if (seen.has(k)) continue; seen.add(k);
+      const p = toVec(a[0], a[1], 1.0014), q = toVec(b[0], b[1], 1.0014); pos.push(p.x, p.y, p.z, q.x, q.y, q.z);
+    }
+    const geo = new LineSegmentsGeometry(); geo.setPositions(pos);
+    this.lineMats = [new LineMaterial({ color: 0x0a1428, linewidth: 2.6, transparent: true, opacity: 0.4, depthWrite: false }), new LineMaterial({ color: 0xe1f0ff, linewidth: 1.1, transparent: true, opacity: 0.7, depthWrite: false })];
+    this.lineMats.forEach((m, i) => { const l = new LineSegments2(geo, m); l.renderOrder = 3 + i; l.frustumCulled = false; this.scene.add(l); });
+    this.sizeLines();
+  }
+  sizeLines() { for (const m of this.lineMats || []) m.resolution.set(this.stage.clientWidth || 1, this.stage.clientHeight || 1); }
   setTextures(world, patchCanvas, topo) {
     const wt = new THREE.CanvasTexture(worldBase()); this.worldTex = wt; wt.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
     const wspec = new THREE.Texture(imgs.wwater); wspec.needsUpdate = true;
@@ -967,6 +994,7 @@ class Globe {
     this.occTex = new THREE.CanvasTexture(this.occCanvas); this.occTex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
     const ogeo = new THREE.SphereGeometry(1.0012, 360, 220, (LON0 + 180) * D2R, (LON1 - LON0) * D2R, (90 - LAT1) * D2R, (LAT1 - LAT0) * D2R);
     this.scene.add(new THREE.Mesh(ogeo, new THREE.MeshLambertMaterial({ map: this.occTex, transparent: true, depthWrite: false })));
+    this.addBorders();
     if (this.opts.fog) {
       this.fogCanvas = document.createElement('canvas'); this.fogCanvas.width = FW; this.fogCanvas.height = FH; paintFogLayer(this.fogCanvas);
       this.fogTex = new THREE.CanvasTexture(this.fogCanvas);
@@ -1066,9 +1094,11 @@ class Globe {
       return new THREE.Points(g, new THREE.PointsMaterial({ size, map: tex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: false }));
     };
     if (this.lights) this.lights.forEach(l => { this.scene.remove(l); l.geometry.dispose(); });
-    const towns = A.towns.concat(A.wtowns).map(([lo, la, v, o]) => [lo, la, 0.8 + (v - 70) / 185 * 0.7, o]);
+    // Every glowing dot is a real town you can click. Capitals also get a name label; other main cities are brighter dots.
+    const towns = (TOWNS.length ? TOWNS.map(([lo, la, w, o]) => [lo, la, w, o]) : A.towns.map(([lo, la, v, o]) => [lo, la, 0.8 + (v - 70) / 185 * 0.7, o])).concat(A.wtowns.map(([lo, la, v, o]) => [lo, la, 0.8 + (v - 70) / 185 * 0.7, o]));
+    const mains = S.CITY_LIST.filter((c) => !c[4]?.includes('C')).map((c) => [c[1], c[2], 1.5, c[3]]);
     const caps = Object.values(CITIES).map(([lo, la]) => [lo, la, 1.6, countryAt(lo, la)]);
-    const pr = this.renderer.getPixelRatio(); this.lights = [make(towns, 13 * pr), make(caps, 30 * pr)]; this.lights.forEach(l => this.scene.add(l));
+    const pr = this.renderer.getPixelRatio(); this.lights = [make(towns, 13 * pr), make(mains, 20 * pr), make(caps, 30 * pr)]; this.lights.forEach(l => this.scene.add(l));
   }
   addUnits() {
     this.unitGroup = new THREE.Group(); this.scene.add(this.unitGroup); this.figs = {};
@@ -1195,7 +1225,7 @@ class Globe {
   repaintFog() { if (!this.fogCanvas) return; paintFogLayer(this.fogCanvas); this.fogTex.needsUpdate = true; this.dirty = true; }
   resize() {
     const w = this.stage.clientWidth, h = this.stage.clientHeight; if (!w || !h) return;
-    this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.dirty = true;
+    this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.dirty = true; this.sizeLines?.();
     this.fxScale = h * this.renderer.getPixelRatio() / (2 * Math.tan(this.camera.fov * D2R / 2));
   }
   placeCamera() {
@@ -1231,6 +1261,7 @@ class Globe {
       this.ov.appendChild(d); this.items.push({ el: d, lon: lo, lat: la, size: s, kind: 'lbl' });
     }
     for (const c of Object.values(S.CITY)) {
+      if (!c.capital) continue; // other cities are glowing dots: click them for details
       const d = document.createElement('button'); d.type = 'button'; d.className = 'city' + (c.capital ? ' cap' : '') + (c.port ? ' port' : ''); d.textContent = c.name; d.title = `${c.name}: click for details`;
       d.addEventListener('click', (e) => { e.stopPropagation(); showCity(c.name); });
       this.ov.appendChild(d); this.items.push({ el: d, lon: c.at[0], lat: c.at[1], kind: 'city', major: c.major });
@@ -1285,6 +1316,8 @@ class Globe {
     const groundAt = (e) => { const hit = rayAt(e).intersectObjects([this.patch, this.base].filter(Boolean))[0]; if (!hit) return null; const p = hit.point.clone().normalize(); return [+(Math.atan2(-p.z, p.x) / D2R).toFixed(3), +(Math.asin(p.y) / D2R).toFixed(3)]; };
     this.groundAtEvent = groundAt;
     c.addEventListener('pointerdown', (e) => {
+      // Placing a line feature (trenches, wire, bunkers...): press where it starts, drag to where it ends, let go. The camera stays still.
+      if (e.button === 0 && this.opts.lineKind?.()) { const a = groundAt(e); if (a) { this.lineDrag = { a, b: a, kind: this.opts.lineKind(), t: 0 }; c.setPointerCapture(e.pointerId); c.style.cursor = 'crosshair'; return; } }
       // Area select: drag a box (with the Select area button on, or holding Ctrl).
       if (e.button === 0 && this.opts.onBox && (this.boxMode || e.ctrlKey || e.metaKey)) {
         const r = this.stage.getBoundingClientRect(); const el = document.createElement('div'); el.className = 'selbox'; this.stage.appendChild(el);
@@ -1306,6 +1339,8 @@ class Globe {
       c.setPointerCapture(e.pointerId);
     });
     c.addEventListener('pointermove', (e) => {
+      const ld = this.lineDrag;
+      if (ld) { const b = groundAt(e); if (b) { ld.b = b; const now = performance.now(); if (now - ld.t > 50) { ld.t = now; this.showLineGhost(ld.kind, ld.a, ld.b); } } return; }
       const bd = this.boxDrag;
       if (bd) { const r = this.stage.getBoundingClientRect(); bd.x1 = e.clientX - r.left; bd.y1 = e.clientY - r.top; Object.assign(bd.el.style, { left: Math.min(bd.x0, bd.x1) + 'px', top: Math.min(bd.y0, bd.y1) + 'px', width: Math.abs(bd.x1 - bd.x0) + 'px', height: Math.abs(bd.y1 - bd.y0) + 'px' }); return; }
       const od = this.objDrag;
@@ -1328,6 +1363,8 @@ class Globe {
       this.dirty = true;
     });
     c.addEventListener('pointerup', (e) => {
+      const ld = this.lineDrag;
+      if (ld) { this.lineDrag = null; drag = null; c.style.cursor = ''; this.showLineGhost(null); const b = groundAt(e) || ld.b; this.opts.onLineDrop?.(ld.a, b); return; }
       const bd = this.boxDrag;
       if (bd) { this.boxDrag = null; bd.el.remove(); drag = null; const box = { x0: Math.min(bd.x0, bd.x1), y0: Math.min(bd.y0, bd.y1), x1: Math.max(bd.x0, bd.x1), y1: Math.max(bd.y0, bd.y1) };
         if (box.x1 - box.x0 > 6 && box.y1 - box.y0 > 6) { const inside = (at, h = 0.004) => { if (!at) return false; const p = this.project(at[0], at[1], h); return p.ok && p.x >= box.x0 && p.x <= box.x1 && p.y >= box.y0 && p.y <= box.y1; }; this.opts.onBox(inside); }
@@ -1347,6 +1384,11 @@ class Globe {
         const fh = this.propGroup?.visible && ray.intersectObject(this.propGroup, true)[0];
         if (fh?.object.userData.featId) { const id = fh.object.userData.featId; if (this.opts.onFeature) this.opts.onFeature(id); else { const f = FEATS.find((x) => x.id === id); if (f) toast(featTitle(f)); } drag = null; return; }
         const sh = this.spyGroup && ray.intersectObject(this.spyGroup, true)[0];
+        // A glowing town dot near the click (within a few pixels): show what it is.
+        if (this.opts.onTown && !(this.opts.lineKind?.())) { const r0 = c.getBoundingClientRect(); const cx = e.clientX - r0.left, cy = e.clientY - r0.top; let best = null, bd = 9;
+          const test = (lo, la, t) => { const p = this.project(lo, la, 0.0025); if (!p.ok) return; const d = Math.hypot(p.x - cx, p.y - cy); if (d < bd) { bd = d; best = t; } };
+          for (const ct of S.CITY_LIST) test(ct[1], ct[2], { city: ct[0] }); for (const t of TOWNS) test(t[0], t[1], { town: t });
+          if (best && !placing) { this.opts.onTown(best); drag = null; return; } }
         if (sh?.object.userData.spy) { if (this.opts.onSpy) this.opts.onSpy(sh.object.userData.spyOwner, sh.object.userData.spyId); else toast(sh.object.userData.spy); drag = null; return; }
         const hit = ray.intersectObjects([this.patch, this.base])[0];
         if (hit) { const p = hit.point.clone().normalize(); const lat = Math.asin(p.y) / D2R, lon = Math.atan2(-p.z, p.x) / D2R; if (this.opts.onGround && this.opts.onGround(lon, lat)) { drag = null; return; } const n = countryAt(lon, lat); if (n && this.opts.onCountry) this.opts.onCountry(n, lon, lat); else if (!n && this.opts.onSea) this.opts.onSea(lon, lat); }
@@ -1472,7 +1514,7 @@ const ZOOM = (g) => `<div class="zoom glass" data-g="${g}">${g === 'map' && EDIT
 const DATECARD = `<div class="date glass num"><span class="date-line"></span><small class="countdown">Next crisis update in <b>15:00</b></small></div>`;
 
 /* ---------- Staff screen: the map plus a request drawer and pop-ups ---------- */
-const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['rels', 'Wars and treaties'], ['feat', 'Features and spies'], ['gallery', 'Figurines'], ['msgs', 'Messages'], ['clock', 'Clock'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
+const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['rels', 'Wars and treaties'], ['msgs', 'Messages'], ['clock', 'Clock'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
 function staffBar() {
   return `<div class="undobar" id="undobar" hidden></div><nav class="stoolbar" aria-label="Staff tools"><button type="button" class="dbtn gold" id="tb-stage">Make changes</button>${MODALS.map(([k, l]) => `<button type="button" class="dbtn" data-modal="${k}">${l}<span class="count num" id="stc-${k}" hidden></span></button>`).join('')}</nav>`;
 }
@@ -1966,6 +2008,16 @@ function showCity(name) {
   $('cc-x').addEventListener('click', () => (el.hidden = true));
   $('cc-build')?.addEventListener('click', () => { action = 'build'; showTab('act'); renderTiles(); renderForm(); const sel = $('f-city'); if (sel) { sel.value = c.name; sel.dispatchEvent(new Event('change')); } el.hidden = true; });
 }
+function showTown(t) {
+  const el = $('citycard'); if (!el) return; const [lo, la, , country, name] = t;
+  const rid = regionAt(lo, la), rg = rid && REGION[rid]; const holder = rg ? ctrlOf(rg) : OWNER[country] || country; const base = OWNER[country] || country;
+  const hl = POWERS[holder]?.label || LABEL_TEXT[holder] || holder;
+  el.innerHTML = `<button type="button" class="ecard-x" id="cc-x" aria-label="Close">✕</button>
+    <div class="cchead">${POWERS[holder] || flagKeyOf(holder) ? flag(holder) : ''}<div><b>${esc(name)}</b><span>Town · ${esc(LABEL_TEXT[country] || country)}</span></div></div>
+    <p class="ccstat">${holder !== base ? `<b class="occ">Occupied by ${esc(hl)}</b>` : `Held by ${esc(hl)}`}${rg ? ` · ${esc(rg.area || rg.name)}` : ''}</p>`;
+  el.hidden = false; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  $('cc-x').addEventListener('click', () => (el.hidden = true));
+}
 /* Pop-up paper for writing, and the portfolio briefcase */
 function openCompose(id = 'compose') {
   const el = $(id); el.classList.remove('min', 'closing', 'sent'); $('c-restore').hidden = true;
@@ -2321,14 +2373,14 @@ function renderPlacebar() {
   const b = $('placebar'); if (!b) return; b.hidden = !placing;
   if (placing?.mode === 'feat') {
     const line = FEAT[placing.data.kind]?.line;
-    b.innerHTML = `${!line ? 'Click the map where it goes.' : placing.at ? 'Now click where the line ends.' : 'Click where the line starts.'} <button type="button" class="dbtn" id="place-cancel">Cancel</button>${line && placing.at ? ' <button type="button" class="dbtn" id="place-one">Just that one spot</button>' : ''}`;
+    b.innerHTML = `${!line ? 'Click the map where it goes.' : 'Press where the line starts, drag to where it ends, and let go.'} <button type="button" class="dbtn" id="place-cancel">Cancel</button>${line && placing.at ? ' <button type="button" class="dbtn" id="place-one">Just that one spot</button>' : ''}`;
   } else if (placing?.mode === 'spy') { b.innerHTML = `Click where ${esc(placing.data.name || 'the')}'s agent goes. <button type="button" class="dbtn" id="place-cancel">Cancel</button>`; }
   else if (placing) b.innerHTML = `Click the map where ${placing.mode === 'add' ? 'the new unit should go' : 'the unit should move'} (${placing.public ? 'shown on the projector' : 'secret'}). <button type="button" class="dbtn" id="place-cancel">Cancel</button>`;
   // Placing from Figurines repeats: drop as many as you like, then OK.
   if (placing?.repeat) {
     const what = placing.mode === 'feat' ? (FEAT[placing.data.kind]?.name || 'it') : placing.mode === 'spy' ? 'agents' : (KIND_NAME[placing.data.kind] || 'units').toLowerCase();
     const line = placing.mode === 'feat' && FEAT[placing.data.kind]?.line;
-    b.innerHTML = `${line && placing.at ? 'Now click where the line ends.' : `Click the map to place ${esc(what)}${line ? ' (start, then end of the line)' : ''}.`} <b class="pcount">${placing.count || 0} placed</b> <button type="button" class="dbtn gold" id="place-ok">OK</button>`;
+    b.innerHTML = `${line ? `Drag on the map to draw ${esc(what)}: press at the start, let go at the end.` : `Click the map to place ${esc(what)}.`} <b class="pcount">${placing.count || 0} placed</b> <button type="button" class="dbtn gold" id="place-ok">OK</button>`;
     $('place-ok').addEventListener('click', () => { placing = null; renderPlacebar(); });
   }
   $('place-cancel')?.addEventListener('click', () => { placing = null; renderPlacebar(); });
@@ -2737,8 +2789,8 @@ async function decideQ(q, ok, btn) {
 // What Approve or Reject sends: the reply, plus the game's own handling for moves, builds, spies and money.
 function decisionFor(q, ok) {
   const reply = ($('r-' + q.id)?.value || '').trim();
-  const dec = !ok ? (q.type === 'spy' ? 'spy-fail' : 'reject') : q.type === 'fleet' ? ($('sec-' + q.id)?.checked ? 'move-secret' : 'move-public') : q.type === 'spy' ? 'spy-ok' : 'approve';
-  return { type: 'decide', id: q.id, dec, reply, effects: [] };
+  // Nothing automatic: Approve and Reject only send the reply. Changes to the map are made by hand in Make changes.
+  return ok ? { type: 'decide', id: q.id, dec: 'manual', reply, effects: [] } : { type: 'decide', id: q.id, dec: 'reject', plain: true, reply, effects: [] };
 }
 async function buildDecision(q, ok, btn) { return decisionFor(q, ok); }
 /* ---------- Stage on the map: set things up by hand on a copy of the game, then Go ---------- */
@@ -2770,7 +2822,7 @@ function showStage(prev) {
   bar.innerHTML = `<b>Making changes</b><span>Only you can see this until you press Go${L.length ? ` · ${L.length} change${L.length === 1 ? '' : 's'} ready` : ''}</span>`;
 }
 /* The Make changes sidebar: place figurines, edit what is selected, fight battles, send announcements. */
-const SP_TABS = [['place', 'Place forces and features'], ['say', 'Announce']];
+const SP_TABS = [['place', 'Place forces and features'], ['say', 'Announce'], ['cu', 'Crisis update']];
 function spTile(kind, key, label, img, sub) { return `<button type="button" class="sptile" draggable="true" data-pk="${kind}" data-pv="${esc(key)}" title="Drag onto the map, or click and then click the map">${img ? `<img src="${img}" alt="">` : '<span class="noimg"></span>'}<b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`; }
 function placeSpec(kind, key) {
   const o = STAGE.owner, pub = STAGE.pub;
@@ -2791,6 +2843,13 @@ function renderStagePanel() {
       ${spies.length ? `<p class="sph">Spies</p><div class="spgrid">${spies.map((r) => spTile('spy', r.name, r.name.split(' ').slice(-1)[0] + "'s agent", spyThumb(), '')).join('')}</div>` : ''}
       <p class="sph">Map features <input type="search" id="sp-find" placeholder="Search" value="${esc(st.find)}"></p>
       <div class="spgrid">${feats.map(([k, v]) => spTile('feat', k, v.name, featThumb(k, o), v.mod ? `${v.mod > 0 ? '+' : ''}${v.mod} defense` : '')).join('')}</div>`;
+  } else if (st.tab === 'cu') {
+    // A crisis update is only a headline and a notification. Publishing presses Go first, so the map changes and the update land together.
+    body = `<p class="formnote">Now showing: Crisis Update ${STATE.update.no}${STATE.update.title ? `, “${esc(STATE.update.title)}”` : ''}</p>
+      <label class="spfield">Headline<input type="text" id="sp-cutitle" maxlength="140" value="${esc(st.cuTitle || '')}" placeholder="Soviet troops cross into eastern Poland"></label>
+      <label class="spfield">Notification (optional)<input type="text" id="sp-cutext" maxlength="200" value="${esc(st.cuText || '')}" placeholder="One line under the headline"></label>
+      <button type="button" class="dbtn gold spgo" id="sp-cupub">Publish to the room and Go</button>
+      <p class="formnote">Your map changes are sent first, then every screen gets the headline as a notification.</p>`;
   } else if (st.tab === 'sel') {
     body = `<div id="sp-selslot"></div>`;
   } else if (st.tab === 'battle') {
@@ -2827,6 +2886,7 @@ function bindStagePanel() {
   const P = $('stagepanel'); if (!P) return;
   P.addEventListener('click', (e) => {
     if (e.target.id === 'pv-go') { goStage(); return; }
+    if (e.target.id === 'sp-cupub') { publishWithGo(); return; }
     if (e.target.id === 'pv-undo') { undoStage(); return; }
     if (e.target.id === 'pv-back') { exitStage(true); return; }
     if (e.target.id === 'pv-reset') { const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.sim = JSON.parse(JSON.stringify(REAL)); STAGE.payload = null; battleSel.att.clear(); battleSel.def.clear(); showStage(prev); return; }
@@ -2846,6 +2906,8 @@ function bindStagePanel() {
   });
   P.addEventListener('input', (e) => {
     if (e.target.id === 'sp-size') { STAGE.size = Math.max(1, Math.min(99, +e.target.value || 1)); const sp = e.target.nextElementSibling; if (sp) sp.textContent = S.realText({ kind: 'army', owner: STAGE.owner }, STAGE.size); P.querySelectorAll('.sptile[data-pk="unit"] small').forEach((el) => { el.textContent = S.realShort({ kind: el.parentElement.dataset.pv, owner: STAGE.owner }, STAGE.size); }); }
+    if (e.target.id === 'sp-cutitle') STAGE.cuTitle = e.target.value;
+    if (e.target.id === 'sp-cutext') STAGE.cuText = e.target.value;
     if (e.target.id === 'sp-find') { STAGE.find = e.target.value; const pos = e.target.selectionStart; renderStagePanel(); const f = $('sp-find'); f.focus(); f.setSelectionRange(pos, pos); }
   });
   P.addEventListener('change', (e) => { if (e.target.id === 'pv-pub') { STAGE.pub = !e.target.checked; return; } if (e.target.id === 'sp-ab' || e.target.id === 'sp-db') { const a = e.target.id, v = e.target.value; renderStagePanel(); $(a).value = v; } });
@@ -2890,6 +2952,15 @@ function stageEffects(a, b, pub) {
   return fx;
 }
 function undoStage() { if (!STAGE?.hist.length) return; const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.sim = JSON.parse(STAGE.hist.pop()); showStage(prev); }
+async function publishWithGo() {
+  const title = (STAGE?.cuTitle || '').trim(), text = (STAGE?.cuText || '').trim(); if (!title) { toast('Write a headline first.'); $('sp-cutitle')?.focus(); return; }
+  await goStage(); await act({ type: 'publish', title, text, flash: true, reset: true, minutes: 15 });
+}
+// The Crisis update button: open Make changes on the Crisis update tab (or switch to it if already making changes).
+function openCrisisUpdate() {
+  if (!STAGE) previewOnMap('changes', null, (effects, base) => act({ type: 'effects.apply', effects, flash: base.flash, empty: true }));
+  if (STAGE) { STAGE.tab = 'cu'; renderStagePanel(); setTimeout(() => $('sp-cutitle')?.focus(), 50); }
+}
 async function goStage() {
   const st = STAGE; if (!st) return;
   const fx = [...stageEffects(REAL, st.sim, st.pub), ...((st.payload?.effects || []).filter((e) => KEEP_FX.has(e.type))), ...st.extra];
@@ -2966,7 +3037,7 @@ function bindStaff() {
   $('clk-toggle')?.addEventListener('click', () => act({ type: 'clock', do: STATE.clock?.running ? 'pause' : 'run' }).then(() => syncClockUI(true)));
   $('clk-speed')?.addEventListener('change', (e) => act({ type: 'clock', do: 'speed', k: +e.target.value }));
   $('clk-set')?.addEventListener('click', () => act({ type: 'clock', do: 'set', date: $('clk-date').value, time: $('clk-time').value }).then(() => syncClockUI(true)));
-  document.querySelectorAll('[data-modal]').forEach((b) => b.addEventListener('click', () => openModal(b.dataset.modal)));
+  document.querySelectorAll('[data-modal]').forEach((b) => b.addEventListener('click', () => (b.dataset.modal === 'cu' ? openCrisisUpdate() : openModal(b.dataset.modal))));
   document.querySelectorAll('.smodal').forEach((m) => m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-close]')) m.hidden = true; }));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelectorAll('.smodal').forEach((m) => (m.hidden = true)); });
   $('sd-toggle').addEventListener('click', () => { const d = $('sdrawer'); const shut = d.classList.toggle('shut'); $('sd-toggle').textContent = shut ? '›' : '‹'; $('sd-toggle').setAttribute('aria-expanded', !shut); });
@@ -2976,7 +3047,7 @@ function bindStaff() {
     const sh = e.target.closest('[data-show]'); if (sh) { const q = STATE.queue.find((x) => x.id === sh.dataset.show); const at = q && qSpot(q); if (at && mapGlobe) mapGlobe.pulse(at, q.from); return; }
     const pv = e.target.closest('[data-prev]');
     if (pv) { const q = STATE.queue.find((x) => x.id === pv.dataset.prev); if (!q) return;
-      previewOnMap(`${q.from}: ${q.title}`, decisionFor(q, true), async (effects, base) => { if (await act({ type: 'decide', id: q.id, dec: 'manual', reply: ($('r-' + q.id)?.value || '').trim(), effects, flash: base.flash }, { quiet: true })) notify({ kind: 'approved', title: 'Approved and carried out', body: `${q.from}: ${q.title}` }); }); return; }
+      previewOnMap(`${q.from}: ${q.title}`, null, async (effects, base) => { if (await act({ type: 'decide', id: q.id, dec: 'manual', reply: ($('r-' + q.id)?.value || '').trim(), effects, flash: base.flash }, { quiet: true })) notify({ kind: 'approved', title: 'Approved and carried out', body: `${q.from}: ${q.title}` }); }); return; }
     const b = e.target.closest('[data-dec]'); if (!b) return; const q = STATE.queue.find((x) => x.id === b.dataset.q); if (q) decideQ(q, b.dataset.dec === 'approve', b);
   });
   bindFx($('view-staff-root'));
@@ -3134,7 +3205,7 @@ export function start(root, props) {
   if (VIEW !== 'staff') (async () => {
     try {
       const [geo, marble, water, topo, world, wwater, clouds] = await Promise.all([
-        fetch('/crisis/geo.json').then((r) => r.json()).then(async (g) => { RSHAPE = await fetch('/crisis/regions.json').then((r) => r.json()); return g; }),
+        fetch('/crisis/geo.json').then((r) => r.json()).then(async (g) => { [RSHAPE, TOWNS] = await Promise.all([fetch('/crisis/regions.json').then((r) => r.json()), fetch('/crisis/towns.json').then((r) => r.json()).catch(() => [])]); return g; }),
         ...['marble.webp', 'water.png', 'topo.jpg', TEXK > 1 ? 'world8k.webp' : 'world.webp', TEXK > 1 ? 'wwater8k.png' : 'wwater.png', 'clouds.jpg'].map((f) => loadImg('/crisis/' + f)),
       ]);
       A = geo; imgs = { marble, water, topo, world, wwater, clouds }; await Promise.race([loadFlagImages(), new Promise((r) => setTimeout(r, 8000))]); await first;
@@ -3144,6 +3215,10 @@ export function start(root, props) {
         mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat), [lon, lat]), onUnit: (id) => select('unit', id), onFeature: (id) => select('feature', id), onGround: EDIT ? placeAt : null, canDrag: () => !!STAGE, onUnitDrop: dropUnit,
           onSpy: EDIT ? (owner, id) => select('spy', id, null, null, owner) : null,
           onBox: EDIT ? boxSelect : null,
+          onTown: (t) => (t.city ? showCity(t.city) : showTown(t.town)),
+          lineKind: () => (placing?.mode === 'feat' && FEAT[placing.data.kind]?.line ? placing.data.kind : null),
+          lineOwner: () => placing?.data?.owner,
+          onLineDrop: (a, b) => { if (!placing) return; if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.15) { toast('Hold the mouse down at the start and drag to the end.'); return; } placing.at = [+a[0].toFixed(3), +a[1].toFixed(3)]; placeAt(b[0], b[1]); },
           onSpyDrop: (owner, id, at) => act({ type: 'effects.apply', effects: [{ type: 'agent', action: 'move', name: owner, id, to: at }] }),
           onFeatDrop: (id, at) => act({ type: 'effects.apply', effects: [{ type: 'feature.edit', id, action: 'move', to: at }] }), pins: STAFFMAP, onSea: EDIT ? (lon, lat) => select('sea', null, null, [lon, lat]) : null });
         mapGlobe.setTextures(world, patchCanvas, topo); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null);

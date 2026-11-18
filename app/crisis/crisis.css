@@ -1275,3 +1275,8 @@ img.fl { object-fit: cover; display: block; }
 @keyframes b2plume { 0% { transform: rotate(calc((var(--i) - 2) * 14deg)) scaleY(0); opacity: 1; } 40% { transform: rotate(calc((var(--i) - 2) * 14deg)) scaleY(1); opacity: 1; } 100% { transform: rotate(calc((var(--i) - 2) * 16deg)) scaleY(.6) translateY(10px); opacity: 0; } }
 @keyframes b2ripple { 0% { opacity: .9; transform: scale(.4); } 100% { opacity: 0; transform: scale(3.6); } }
 @keyframes b2txt { 0%, 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -14px); } }
+/* The Make changes button keeps its gold look in the toolbar (the glass toolbar style was removing the gold and leaving dark text). */
+.staffmap .stoolbar .dbtn.gold { background: var(--gold); border-color: var(--gold); color: #15110A; font-weight: 700; }
+.staffmap .stoolbar .dbtn.gold:hover { background: #FFD54A; }
+.spfield { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text); margin: 8px 0; }
+.spfield input { font: 14px Inter, sans-serif; color: var(--text); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.15); padding: 7px 8px; border-radius: 6px; }
