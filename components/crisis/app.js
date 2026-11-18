@@ -11,6 +11,9 @@ const { LON0, LON1, LAT0, LAT1, OWNER, NEUTRALS, LABELS, SKIP_WORLD, LABEL_TEXT,
 const POWERS = JSON.parse(JSON.stringify(S.POWERS));
 Object.values(POWERS).forEach((p) => (p.delegates = []));
 ROSTER.forEach((r) => POWERS[r.country]?.delegates.push(r.name));
+// Countries without delegates that chairs play: they can own forces and features, but have no treasury or screens.
+Object.entries(S.MINORS).forEach(([k, v]) => { POWERS[k] = { ...v, delegates: [], treasury: 0 }; });
+const isMajor = (c) => !!POWERS[c] && !POWERS[c].minor;
 let A = { geo: {}, wgeo: {}, towns: [], wtowns: [], wsub: {}, wlabels: {} };
 let UNITS = [], ALLIES = [], AGENTS = [], LIVE_ARROWS = [], CONTROL = {}, RSHAPE = {}, MARKERS = [], RECON = [];
 const REGION = Object.fromEntries(REGIONS.map((r) => [r.id, r]));
@@ -20,7 +23,7 @@ let imgs, patchCanvas, fogCanvas, mapGlobe, delGlobe;
 
 const ownerOf = (n) => OWNER[n] || A.wsub?.[n] || n;
 const colorOf = (n) => POWERS[ownerOf(n)]?.color || NEUTRALS[n] || '#8A8A8A';
-const isPower = (n) => !!POWERS[ownerOf(n)];
+const isPower = (n) => isMajor(ownerOf(n));
 /* ---------- Texture: satellite ground, city lights, country tints, borders ---------- */
 const TW = 4096, TH = Math.round(TW * (LAT1 - LAT0) / (LON1 - LON0));
 // Paint at up to 2x resolution where the GPU allows, so borders and coasts stay sharp when zoomed in.
@@ -206,7 +209,7 @@ function cyl(rt, rb, h, seg, hex, x, y, z, parent, rx = 0, ry = 0, rz = 0) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat(hex)); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); parent.add(m); return m;
 }
 function soldier(owner, kneel) {
-  const u = UNIFORM[owner]; const g = new THREE.Group(); const skin = 0xE2B98F, dark = 0x26282C, boot = 0x2E2A26, wood = 0x5A3E26;
+  const u = UNIFORM[owner] || { cloth: 0x6E6A52, helmet: 0x55573F, style: 'stahl' }; const g = new THREE.Group(); const skin = 0xE2B98F, dark = 0x26282C, boot = 0x2E2A26, wood = 0x5A3E26;
   if (kneel) {
     box(0.34, 0.5, 0.34, u.cloth, -0.2, 0.25, 0.25, g); box(0.34, 0.34, 0.7, u.cloth, -0.2, 0.62, 0.05, g); box(0.36, 0.16, 0.42, boot, -0.2, 0.08, 0.32, g);
     box(0.34, 0.34, 0.7, u.cloth, 0.2, 0.17, -0.2, g, 0.25); box(0.34, 0.6, 0.34, u.cloth, 0.2, 0.55, 0.05, g);
@@ -264,7 +267,7 @@ function ship(owner, flagHex) {
 const ARMOR = { 'Germany': 0x4E5446, 'United Kingdom': 0x7A6E48, 'France': 0x6E785A, 'Poland': 0x6B6A48, 'USSR': 0x56613C, 'Italy': 0x8A7E5A, 'Finland': 0x5E6258, 'Japan': 0x6E6A48, 'United States': 0x5E6640 };
 const AIR = { 'Germany': 0x6C7466, 'United Kingdom': 0x6E6A44, 'France': 0x7E8A8E, 'Poland': 0x6A6E4A, 'USSR': 0x5E6A44, 'Italy': 0x9A8E64, 'Finland': 0x6A7064, 'Japan': 0x8E8E7E, 'United States': 0x7A7E6A };
 function tank(owner) {
-  const g = new THREE.Group(); const c = ARMOR[owner], dark = 0x2A2A28, wheel = 0x3A3A36;
+  const g = new THREE.Group(); const c = ARMOR[owner] || 0x5E6250, dark = 0x2A2A28, wheel = 0x3A3A36;
   for (const x of [-0.56, 0.56]) {
     box(0.34, 0.36, 1.9, dark, x, 0.2, 0, g);
     for (let i = 0; i < 5; i++) cyl(0.15, 0.15, 0.06, 14, wheel, x + Math.sign(x) * 0.18, 0.18, -0.68 + i * 0.34, g, 0, 0, Math.PI / 2);
@@ -286,7 +289,7 @@ function tank(owner) {
   return g;
 }
 function plane(owner, flagHex) {
-  const g = new THREE.Group(); const c = AIR[owner], dark = 0x222428, glass = 0x6E8EA8, under = 0x9AA2A8, prop = 0x1A1A1A;
+  const g = new THREE.Group(); const c = AIR[owner] || 0x747A6A, dark = 0x222428, glass = 0x6E8EA8, under = 0x9AA2A8, prop = 0x1A1A1A;
   const body = cyl(0.13, 0.17, 1.7, 8, c, 0, 0, 0, g, Math.PI / 2); body.scale.set(1, 1, 0.9);
   cyl(0.03, 0.16, 0.3, 8, c, 0, 0, -0.98, g, -Math.PI / 2);
   cyl(0.16, 0.17, 0.26, 10, dark, 0, 0, 0.84, g, Math.PI / 2);
@@ -1108,6 +1111,24 @@ class Globe {
     const ray = new THREE.Raycaster(); ray.setFromCamera(m, this.camera); const hit = ray.intersectObjects([this.patch, this.base].filter(Boolean))[0]; if (!hit) return null;
     const p = hit.point.clone().normalize(); return [+(Math.atan2(-p.z, p.x) / D2R).toFixed(3), +(Math.asin(p.y) / D2R).toFixed(3)];
   }
+  // Arrows from where staged units are now to where Go will put them (smooth SVG, redrawn as the camera moves).
+  setGhost(list) {
+    if (!this.ghostSvg) { const ns = 'http://www.w3.org/2000/svg'; const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('class', 'ghostarrows'); svg.innerHTML = '<defs><marker id="gh-head" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#F5C21B"/></marker></defs><g></g>'; this.stage.appendChild(svg); this.ghostSvg = svg; }
+    this.ghost = list || []; this.ghostSvg.querySelector('g').innerHTML = this.ghost.map(() => '<path class="gh-under"/><path class="gh-line" marker-end="url(#gh-head)"/>').join(''); this.dirty = true;
+  }
+  layoutExtras() {
+    if (this.ghostSvg && this.ghost?.length) {
+      const ps = this.ghostSvg.querySelectorAll('path.gh-line, path.gh-under');
+      this.ghost.forEach((g, i) => {
+        const a = this.project(g.from[0], g.from[1], 0.004), b = this.project(g.to[0], g.to[1], 0.004); const under = ps[i * 2], line = ps[i * 2 + 1];
+        if (!a.ok || !b.ok) { under.setAttribute('d', ''); line.setAttribute('d', ''); return; }
+        const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1, cx = (a.x + b.x) / 2 - dy * 0.18, cy = (a.y + b.y) / 2 + dx * 0.18, sh = Math.min(14, L / 4);
+        const d = `M${a.x.toFixed(1)},${a.y.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${(b.x - dx / L * sh).toFixed(1)},${(b.y - dy / L * sh).toFixed(1)}`;
+        under.setAttribute('d', d); line.setAttribute('d', d);
+      });
+    }
+    if (this.pop?.el && this.pop.at) { const p = this.project(this.pop.at[0], this.pop.at[1], this.pop.h || 0.006); this.pop.el.style.display = p.ok ? '' : 'none'; if (p.ok) { const below = p.y - (this.pop.el.offsetHeight || 160) - 22 < 70; this.pop.el.classList.toggle('below', below); const x = Math.max(145, Math.min(this._w - 145, p.x)); this.pop.el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(p.y)}px, 0) translate(-50%, ${below ? '22px' : 'calc(-100% - 22px)'})`; } }
+  }
   repaintOcc(sel) { if (!this.occCanvas) return; paintOccupation(this.occCanvas, sel); this.occTex.needsUpdate = true; this.dirty = true; }
   repaintFog() { if (!this.fogCanvas) return; paintFogLayer(this.fogCanvas); this.fogTex.needsUpdate = true; this.dirty = true; }
   resize() {
@@ -1158,7 +1179,20 @@ class Globe {
       const est = this.opts.fog && !ALLIES.includes(u.owner);
       if (est) { b.classList.add('spotted'); b.title = u.spotted || 'Spotted'; b.setAttribute('aria-label', `${u.name}, ${POWERS[u.owner].label}, estimated ${S.realText(u)}. ${u.spotted || ''}`); }
       b.innerHTML = `${flag(u.owner)}<b class="num">${est ? '~' : ''}${S.realShort(u)}</b>`;
-      if (this.opts.onUnit) b.addEventListener('click', (e) => { e.stopPropagation(); this.opts.onUnit(u.id); });
+      if (STAFFMAP) {
+        const r = STAGE && REAL ? (REAL.units || []).find((x) => x.id === u.id) : null; const moved = r && Math.hypot(r.at[0] - u.at[0], r.at[1] - u.at[1]) > 0.02;
+        const tag = STAGE && REAL && (!r || moved || r.str !== u.str || r.name !== u.name) ? 'Not live yet' : !u.shown || Math.hypot(u.shown[0] - u.at[0], u.shown[1] - u.at[1]) > 0.02 ? 'Hidden from projector' : '';
+        if (tag) { b.classList.add(tag === 'Not live yet' ? 'staged' : 'offproj'); b.insertAdjacentHTML('beforeend', `<i class="toktag">${tag}</i>`); }
+      }
+      if (this.opts.onUnit) b.addEventListener('click', (e) => { e.stopPropagation(); if (b._dragged) { b._dragged = false; return; } this.opts.onUnit(u.id); });
+      // The label can be dragged too while staff are making changes, not just the 3D figure.
+      if (this.opts.canDrag) {
+        let d = null;
+        b.addEventListener('pointerdown', (e) => { if (e.button !== 0 || !this.opts.canDrag() || !this.figs?.[u.id]) return; e.stopPropagation(); d = { x: e.clientX, y: e.clientY, moved: false, at: null }; b.setPointerCapture(e.pointerId); });
+        b.addEventListener('pointermove', (e) => { if (!d) return; if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 4) d.moved = true; if (!d.moved) return; const ll = this.groundAtEvent?.(e); if (!ll) return; d.at = ll; b.style.cursor = 'grabbing';
+          this.place(this.figs[u.id], ll[0], ll[1]); const it = this.items?.find((x) => x.kind === 'tok' && x.id === u.id); if (it) { it.lon = ll[0]; it.lat = ll[1]; } this.dirty = true; });
+        b.addEventListener('pointerup', () => { if (!d) return; const x = d; d = null; b.style.cursor = ''; if (x.moved && x.at) { b._dragged = true; this.opts.onUnitDrop?.(u.id, x.at); } });
+      }
       this.ov.appendChild(b); const [plo, pla] = this.posOf(u); this.items.push({ el: b, lon: plo, lat: pla, kind: 'tok', id: u.id, air: u.kind === 'air' });
     }
   }
@@ -1179,6 +1213,7 @@ class Globe {
       if (it.kind === 'lbl') { const fs = Math.max(9, it.size * k).toFixed(1); if (fs !== it._fs) { it.el.style.fontSize = fs + 'px'; it._fs = fs; } }
       if (it.kind === 'tok') { const sel = this.selectedUnit === it.id; if (sel !== it._sel) { it.el.classList.toggle('sel', sel); it._sel = sel; } }
     }
+    this.layoutExtras();
   }
   bindInput() {
     const c = this.renderer.domElement; let drag = null;
@@ -1186,6 +1221,7 @@ class Globe {
     c.addEventListener('contextmenu', (e) => e.preventDefault());
     const rayAt = (e) => { const r = c.getBoundingClientRect(); const m = new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); const ray = new THREE.Raycaster(); ray.setFromCamera(m, this.camera); return ray; };
     const groundAt = (e) => { const hit = rayAt(e).intersectObjects([this.patch, this.base].filter(Boolean))[0]; if (!hit) return null; const p = hit.point.clone().normalize(); return [+(Math.atan2(-p.z, p.x) / D2R).toFixed(3), +(Math.asin(p.y) / D2R).toFixed(3)]; };
+    this.groundAtEvent = groundAt;
     c.addEventListener('pointerdown', (e) => {
       // While staff stage changes, a unit can be picked up and dragged to a new spot.
       if (e.button === 0 && this.opts.canDrag?.() && this.unitGroup) {
@@ -1638,17 +1674,57 @@ function renderSel() {
   }
   const name = selected.id; const owner = ownerOf(name); const p = POWERS[owner];
   const title = name === 'Czechoslovakia' ? 'Bohemia, Moravia and Slovakia' : (p && name === owner ? p.label : LABEL_TEXT[name] || name);
-  if (!p) { const rg = selected.region && REGION[selected.region]; const rc = rg && ctrlOf(rg); box.innerHTML = `<div class="badge" style="background:${colorOf(name)}">${initials(title)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill neutral">Neutral</span></div><div class="stats"><div><span>Controlled by</span> Crisis staff</div>${rg ? `<div><span>Region</span> ${esc(rg.name)}${rc !== baseOwner(rg) ? ` · <b>held by ${POWERS[rc]?.label || rc}</b>` : ''}</div>` : ''}</div></div>`; return; }
+  if (!p || p.minor) { const rg = selected.region && REGION[selected.region]; const rc = rg && ctrlOf(rg); box.innerHTML = `<div class="badge" style="background:${colorOf(name)}">${initials(title)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill neutral">Neutral</span></div><div class="stats"><div><span>Controlled by</span> Crisis staff</div>${rg ? `<div><span>Region</span> ${esc(rg.name)}${rc !== baseOwner(rg) ? ` · <b>held by ${POWERS[rc]?.label || rc}</b>` : ''}</div>` : ''}</div></div>`; return; }
   const rg = selected.region && REGION[selected.region]; const rc = rg && ctrlOf(rg);
   const regionLine = rg ? `<div><span>Region</span> ${esc(rg.name)} (${rg.zone.toLowerCase()})${rc !== baseOwner(rg) ? ` · <b>held by ${POWERS[rc]?.label || rc}</b>` : ''}</div>` : '';
   const sub = name !== owner ? `Controlled by ${p.label}` : '';
   box.innerHTML = `<div class="badge flagbadge">${flag(name)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill ${p.side}">${p.side === 'war' ? 'At war' : 'Neutral'}</span>${sub ? ' · ' + sub : ''}</div><div class="stats"><div><span>Treasury</span> <b class="num">$${p.treasury}M</b></div><div><span>Forces</span> <b class="num">${UNITS.filter((u) => u.owner === owner).length}</b></div><div><span>Commanders</span> ${p.delegates.map(esc).join(', ') || 'Crisis staff'}</div>${regionLine}</div></div>`;
 }
 function select(type, id, region, at) {
-  if (STAGE && STAGE.tab !== 'sel' && type !== 'none') { STAGE.tab = 'sel'; setTimeout(renderStagePanel, 0); }
   selected = { type, id, region, at: at ? [+at[0].toFixed(3), +at[1].toFixed(3)] : null }; confirmKill = null; if (EDIT) setTimeout(renderEdit, 0);
   if (mapGlobe) { mapGlobe.selectedUnit = type === 'unit' ? id : null; mapGlobe.markSelected(mapGlobe.selectedUnit); mapGlobe.repaintOcc(type === 'country' ? id : null); }
-  renderSel();
+  renderSel(); if (STAFFMAP) renderPop();
+}
+/* ---------- Click card on the staff map: edit what was clicked, right where it is ---------- */
+const sizeWord = (k) => ({ army: 'men', armor: 'tanks', air: 'aircraft', fleet: 'ships' }[k]);
+const perPoint = (u) => S.realSize({ kind: u.kind, owner: u.owner }, 1).n;
+function renderPop() {
+  const g = mapGlobe; if (!g) return; let el = $('mappop');
+  if (!el) { el = document.createElement('div'); el.id = 'mappop'; el.className = 'mappop'; $('stage-map').appendChild(el); bindPop(el); }
+  const ownerOpts = (cur) => `<optgroup label="Delegate countries">${ORDER.map((k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(POWERS[k].label)}</option>`).join('')}</optgroup><optgroup label="Other countries">${S.MINOR_LIST.map((k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(POWERS[k].label)}</option>`).join('')}</optgroup>`;
+  let html = '', at = null, h = 0.006;
+  if (selected.type === 'unit') {
+    const u = UNITS.find((x) => x.id === selected.id);
+    if (u) { at = u.at; h = 0.012 * UNIT_SCALE / 0.0105 + 0.004;
+      html = `<div class="mp-head">${flag(u.owner)}<input type="text" id="mp-name" maxlength="60" value="${esc(u.name)}" aria-label="Name"><button type="button" class="mp-x" id="mp-x" aria-label="Unselect" title="Unselect (Esc)">✕</button></div>
+        <div class="mp-row"><input type="number" id="mp-n" min="1" step="${perPoint(u) >= 1000 ? 1000 : 1}" value="${Math.round(S.realSize(u).n)}" aria-label="Size"><span>${sizeWord(u.kind)}</span><span class="mp-k">${esc(KIND_NAME[u.kind])} · ${esc(POWERS[u.owner]?.label || u.owner)}</span></div>
+        <div class="mp-row"><button type="button" class="dbtn red" id="mp-del">${u.kind === 'fleet' ? 'Sink' : u.kind === 'air' ? 'Shoot down' : 'Delete'}</button><button type="button" class="dbtn" id="mp-done">Done</button></div>`; }
+  } else if (selected.type === 'feature') {
+    const f = FEATS.find((x) => x.id === selected.id);
+    if (f) { at = f.at; html = `<div class="mp-head">${flag(f.owner)}<b>${esc(f.label)}</b><button type="button" class="mp-x" id="mp-x" aria-label="Unselect">✕</button></div><p class="mp-k">${esc(FEAT[f.kind]?.name || '')} · ${esc(POWERS[f.owner]?.label || f.owner)}${f.ruined ? ' · destroyed' : ''}</p>
+      <div class="mp-row"><button type="button" class="dbtn red" id="mp-fdel">Remove</button><button type="button" class="dbtn" id="mp-fruin">${f.ruined ? 'Repair' : 'Mark destroyed'}</button><button type="button" class="dbtn" id="mp-done">Done</button></div>`; }
+  } else if (selected.region && REGION[selected.region] && selected.at) {
+    const r = REGION[selected.region], c = ctrlOf(r), zone = REGIONS.filter((x) => x.country === r.country && x.zone === r.zone); at = selected.at;
+    html = `<div class="mp-head">${flag(c)}<b>${esc(r.name)}</b><button type="button" class="mp-x" id="mp-x" aria-label="Unselect">✕</button></div><p class="mp-k">Held by ${esc(POWERS[c]?.label || c)}</p>
+      <div class="mp-row"><select id="mp-owner" aria-label="Give to">${ownerOpts(c)}</select></div>
+      <div class="mp-row"><button type="button" class="dbtn gold" id="mp-give">Give this region</button>${zone.length > 1 ? `<button type="button" class="dbtn" id="mp-zone">Whole ${esc(r.zone.toLowerCase())} zone</button>` : ''}</div>`;
+  }
+  el.hidden = !html; el.innerHTML = html; g.pop = html ? { el, at, h } : null; g.dirty = true;
+}
+function bindPop(el) {
+  const u = () => UNITS.find((x) => x.id === selected.id);
+  const saveName = () => { const x = u(), v = $('mp-name')?.value.trim(); if (x && v && v !== x.name) act({ type: 'unit.edit', id: x.id, name: v }); };
+  const saveSize = () => { const x = u(), n = +$('mp-n')?.value; if (x && n > 0) { const str = n / perPoint(x); if (Math.abs(str - x.str) > 0.004) act({ type: 'unit.edit', id: x.id, str }); } };
+  el.addEventListener('change', (e) => { if (e.target.id === 'mp-name') saveName(); if (e.target.id === 'mp-n') saveSize(); });
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.target.id === 'mp-name' || e.target.id === 'mp-n')) { e.target.blur(); } if (e.key === 'Escape') { e.stopPropagation(); select('none'); } });
+  el.addEventListener('click', (e) => {
+    const id = e.target.id;
+    if (id === 'mp-x' || id === 'mp-done') { select('none'); return; }
+    if (id === 'mp-del') { const x = u(); if (!x) return; if (!STAGE && e.target.dataset.sure !== '1') { e.target.dataset.sure = '1'; e.target.textContent = 'Click again (live)'; return; } act({ type: 'unit.destroy', id: x.id, public: STAGE ? STAGE.pub : true }); select('none'); }
+    if (id === 'mp-fdel') { act({ type: 'feature.edit', id: selected.id, action: 'remove' }); select('none'); }
+    if (id === 'mp-fruin') { const f = FEATS.find((x) => x.id === selected.id); if (f) act({ type: 'feature.edit', id: f.id, action: f.ruined ? 'repair' : 'ruin' }); }
+    if (id === 'mp-give' || id === 'mp-zone') { const r = REGION[selected.region]; const ids = id === 'mp-zone' ? REGIONS.filter((x) => x.country === r.country && x.zone === r.zone).map((x) => x.id) : [r.id]; act({ type: 'region.set', ids, owner: $('mp-owner').value }); }
+  });
 }
 function renderFloor() {
   const el = $('floorcard'); if (!el) return; const d = (STATE.directives || []).find((x) => x.status === 'floor');
@@ -1669,7 +1745,8 @@ const ICON = {
   propaganda: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M5 13v6h4l10 6V7L9 13z"/><path d="M23 11c2 1.5 2 8.5 0 10M26 8c3.5 3 3.5 13 0 16"/></svg>',
 };
 // One open box for any plan, plus quick forms for the common moves the app can carry out by itself.
-const ACTIONS = [{ id: 'secret', label: 'Crisis note' }, { id: 'fleet', label: 'Move forces' }, { id: 'build', label: 'Build forces' }, { id: 'money', label: 'Send money' }];
+// Moving, building and paying all go through a crisis note now, so the note is the only action.
+const ACTIONS = [{ id: 'secret', label: 'Crisis note' }];
 let action = 'secret', visibility = 'private', pickedForce = null, drafting = false, fogSig = '', pickLoc = null, followParent = null;
 const myUnits = () => UNITS.filter((x) => x.owner === ME && MEE.commands.includes(x.kind));
 const TO = () => ORDER.filter((n) => n !== ME).map((n) => POWERS[n].label).concat(['Romania', 'Turkey', 'Belgium', 'Netherlands']);
@@ -1730,11 +1807,17 @@ function pickGround(lon, lat) {
   setPick({ at: [+lon.toFixed(3), +lat.toFixed(3)], where }); renderLoc(); if ($('compose').classList.contains('min')) minCompose(false); return true;
 }
 function pickForce(id) {
-  const u = UNITS.find((x) => x.id === id); if (!u) return;
-  if (u.owner === ME && !MEE.commands.includes(u.kind)) { const boss = ROSTER.find((x) => x.country === ME && x.commands.includes(u.kind)); toast(`${u.name} is under ${boss ? boss.name + "'s" : "another commander's"} command. You control ${MEE.commands.map((k) => KIND_NAME[k].toLowerCase()).join(' and ')}.`); return; }
-  if (u.owner !== ME) { toast(`${u.name} belongs to ${POWERS[u.owner].label}. You can only command ${POWERS[ME].label} forces.`); return; }
-  pickedForce = id; action = 'fleet'; delGlobe.selectedUnit = id; delGlobe.markSelected(id);
-  showTab('act'); renderTiles(); renderForm();
+  const u = UNITS.find((x) => x.id === id); if (!u) return; showUnitInfo(u);
+}
+function showUnitInfo(u) {
+  const el = $('citycard'); if (!el) return; delGlobe?.markSelected(u.id);
+  const where = (() => { const c = S.nearestCity(u.at, 4); return c ? `Near ${c.name}` : ''; })();
+  el.innerHTML = `<button type="button" class="ecard-x" id="cc-x" aria-label="Close">✕</button>
+    <div class="cchead">${flag(u.owner)}<div><b>${esc(u.name)}</b><span>${esc(KIND_NAME[u.kind])} · ${esc(POWERS[u.owner]?.label || u.owner)}</span></div></div>
+    <dl class="ccdl"><div><dt>Size</dt><dd>${S.realText(u)}</dd></div>${where ? `<div><dt>Location</dt><dd>${esc(where)}</dd></div>` : ''}</dl>
+    ${u.owner === ME ? '<p class="formnote">To move or reinforce these forces, write a crisis note.</p>' : ''}`;
+  el.hidden = false; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  $('cc-x').addEventListener('click', () => { el.hidden = true; delGlobe?.markSelected(null); });
 }
 /* ---------- Cities: who holds them, what is there, and building ---------- */
 function cityHold(c) { const rid = regionAt(c.at[0], c.at[1]); const rg = rid && REGION[rid]; return rg ? ctrlOf(rg) : OWNER[c.country] || c.country; }
@@ -1746,7 +1829,7 @@ function showCity(name) {
   const hl = POWERS[holder]?.label || holder, bl = POWERS[base]?.label || base;
   const status = holder !== base ? `<b class="occ">Occupied by ${esc(hl)}</b> (part of ${esc(bl)} before the war)` : POWERS[holder] ? `Held by ${esc(hl)}` : `Neutral: ${esc(c.country)}`;
   const kind = VIEW === 'delegate' && action === 'build' ? BUILD_KIND[$('f-btype')?.value] : null;
-  const build = VIEW === 'delegate' && ME ? (canBuildIn(c, kind) ? `<button type="button" class="dbtn gold" id="cc-build">Build here</button>` : `<p class="formnote">${holder !== ME ? `${POWERS[ME].label} cannot build here.` : 'No shipyard here. Ships need a port city.'}</p>`) : '';
+  const build = '';
   el.innerHTML = `<button type="button" class="ecard-x" id="cc-x" aria-label="Close">✕</button>
     <div class="cchead">${POWERS[holder] ? flag(holder) : ''}<div><b>${esc(c.name)}</b><span>${c.capital ? 'Capital · ' : ''}${c.port ? 'Port · ' : ''}${esc(c.country)}</span></div></div>
     <p class="ccstat">${status}</p><p class="ccnote">${esc(c.note)}</p>
@@ -1776,6 +1859,7 @@ function openBrief() {
 }
 function closeBrief() { const el = $('brief'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'brief'; }, CALM() ? 0 : 240); }
 function renderTiles() {
+  if (ACTIONS.length < 2) { $('tiles').innerHTML = ''; return; }
   $('tiles').innerHTML = `<div class="quick" role="group" aria-label="Kind of request">${ACTIONS.map((a) => `<button type="button" class="qchip${a.id === 'secret' ? ' main' : ''}" data-a="${a.id}" aria-pressed="${a.id === action}">${a.label}</button>`).join('')}</div>`;
   $('tiles').querySelectorAll('.qchip').forEach((b) => b.addEventListener('click', () => { action = b.dataset.a; setPick(null); renderTiles(); renderForm(); }));
   if (action !== 'build' && delGlobe?.pick && !pickLoc) { delGlobe.pick = null; delGlobe.addPins(); }
@@ -2543,21 +2627,24 @@ function previewOnMap(label, payload, go, reopen) {
   const sim = JSON.parse(JSON.stringify(STATE));
   if (payload) { try { simulateAction(sim, { role: 'staff' }, payload); } catch (e) { toast(e.message, 'error'); return; } }
   document.querySelectorAll('.smodal').forEach((m) => (m.hidden = true));
-  REAL = STATE; STAGE = { label, payload, go, reopen, sim, pub: true, extra: [], flash: null, tab: 'place', owner: payload && STATE.queue?.find((q) => q.id === payload.id)?.country || 'Germany', size: 3, find: '' };
+  REAL = STATE; STAGE = { label, payload, go, reopen, sim, pub: true, extra: [], flash: null, tab: 'place', hist: [], owner: payload && STATE.queue?.find((q) => q.id === payload.id)?.country || 'Germany', size: 3, find: '' };
   showStage(Object.fromEntries(UNITS.map((u) => [u.id, u])));
 }
 function showStage(prev) {
   const sim = STAGE.sim; STATE = sim;
   UNITS = sim.units || []; FEATS = sim.features || []; CONTROL = sim.control || {}; MARKERS = sim.markers || [];
   AGENTS = Object.entries(sim.agents || {}).flatMap(([owner, l]) => l.map((g) => ({ ...g, owner })));
-  mapGlobe.sync(prev); mapGlobe.addProps(); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null); mapGlobe.addPins(); if (EDIT) renderEdit(); renderStagePanel();
+  mapGlobe.sync(prev); mapGlobe.addProps(); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null); mapGlobe.buildOverlay(); mapGlobe.addPins();
+  const R = Object.fromEntries((REAL.units || []).map((u) => [u.id, u]));
+  mapGlobe.setGhost(UNITS.filter((u) => R[u.id] && Math.hypot(R[u.id].at[0] - u.at[0], R[u.id].at[1] - u.at[1]) > 0.05).map((u) => ({ from: R[u.id].at, to: u.at })));
+  const L = previewDiff(REAL, sim); STAGE.changes = L; renderPop(); renderStagePanel();
   // Staging takes over the screen: a banner where the staff toolbar was, a gold frame, and the controls in the sidebar.
   document.querySelector('.staffmap')?.classList.add('staging');
-  const L = previewDiff(REAL, sim); STAGE.changes = L; const bar = $('prevbar'); bar.hidden = false;
+  const bar = $('prevbar'); bar.hidden = false;
   bar.innerHTML = `<b>Making changes</b><span>Only you can see this until you press Go${L.length ? ` · ${L.length} change${L.length === 1 ? '' : 's'} ready` : ''}</span>`;
 }
 /* The Make changes sidebar: place figurines, edit what is selected, fight battles, send announcements. */
-const SP_TABS = [['place', 'Place'], ['sel', 'Selected'], ['battle', 'Battle'], ['say', 'Announce']];
+const SP_TABS = [['place', 'Place forces and features'], ['say', 'Announce']];
 function spTile(kind, key, label, img, sub) { return `<button type="button" class="sptile" draggable="true" data-pk="${kind}" data-pv="${esc(key)}" title="Drag onto the map, or click and then click the map">${img ? `<img src="${img}" alt="">` : '<span class="noimg"></span>'}<b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`; }
 function placeSpec(kind, key) {
   const o = STAGE.owner, pub = STAGE.pub;
@@ -2569,12 +2656,13 @@ function renderStagePanel() {
   const P = $('stagepanel'); if (!P || !STAGE) return; P.hidden = false; const st = STAGE, o = st.owner;
   let body = '';
   if (st.tab === 'place') {
-    const spies = ROSTER.filter((r) => r.country === o);
+    const spies = ROSTER.filter((r) => r.country === o); const own = (c) => `<button type="button" class="spown${c === o ? ' on' : ''}" data-own="${c}" title="${esc(POWERS[c].label)}">${flag(c)}<span>${esc(POWERS[c].short || POWERS[c].label)}</span></button>`;
     const feats = Object.entries(FEAT).filter(([k, v]) => !st.find || v.name.toLowerCase().includes(st.find.toLowerCase()));
-    body = `<div class="spowners">${ORDER.map((c) => `<button type="button" class="spown${c === o ? ' on' : ''}" data-own="${c}" title="${esc(POWERS[c].label)}">${flag(c)}</button>`).join('')}</div>
+    body = `<p class="sph">Delegate countries</p><div class="spowners">${ORDER.map(own).join('')}</div>
+      <details class="spmore"${POWERS[o]?.minor ? ' open' : ''}><summary>Other countries (played by the chairs)</summary><div class="spowners">${S.MINOR_LIST.map(own).join('')}</div></details>
       <p class="sph">Forces for ${esc(POWERS[o].label)} <label class="spsize">Size <input type="number" id="sp-size" min="1" max="99" value="${st.size}"> <span>${esc(S.realText({ kind: 'army', owner: o }, st.size))}</span></label></p>
       <div class="spgrid">${KINDS.map((k) => spTile('unit', k, KIND_NAME[k], unitThumb(k, o), S.realShort({ kind: k, owner: o }, st.size))).join('')}</div>
-      <p class="sph">Spies</p><div class="spgrid">${spies.map((r) => spTile('spy', r.name, r.name.split(' ').slice(-1)[0] + "'s agent", spyThumb(), '')).join('') || '<p class="formnote">No delegates for this country.</p>'}</div>
+      ${spies.length ? `<p class="sph">Spies</p><div class="spgrid">${spies.map((r) => spTile('spy', r.name, r.name.split(' ').slice(-1)[0] + "'s agent", spyThumb(), '')).join('')}</div>` : ''}
       <p class="sph">Map features <input type="search" id="sp-find" placeholder="Search" value="${esc(st.find)}"></p>
       <div class="spgrid">${feats.map(([k, v]) => spTile('feat', k, v.name, featThumb(k, o), v.mod ? `${v.mod > 0 ? '+' : ''}${v.mod} defense` : '')).join('')}</div>`;
   } else if (st.tab === 'sel') {
@@ -2602,10 +2690,9 @@ function renderStagePanel() {
       <details class="spd"><summary>Breaking news on every screen</summary><input type="text" id="sp-fhead" maxlength="140" placeholder="Headline"><textarea id="sp-fdeck" maxlength="600" placeholder="A sentence or two under it (optional)"></textarea><button type="button" class="dbtn gold" id="sp-fadd">Set breaking news</button></details>`;
   }
   const L = st.changes || [];
-  P.innerHTML = `<header class="sphead"><div class="sptitle"><b>Make changes</b><span>${esc(st.label)}</span></div>
-      <div class="spctl"><button type="button" class="dbtn gold spgo" id="pv-go">Go${L.length ? ` (${L.length})` : ''}</button><button type="button" class="dbtn" id="pv-reset">Start over</button><button type="button" class="dbtn" id="pv-back">Cancel</button></div>
-      <label class="check spsecret"><input type="checkbox" id="pv-pub"${st.pub ? '' : ' checked'}> Secret: keep these changes off the projector</label>
-      ${L.length ? `<details class="spchanges"><summary>${L.length} change${L.length === 1 ? '' : 's'} so far</summary><ul>${L.map((x) => `<li>${x}</li>`).join('')}</ul></details>` : '<p class="formnote spnone">No changes yet. Drag figurines onto the map, or click something on the map to change it.</p>'}</header><nav class="sptabs" role="tablist">${SP_TABS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${st.tab === k}" data-sptab="${k}">${l}${k === 'battle' && battleSel.att.size + battleSel.def.size ? ` <span class="count">${battleSel.att.size + battleSel.def.size}</span>` : ''}${k === 'say' && st.extra.length + (st.flash ? 1 : 0) ? ` <span class="count">${st.extra.length + (st.flash ? 1 : 0)}</span>` : ''}</button>`).join('')}</nav><div class="spbody">${body}</div>`;
+  P.innerHTML = `<header class="sphead"><div class="sptitle"><b>Make changes</b>${/^(changes|placing figurines)$/.test(st.label) ? '' : `<span>${esc(st.label)}</span>`}</div>
+      <div class="spctl"><button type="button" class="dbtn gold spgo" id="pv-go">Go${L.length ? ` (${L.length})` : ''}</button><button type="button" class="dbtn" id="pv-undo"${st.hist.length ? '' : ' disabled'} title="Undo the last change (Ctrl+Z)">Undo</button><button type="button" class="dbtn" id="pv-reset"${st.hist.length ? '' : ' disabled'}>Start over</button><button type="button" class="dbtn" id="pv-back">Cancel</button></div>
+      <label class="check spsecret"><input type="checkbox" id="pv-pub"${st.pub ? '' : ' checked'}> Secret: keep these changes off the projector</label></header><nav class="sptabs" role="tablist">${SP_TABS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${st.tab === k}" data-sptab="${k}">${l}${k === 'battle' && battleSel.att.size + battleSel.def.size ? ` <span class="count">${battleSel.att.size + battleSel.def.size}</span>` : ''}${k === 'say' && st.extra.length + (st.flash ? 1 : 0) ? ` <span class="count">${st.extra.length + (st.flash ? 1 : 0)}</span>` : ''}</button>`).join('')}</nav><div class="spbody">${body}</div><footer class="sptips">Drag a figure on the map to move it · click it to rename, resize or delete · Esc unselects · Ctrl+Z undoes</footer>`;
   // The selected-item card lives in the sidebar while staging.
   const ec = $('editcard'); if (st.tab === 'sel' && ec) { $('sp-selslot').appendChild(ec); ec.classList.add('instage'); if (ec.hidden || !ec.innerHTML.trim()) $('sp-selslot').insertAdjacentHTML('afterbegin', '<p class="formnote">Click a unit, feature, region, sea or city on the map to change it here: strength, traits, move, destroy, give regions, spawn or build.</p>'); ec.hidden = false; }
   else if (ec && ec.classList.contains('instage')) { $('stage-map').appendChild(ec); ec.classList.remove('instage'); ec.hidden = true; }
@@ -2614,6 +2701,7 @@ function bindStagePanel() {
   const P = $('stagepanel'); if (!P) return;
   P.addEventListener('click', (e) => {
     if (e.target.id === 'pv-go') { goStage(); return; }
+    if (e.target.id === 'pv-undo') { undoStage(); return; }
     if (e.target.id === 'pv-back') { exitStage(true); return; }
     if (e.target.id === 'pv-reset') { const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.sim = JSON.parse(JSON.stringify(REAL)); STAGE.payload = null; battleSel.att.clear(); battleSel.def.clear(); showStage(prev); return; }
     const t = e.target.closest('[data-sptab]'); if (t) { STAGE.tab = t.dataset.sptab; renderStagePanel(); return; }
@@ -2648,7 +2736,7 @@ function bindStagePanel() {
 }
 // Apply a staff map action to the staged copy instead of the server.
 function stageAction(payload) {
-  const prev = Object.fromEntries(UNITS.map((u) => [u.id, u]));
+  const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.hist.push(JSON.stringify(STAGE.sim)); if (STAGE.hist.length > 80) STAGE.hist.shift();
   try { simulateAction(STAGE.sim, { role: 'staff' }, payload); } catch (e) { toast(e.message, 'error'); return false; }
   showStage(prev); return true;
 }
@@ -2675,6 +2763,7 @@ function stageEffects(a, b, pub) {
   for (const g of ga) if (!gb.some((x) => x.id === g.id)) fx.push({ type: 'agent', action: 'remove', name: g.name, id: g.id });
   return fx;
 }
+function undoStage() { if (!STAGE?.hist.length) return; const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.sim = JSON.parse(STAGE.hist.pop()); showStage(prev); }
 async function goStage() {
   const st = STAGE; if (!st) return;
   const fx = [...stageEffects(REAL, st.sim, st.pub), ...((st.payload?.effects || []).filter((e) => KEEP_FX.has(e.type))), ...st.extra];
@@ -2683,7 +2772,7 @@ async function goStage() {
 function exitStage(back) {
   if (!STAGE) return; const reopen = STAGE.reopen; STAGE = null; $('prevbar').hidden = true; document.querySelector('.staffmap')?.classList.remove('staging'); $('stagepanel').hidden = true; placing = null; renderPlacebar();
   const ec = $('editcard'); if (ec && ec.parentElement !== $('stage-map')) { $('stage-map').appendChild(ec); ec.classList.remove('instage'); }
-  STATE = REAL; REAL = null; featSig = ''; applyState(STATE); if (back && reopen) openModal(reopen);
+  STATE = REAL; REAL = null; featSig = ''; applyState(STATE); mapGlobe?.setGhost([]); mapGlobe?.buildOverlay(); mapGlobe?.addPins(); select('none'); if (back && reopen) openModal(reopen);
 }
 function previewDiff(a, b) {
   const L = [], nm = (c) => esc(POWERS[c]?.label || c), near = (at) => { const rid = at && regionAt(at[0], at[1]); return rid ? REGION[rid].name : 'open sea'; };
@@ -2726,6 +2815,12 @@ async function loadBackups() {
 }
 function bindStaff() {
   bindStagePanel();
+  document.addEventListener('keydown', (e) => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+    if (STAGE && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); undoStage(); return; }
+    if (e.key === 'Escape' && !typing) { if (placing) { placing = null; renderPlacebar(); } else if (selected.type !== 'none') select('none'); }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && selected.type === 'unit' && STAGE) { act({ type: 'unit.destroy', id: selected.id, public: STAGE.pub }); select('none'); }
+  });
   $('bk-save')?.addEventListener('click', async () => { if (await backupCall({ do: 'save', label: $('bk-label').value })) { $('bk-label').value = ''; loadBackups(); } });
   $('bk-list')?.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-restore]'); if (!b) return;
