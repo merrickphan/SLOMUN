@@ -1146,3 +1146,62 @@ body *:not(.lbl) { letter-spacing: normal !important; }
 .pvcount { font-size: 14px; color: var(--gold); white-space: nowrap; }
 .pvsecret { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 .placebar .pcount { font-weight: 700; }
+
+/* Make changes sidebar */
+.stagepanel { position: absolute; z-index: 13; right: 12px; top: calc(var(--topH, 0px) + 12px); bottom: calc(var(--botH, 0px) + 12px); width: min(380px, 42%); display: flex; flex-direction: column; background: rgba(22, 26, 33, 0.9); border: 1px solid var(--pane-edge); box-shadow: 0 16px 44px rgba(0,0,0,.45); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); pointer-events: auto; }
+.stagepanel[hidden] { display: none; }
+.sphead { padding: 12px 14px 6px; display: flex; flex-direction: column; }
+.sphead b { font-size: 17px; color: var(--gold); }
+.sphead span { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sptabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--pane-edge); }
+.sptabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 2px; font-weight: 600; font-size: 13px; color: var(--muted); }
+.sptabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--gold); }
+.sptabs .count { background: var(--gold); color: #15110A; padding: 0 5px; font-size: 11px; }
+.spbody { flex: 1; overflow-y: auto; padding: 10px 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.spowners { display: flex; flex-wrap: wrap; gap: 5px; }
+.spown { padding: 4px; background: rgba(255,255,255,.05); border: 2px solid transparent; line-height: 0; }
+.spown .fl { width: 30px; height: 20px; display: block; }
+.spown.on { border-color: var(--gold); background: rgba(245,194,27,.15); }
+.sph { margin: 6px 0 0; font-size: 13px; font-weight: 700; color: var(--muted); display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.spsize { font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.spsize input, #sp-find { width: 64px; background: var(--field); border: 1px solid var(--pane-edge); color: var(--text); padding: 3px 6px; }
+#sp-find { width: 140px; }
+.spsize span { font-size: 11.5px; color: var(--muted); }
+.spgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; }
+.sptile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 4px 6px; background: rgba(255,255,255,.04); border: 1px solid var(--pane-edge); color: var(--text); cursor: grab; text-align: center; transition: border-color .15s, background-color .15s, transform .12s var(--ease); }
+.sptile:hover { border-color: var(--gold); background: rgba(245,194,27,.08); transform: translateY(-1px); }
+.sptile:active { cursor: grabbing; }
+.sptile img, .sptile .noimg { width: 64px; height: 48px; object-fit: contain; display: block; background: radial-gradient(ellipse at 50% 45%, rgba(255,255,255,.12), rgba(0,0,0,.15)); pointer-events: none; }
+.sptile b { font-size: 11.5px; font-weight: 600; line-height: 1.15; }
+.sptile small { font-size: 10.5px; color: var(--muted); }
+.spunit { display: grid; grid-template-columns: 56px minmax(0, 1fr) 22px; gap: 8px; align-items: center; padding: 4px; background: rgba(255,255,255,.04); border: 1px solid var(--pane-edge); }
+.spunit img { width: 56px; height: 42px; object-fit: contain; }
+.spunit b { display: block; font-size: 13px; } .spunit small { color: var(--muted); font-size: 12px; } .spunit .fl { width: 16px; height: 11px; display: inline-block; vertical-align: -1px; }
+.spodds { margin: 0; font-size: 13px; padding: 6px 8px; background: rgba(245,194,27,.1); border-left: 3px solid var(--gold); }
+.spd { border: 1px solid var(--pane-edge); padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
+.spd summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--gold); }
+.spd[open] { gap: 6px; }
+.spd textarea, .spd input[type=text], .spd select { width: 100%; background: var(--field); border: 1px solid var(--pane-edge); color: var(--text); padding: 6px 8px; font-size: 13px; }
+.spd .row { flex-wrap: nowrap; } .spd .row > * { min-width: 0; }
+.spd .notepick { max-height: 150px; }
+.spsay { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
+.editcard.instage { position: static; width: auto; max-height: none; box-shadow: none; border: 0; background: transparent; padding: 0; }
+.staffmap .stagepanel ~ .zoom, .staffmap:has(.stagepanel:not([hidden])) .zoom { right: calc(min(380px, 42%) + 24px); }
+
+/* Staging mode: unmistakable */
+.staffmap.staging .stoolbar, .staffmap.staging .undobar { display: none !important; }
+.staffmap.staging .stage::after { content: ""; position: absolute; inset: 0; border: 4px solid var(--gold); box-shadow: inset 0 0 60px rgba(245,194,27,.18); pointer-events: none; z-index: 12; }
+.staffmap.staging .prevbar { position: absolute; z-index: 14; top: calc(var(--topH, 0px) + 10px); left: calc(50% + 20px); transform: translateX(-50%); width: auto; max-width: calc(100% - 900px); min-width: 300px; display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 8px 18px; background: var(--gold); color: #15110A; border: 0; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.staffmap.staging .prevbar b { font-size: 16px; white-space: nowrap; }
+.staffmap.staging .prevbar span { font-size: 13px; font-weight: 600; opacity: .8; }
+.staffmap.staging .stage .date { top: calc(var(--topH, 0px) + 64px); }
+.sphead { gap: 8px; padding: 12px 14px 10px; border-bottom: 1px solid var(--pane-edge); background: rgba(245,194,27,.08); }
+.sptitle { display: flex; flex-direction: column; }
+.spctl { display: flex; gap: 6px; }
+.spctl .spgo { flex: 1; font-size: 16px; padding: 9px 12px; }
+.spsecret { font-size: 13px !important; color: var(--muted) !important; }
+.spchanges summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--gold); }
+.spchanges ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; font-size: 12.5px; max-height: 160px; overflow-y: auto; }
+.spchanges .fl { width: 16px; height: 11px; display: inline-block; vertical-align: -1px; }
+.spnone { margin: 0; }
+@media (max-width: 1200px) { .staffmap.staging .prevbar { max-width: none; left: 50%; } }

@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as S from '@/lib/crisis/scenario';
 import { REGIONS } from '@/lib/crisis/regions';
-import { applyAction as simulateAction } from '@/lib/crisis/engine';
+import { applyAction as simulateAction, battleOdds } from '@/lib/crisis/engine';
 
 const { LON0, LON1, LAT0, LAT1, OWNER, NEUTRALS, LABELS, SKIP_WORLD, LABEL_TEXT, CITIES, CAPITAL, CITY_OF, BUILD, BUILD_KIND,
   KIND_NAME, DEST_BY_KIND, ROSTER, POWER_TEXT, ALWAYS, LIMITS_ALWAYS, SECRET, SPECIAL, SIGS_NEEDED, DSTATUS, ORDER, KINDS } = S;
@@ -1073,6 +1073,11 @@ class Globe {
     this.dirty = true;
   }
   refreshTexture() { if (this.patchTex) { this.patchTex.needsUpdate = true; this.dirty = true; } }
+  groundAtClient(x, y) {
+    const c = this.renderer.domElement; const r = c.getBoundingClientRect(); const m = new THREE.Vector2((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+    const ray = new THREE.Raycaster(); ray.setFromCamera(m, this.camera); const hit = ray.intersectObjects([this.patch, this.base].filter(Boolean))[0]; if (!hit) return null;
+    const p = hit.point.clone().normalize(); return [+(Math.atan2(-p.z, p.x) / D2R).toFixed(3), +(Math.asin(p.y) / D2R).toFixed(3)];
+  }
   repaintOcc(sel) { if (!this.occCanvas) return; paintOccupation(this.occCanvas, sel); this.occTex.needsUpdate = true; this.dirty = true; }
   repaintFog() { if (!this.fogCanvas) return; paintFogLayer(this.fogCanvas); this.fogTex.needsUpdate = true; this.dirty = true; }
   resize() {
@@ -1312,9 +1317,9 @@ const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button"
 const DATECARD = `<div class="date glass num"><span class="date-line"></span><small class="countdown">Next crisis update in <b>15:00</b></small></div>`;
 
 /* ---------- Staff screen: the map plus a request drawer and pop-ups ---------- */
-const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['ev', 'Make something happen'], ['battle', 'Battle'], ['rels', 'Wars and treaties'], ['feat', 'Features and spies'], ['gallery', 'Figurines'], ['msgs', 'Messages'], ['clock', 'Clock'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
+const MODALS = [['dir', 'Directives'], ['cu', 'Crisis update'], ['rels', 'Wars and treaties'], ['feat', 'Features and spies'], ['gallery', 'Figurines'], ['msgs', 'Messages'], ['clock', 'Clock'], ['proj', 'Projector'], ['codes', 'Access codes'], ['game', 'Game']];
 function staffBar() {
-  return `<div class="undobar" id="undobar" hidden></div><nav class="stoolbar" aria-label="Staff tools">${MODALS.map(([k, l]) => `<button type="button" class="dbtn" data-modal="${k}">${l}<span class="count num" id="stc-${k}" hidden></span></button>`).join('')}</nav>`;
+  return `<div class="undobar" id="undobar" hidden></div><nav class="stoolbar" aria-label="Staff tools"><button type="button" class="dbtn gold" id="tb-stage">Make changes</button>${MODALS.map(([k, l]) => `<button type="button" class="dbtn" data-modal="${k}">${l}<span class="count num" id="stc-${k}" hidden></span></button>`).join('')}</nav>`;
 }
 function staffDrawer() {
   return `<aside class="sdrawer" id="sdrawer"><div class="shead"><button type="button" class="dbtn" id="sd-toggle" aria-expanded="true" aria-label="Hide requests">‹</button><h2>Requests</h2><span class="pill pending num" id="q-count"></span>
@@ -1332,11 +1337,6 @@ function staffModals(p) {
             <label class="check"><input type="checkbox" id="cu-flash" checked> Breaking news flash on every screen</label>
             <label class="check"><input type="checkbox" id="cu-reset" checked> Restart the countdown at <input type="number" id="cu-min" min="1" max="60" value="15" style="width:56px"> minutes</label>
             <button type="submit" class="dbtn gold">Publish to the room</button></form>`)
-    + modal('ev', 'Make something happen', `<p class="formnote">Make the changes on the map by hand (move or spawn forces, build, place figurines and spies, give regions, battles), then press Go. Add a headline if the room should hear about it.</p>
-          <label class="formnote" for="ev-head">News wire headline (optional)<input type="text" id="ev-head" maxlength="200" placeholder="For example: Soviet troops cross into eastern Poland"></label>
-          <label class="check"><input type="checkbox" id="ev-flash"> Also show it as breaking news on every screen</label>
-          <div class="row"><button type="button" class="dbtn gold" id="free-prev">Make changes</button></div>`)
-    + modal('battle', 'Battle calculator', '<p class="formnote">Tip: click units on the map and choose "Attacker" or "Defender". Battles in approved crisis notes roll by themselves.</p><div id="battle"></div>', true)
     + modal('rels', 'Wars, treaties and conditions', '<div id="rels"></div>')
     + modal('feat', 'Map features, spies and scheduled events', '<p class="formnote">Click any feature on the map to change it, or click the map to build one. Spies show on the map as dark pins.</p><div id="featlist"></div>', true)
     + modal('gallery', 'Figurine gallery', `<div class="row"><p class="formnote" style="flex:1">Every model the map can show. Units and spies are figures; everything else can be placed from the map or comes from approved notes.</p><label class="formnote">Country colors <select id="gal-owner">${ORDER.map((k) => `<option value="${k}"${k === 'Germany' ? ' selected' : ''}>${POWERS[k].label}</option>`).join('')}</select></label></div><div class="fgrid" id="fgrid"></div>`, true)
@@ -1357,7 +1357,7 @@ function staffModals(p) {
           <div class="row"><button type="button" class="dbtn" id="load-demo">Load demo requests</button></div>
           <div class="row"><input type="text" id="reset-confirm" placeholder="Type RESET" aria-label="Type RESET to confirm"><button type="button" class="dbtn red" id="reset-game">Reset the whole game</button></div>`);
 }
-function openModal(k) { document.querySelectorAll('.smodal').forEach((m) => (m.hidden = m.id !== 'm-' + k)); if (k === 'battle') syncBattleSelects(); if (k === 'gallery') startGallery(); if (k === 'game') loadBackups(); if (k === 'cu' && $('cu-date')) $('cu-date').value = S.gameDateText(gameNow()); if (k === 'clock') syncClockUI(true); }
+function openModal(k) { document.querySelectorAll('.smodal').forEach((m) => (m.hidden = m.id !== 'm-' + k)); if (k === 'gallery') startGallery(); if (k === 'game') loadBackups(); if (k === 'cu' && $('cu-date')) $('cu-date').value = S.gameDateText(gameNow()); if (k === 'clock') syncClockUI(true); }
 const gameNow = () => S.gameTime(STATE?.clock, Date.now() + SKEW);
 function syncClockUI(fill) {
   if (!$('clk-now') || !STATE?.clock) return; const c = STATE.clock;
@@ -1436,7 +1436,7 @@ function skeleton(p) {
       <div class="queuecard glass"><b class="num" id="pend-count">0</b><span>Requests waiting<br>for crisis staff</span></div>
       <div class="floorcard glass" id="floorcard" hidden></div>
       <div class="update glass" id="update-card"></div>
-      <div class="selcard glass" id="selpanel" aria-live="polite"></div>${EDIT ? '<div class="editcard" id="editcard" hidden></div><div class="prevbar" id="prevbar" hidden></div><div class="placebar" id="placebar" hidden></div><div class="btray glass" id="btray" hidden></div>' : ''}
+      <div class="selcard glass" id="selpanel" aria-live="polite"></div>${EDIT ? '<div class="editcard" id="editcard" hidden></div><div class="prevbar" id="prevbar" hidden></div><div class="placebar" id="placebar" hidden></div><aside class="stagepanel" id="stagepanel" hidden></aside>' : ''}
       <div class="hint glass">Left-drag to turn · right-drag to move · scroll to zoom</div>${ZOOM('map')}
     </div>
     <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div>
@@ -1615,6 +1615,7 @@ function renderSel() {
   box.innerHTML = `<div class="badge flagbadge">${flag(name)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill ${p.side}">${p.side === 'war' ? 'At war' : 'Neutral'}</span>${sub ? ' · ' + sub : ''}</div><div class="stats"><div><span>Treasury</span> <b class="num">$${p.treasury}M</b></div><div><span>Forces</span> <b class="num">${UNITS.filter((u) => u.owner === owner).length}</b></div><div><span>Commanders</span> ${p.delegates.map(esc).join(', ') || 'Crisis staff'}</div>${regionLine}</div></div>`;
 }
 function select(type, id, region, at) {
+  if (STAGE && STAGE.tab !== 'sel' && type !== 'none') { STAGE.tab = 'sel'; setTimeout(renderStagePanel, 0); }
   selected = { type, id, region, at: at ? [+at[0].toFixed(3), +at[1].toFixed(3)] : null }; confirmKill = null; if (EDIT) setTimeout(renderEdit, 0);
   if (mapGlobe) { mapGlobe.selectedUnit = type === 'unit' ? id : null; mapGlobe.markSelected(mapGlobe.selectedUnit); mapGlobe.repaintOcc(type === 'country' ? id : null); }
   renderSel();
@@ -2118,7 +2119,7 @@ function renderEdit() {
       <div class="row">${(u.traits || []).map((t) => `<span class="schip ${t.mod > 0 ? 'good' : t.mod < 0 ? 'bad' : ''}">${esc(t.label)} ${t.mod >= 0 ? '+' : ''}${t.mod} <button type="button" data-untrait="${esc(t.label)}" aria-label="Remove">✕</button></span>`).join('') || '<span class="formnote">No traits</span>'}</div>
       <div class="row"><input type="text" id="e-tlabel" maxlength="40" placeholder="Add a trait, e.g. Low on fuel"><input type="number" id="e-tmod" min="-4" max="4" value="1" style="width:56px" aria-label="Battle bonus"><button type="button" class="dbtn" data-e="trait">Add</button></div>
       <div class="row"><button type="button" class="dbtn gold" data-e="move-pub">Move on projector</button><button type="button" class="dbtn green" data-e="move-sec">Move secretly</button>${secret ? '<button type="button" class="dbtn" data-e="reveal">Reveal</button>' : ''}</div>
-      <div class="row"><button type="button" class="dbtn${inA ? ' gold' : ''}" data-e="att">${inA ? 'Attacking ✓' : 'Attacker in a battle'}</button><button type="button" class="dbtn${inD ? ' gold' : ''}" data-e="def">${inD ? 'Defending ✓' : 'Defender in a battle'}</button></div>
+      ${STAGE ? '' : '<!--'}<div class="row"><button type="button" class="dbtn${inA ? ' gold' : ''}" data-e="att">${inA ? 'Attacking ✓' : 'Attacker in a battle'}</button><button type="button" class="dbtn${inD ? ' gold' : ''}" data-e="def">${inD ? 'Defending ✓' : 'Defender in a battle'}</button></div>${STAGE ? '' : '-->'}
       <div class="row"><button type="button" class="dbtn red" data-e="kill">${confirmKill === u.id ? 'Click again to confirm' : u.kind === 'fleet' ? 'Sink' : u.kind === 'air' ? 'Shoot down' : 'Destroy'}</button></div>`;
     }
   } else if (selected.type === 'feature') {
@@ -2161,7 +2162,7 @@ function renderBattleTray() {
 }
 function syncBattleSelects() {
   for (const [id, set] of [['b-att', battleSel.att], ['b-def', battleSel.def]]) { const el = $(id); if (el) [...el.options].forEach((o) => (o.selected = set.has(o.value))); }
-  if ($('b-result')) renderBattleResult(); renderBattleTray();
+  if (STAGE) renderStagePanel();
 }
 function bindEdit() {
   $('editcard').addEventListener('click', (e) => {
@@ -2512,24 +2513,108 @@ function previewOnMap(label, payload, go, reopen) {
   const sim = JSON.parse(JSON.stringify(STATE));
   if (payload) { try { simulateAction(sim, { role: 'staff' }, payload); } catch (e) { toast(e.message, 'error'); return; } }
   document.querySelectorAll('.smodal').forEach((m) => (m.hidden = true));
-  REAL = STATE; STAGE = { label, payload, go, reopen, sim, pub: true };
+  REAL = STATE; STAGE = { label, payload, go, reopen, sim, pub: true, extra: [], flash: null, tab: 'place', owner: payload && STATE.queue?.find((q) => q.id === payload.id)?.country || 'Germany', size: 3, find: '' };
   showStage(Object.fromEntries(UNITS.map((u) => [u.id, u])));
 }
 function showStage(prev) {
   const sim = STAGE.sim; STATE = sim;
   UNITS = sim.units || []; FEATS = sim.features || []; CONTROL = sim.control || {}; MARKERS = sim.markers || [];
   AGENTS = Object.entries(sim.agents || {}).flatMap(([owner, l]) => l.map((g) => ({ ...g, owner })));
-  mapGlobe.sync(prev); mapGlobe.addProps(); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null); mapGlobe.addPins(); if (EDIT) renderEdit();
-  // A slim bar: how many changes, a secret switch, and the buttons. The full list shows on hover.
-  const L = previewDiff(REAL, sim); const bar = $('prevbar'); bar.hidden = false;
-  bar.title = L.length ? L.map((x) => x.replace(/<[^>]+>/g, '')).join('\n') : 'No changes yet';
-  bar.innerHTML = `<b class="pvcount">${L.length ? `${L.length} change${L.length === 1 ? '' : 's'} ready` : 'Staging'}</b>
-    <label class="pvsecret" title="Secret: only staff and the owning side see these changes"><input type="checkbox" id="pv-pub"${STAGE.pub ? '' : ' checked'}> Secret</label>
-    <button type="button" class="dbtn gold" id="pv-go">Go</button><button type="button" class="dbtn" id="pv-reset">Start over</button><button type="button" class="dbtn" id="pv-back">Cancel</button>`;
-  $('pv-go').addEventListener('click', goStage);
-  $('pv-back').addEventListener('click', () => exitStage(true));
-  $('pv-reset').addEventListener('click', () => { const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.sim = JSON.parse(JSON.stringify(REAL)); STAGE.payload = null; showStage(prev); });
-  $('pv-pub').addEventListener('change', (e) => (STAGE.pub = !e.target.checked));
+  mapGlobe.sync(prev); mapGlobe.addProps(); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null); mapGlobe.addPins(); if (EDIT) renderEdit(); renderStagePanel();
+  // Staging takes over the screen: a banner where the staff toolbar was, a gold frame, and the controls in the sidebar.
+  document.querySelector('.staffmap')?.classList.add('staging');
+  const L = previewDiff(REAL, sim); STAGE.changes = L; const bar = $('prevbar'); bar.hidden = false;
+  bar.innerHTML = `<b>Making changes</b><span>Only you can see this until you press Go${L.length ? ` · ${L.length} change${L.length === 1 ? '' : 's'} ready` : ''}</span>`;
+}
+/* The Make changes sidebar: place figurines, edit what is selected, fight battles, send announcements. */
+const SP_TABS = [['place', 'Place'], ['sel', 'Selected'], ['battle', 'Battle'], ['say', 'Announce']];
+function spTile(kind, key, label, img, sub) { return `<button type="button" class="sptile" draggable="true" data-pk="${kind}" data-pv="${esc(key)}" title="Drag onto the map, or click and then click the map">${img ? `<img src="${img}" alt="">` : '<span class="noimg"></span>'}<b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`; }
+function placeSpec(kind, key) {
+  const o = STAGE.owner, pub = STAGE.pub;
+  if (kind === 'unit') return { mode: 'add', data: { owner: o, kind: key, str: STAGE.size, name: `New ${KIND_NAME[key].toLowerCase()}` }, public: pub };
+  if (kind === 'spy') return { mode: 'spy', data: { name: key }, public: pub };
+  return { mode: 'feat', data: { kind: key, owner: o, label: FEAT[key]?.name || key }, public: pub };
+}
+function renderStagePanel() {
+  const P = $('stagepanel'); if (!P || !STAGE) return; P.hidden = false; const st = STAGE, o = st.owner;
+  let body = '';
+  if (st.tab === 'place') {
+    const spies = ROSTER.filter((r) => r.country === o);
+    const feats = Object.entries(FEAT).filter(([k, v]) => !st.find || v.name.toLowerCase().includes(st.find.toLowerCase()));
+    body = `<div class="spowners">${ORDER.map((c) => `<button type="button" class="spown${c === o ? ' on' : ''}" data-own="${c}" title="${esc(POWERS[c].label)}">${flag(c)}</button>`).join('')}</div>
+      <p class="sph">Forces for ${esc(POWERS[o].label)} <label class="spsize">Size <input type="number" id="sp-size" min="1" max="99" value="${st.size}"> <span>${esc(S.realText({ kind: 'army', owner: o }, st.size))}</span></label></p>
+      <div class="spgrid">${KINDS.map((k) => spTile('unit', k, KIND_NAME[k], unitThumb(k, o), S.realShort({ kind: k, owner: o }, st.size))).join('')}</div>
+      <p class="sph">Spies</p><div class="spgrid">${spies.map((r) => spTile('spy', r.name, r.name.split(' ').slice(-1)[0] + "'s agent", spyThumb(), '')).join('') || '<p class="formnote">No delegates for this country.</p>'}</div>
+      <p class="sph">Map features <input type="search" id="sp-find" placeholder="Search" value="${esc(st.find)}"></p>
+      <div class="spgrid">${feats.map(([k, v]) => spTile('feat', k, v.name, featThumb(k, o), v.mod ? `${v.mod > 0 ? '+' : ''}${v.mod} defense` : '')).join('')}</div>`;
+  } else if (st.tab === 'sel') {
+    body = `<div id="sp-selslot"></div>`;
+  } else if (st.tab === 'battle') {
+    const us = (set) => [...set].map((id) => UNITS.find((u) => u.id === id)).filter(Boolean);
+    const A = us(battleSel.att), D = us(battleSel.def);
+    const row = (u, side) => `<div class="spunit"><img src="${unitThumb(u.kind, u.owner)}" alt=""><div><b>${flag(u.owner)} ${esc(u.name)}</b><small>${S.realText(u)}</small></div><button type="button" class="dx" data-unbattle="${side}:${u.id}" aria-label="Remove">✕</button></div>`;
+    let odds = ''; if (A.length && D.length) { try { const r = battleOdds(STATE, A, D, +($('sp-ab')?.value || 0), +($('sp-db')?.value || 0)); odds = `<p class="spodds">Attack ${r.A.toFixed(1)} against defense ${r.D.toFixed(1)}: ${(r.A / r.D).toFixed(2)} to 1${r.feats?.length ? ` (defenders helped by ${r.feats.map((f) => esc(f.label)).join(', ')})` : ''}</p>`; } catch {} }
+    body = `<p class="formnote">Click a unit on the map, then use Attacker or Defender in the Selected tab.</p>
+      <p class="sph">Attackers</p>${A.map((u) => row(u, 'att')).join('') || '<p class="formnote">None yet.</p>'}
+      <p class="sph">Defenders</p>${D.map((u) => row(u, 'def')).join('') || '<p class="formnote">None yet.</p>'}
+      <div class="row"><label class="formnote">Attacker edge <select id="sp-ab"><option value="0">None</option><option value="0.25">+25% (surprise, support or supply)</option><option value="0.5">+50%</option><option value="-0.25">−25%</option></select></label>
+      <label class="formnote">Defender edge <select id="sp-db"><option value="0">None</option><option value="0.25">+25%</option><option value="0.5">+50% (rough ground or river)</option><option value="-0.25">−25%</option></select></label></div>${odds}
+      <div class="row"><button type="button" class="dbtn gold" id="sp-fight"${A.length && D.length ? '' : ' disabled'}>Fight</button><button type="button" class="dbtn" id="sp-bclear">Clear</button></div>
+      <p class="formnote">The dice roll here is the one Go sends. Losses, sinkings and captured regions show on the map straight away.</p>`;
+  } else {
+    const people = ORDER.map((c) => { const rs = ROSTER.filter((r) => r.country === c); return rs.length ? `<div class="npc">${flag(c)}${rs.map((r) => `<label><input type="checkbox" value="${esc(r.name)}"><span>${esc(r.name)}</span></label>`).join('')}</div>` : ''; }).join('');
+    const q = st.extra.map((e, i) => `<li>${e.type === 'message' ? `Note from ${esc(e.from)} to ${e.to.map(esc).join(', ')}: “${esc(e.text)}”` : e.type === 'intel' ? `Intel for ${esc(POWERS[e.country]?.label || e.country)} from ${esc(e.from)}: “${esc(e.text)}”` : `News wire: “${esc(e.text)}”`} <button type="button" class="dx" data-unsay="${i}" aria-label="Remove">✕</button></li>`).join('');
+    body = `${q || st.flash ? `<p class="sph">Sent on Go</p><ul class="spsay">${q}${st.flash ? `<li>Breaking news: <b>${esc(st.flash.head)}</b> <button type="button" class="dx" data-unflash aria-label="Remove">✕</button></li>` : ''}</ul>` : ''}
+      <details class="spd" open><summary>Private note to delegates</summary><fieldset class="notepick">${people}</fieldset>
+        <div class="row"><input type="text" id="sp-mfrom" maxlength="60" placeholder="Signed as (e.g. Adolf Hitler)" value="Crisis staff"></div><textarea id="sp-mtext" maxlength="1200" placeholder="What the note says"></textarea><button type="button" class="dbtn gold" id="sp-madd">Add note</button></details>
+      <details class="spd"><summary>Intel report to a country</summary><div class="row"><select id="sp-icountry">${ORDER.map((c) => `<option value="${c}">${esc(POWERS[c].label)}</option>`).join('')}</select><input type="text" id="sp-ifrom" maxlength="60" placeholder="Source, e.g. Embassy, Rome"><select id="sp-irel"><option>High</option><option selected>Medium</option><option>Low</option></select></div><textarea id="sp-itext" maxlength="600" placeholder="What they learn"></textarea><button type="button" class="dbtn gold" id="sp-iadd">Add intel</button></details>
+      <details class="spd"><summary>News wire headline (everyone)</summary><input type="text" id="sp-wtext" maxlength="200" placeholder="For example: Soviet troops cross into eastern Poland"><button type="button" class="dbtn gold" id="sp-wadd">Add headline</button></details>
+      <details class="spd"><summary>Breaking news on every screen</summary><input type="text" id="sp-fhead" maxlength="140" placeholder="Headline"><textarea id="sp-fdeck" maxlength="600" placeholder="A sentence or two under it (optional)"></textarea><button type="button" class="dbtn gold" id="sp-fadd">Set breaking news</button></details>`;
+  }
+  const L = st.changes || [];
+  P.innerHTML = `<header class="sphead"><div class="sptitle"><b>Make changes</b><span>${esc(st.label)}</span></div>
+      <div class="spctl"><button type="button" class="dbtn gold spgo" id="pv-go">Go${L.length ? ` (${L.length})` : ''}</button><button type="button" class="dbtn" id="pv-reset">Start over</button><button type="button" class="dbtn" id="pv-back">Cancel</button></div>
+      <label class="check spsecret"><input type="checkbox" id="pv-pub"${st.pub ? '' : ' checked'}> Secret: keep these changes off the projector</label>
+      ${L.length ? `<details class="spchanges"><summary>${L.length} change${L.length === 1 ? '' : 's'} so far</summary><ul>${L.map((x) => `<li>${x}</li>`).join('')}</ul></details>` : '<p class="formnote spnone">No changes yet. Drag figurines onto the map, or click something on the map to change it.</p>'}</header><nav class="sptabs" role="tablist">${SP_TABS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${st.tab === k}" data-sptab="${k}">${l}${k === 'battle' && battleSel.att.size + battleSel.def.size ? ` <span class="count">${battleSel.att.size + battleSel.def.size}</span>` : ''}${k === 'say' && st.extra.length + (st.flash ? 1 : 0) ? ` <span class="count">${st.extra.length + (st.flash ? 1 : 0)}</span>` : ''}</button>`).join('')}</nav><div class="spbody">${body}</div>`;
+  // The selected-item card lives in the sidebar while staging.
+  const ec = $('editcard'); if (st.tab === 'sel' && ec) { $('sp-selslot').appendChild(ec); ec.classList.add('instage'); if (ec.hidden || !ec.innerHTML.trim()) $('sp-selslot').insertAdjacentHTML('afterbegin', '<p class="formnote">Click a unit, feature, region, sea or city on the map to change it here: strength, traits, move, destroy, give regions, spawn or build.</p>'); ec.hidden = false; }
+  else if (ec && ec.classList.contains('instage')) { $('stage-map').appendChild(ec); ec.classList.remove('instage'); ec.hidden = true; }
+}
+function bindStagePanel() {
+  const P = $('stagepanel'); if (!P) return;
+  P.addEventListener('click', (e) => {
+    if (e.target.id === 'pv-go') { goStage(); return; }
+    if (e.target.id === 'pv-back') { exitStage(true); return; }
+    if (e.target.id === 'pv-reset') { const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.sim = JSON.parse(JSON.stringify(REAL)); STAGE.payload = null; battleSel.att.clear(); battleSel.def.clear(); showStage(prev); return; }
+    const t = e.target.closest('[data-sptab]'); if (t) { STAGE.tab = t.dataset.sptab; renderStagePanel(); return; }
+    const ow = e.target.closest('[data-own]'); if (ow) { STAGE.owner = ow.dataset.own; renderStagePanel(); return; }
+    const tile = e.target.closest('.sptile'); if (tile) { placing = { ...placeSpec(tile.dataset.pk, tile.dataset.pv), repeat: true, count: 0 }; renderPlacebar(); return; }
+    const ub = e.target.closest('[data-unbattle]'); if (ub) { const [side, id] = ub.dataset.unbattle.split(':'); battleSel[side].delete(id); renderStagePanel(); return; }
+    if (e.target.id === 'sp-bclear') { battleSel.att.clear(); battleSel.def.clear(); renderStagePanel(); return; }
+    if (e.target.id === 'sp-fight') { const ab = +$('sp-ab').value, db = +$('sp-db').value; act({ type: 'effects.apply', effects: [{ type: 'battle', attackers: [...battleSel.att], defenders: [...battleSel.def], amount: ab, mod: db, public: STAGE.pub }] }).then(() => { battleSel.att.clear(); battleSel.def.clear(); renderStagePanel(); }); return; }
+    const us = e.target.closest('[data-unsay]'); if (us) { STAGE.extra.splice(+us.dataset.unsay, 1); renderStagePanel(); return; }
+    if (e.target.closest('[data-unflash]')) { STAGE.flash = null; renderStagePanel(); return; }
+    const val = (id) => ($(id)?.value || '').trim();
+    if (e.target.id === 'sp-madd') { const to = [...P.querySelectorAll('.notepick input:checked')].map((i) => i.value); if (!to.length || !val('sp-mtext')) { toast('Tick who gets it and write the note.'); return; } STAGE.extra.push({ type: 'message', from: val('sp-mfrom') || 'Crisis staff', to, text: val('sp-mtext') }); renderStagePanel(); }
+    if (e.target.id === 'sp-iadd') { if (!val('sp-itext')) { toast('Write the intel first.'); return; } STAGE.extra.push({ type: 'intel', country: val('sp-icountry'), from: val('sp-ifrom') || 'Crisis staff', rel: val('sp-irel'), text: val('sp-itext') }); renderStagePanel(); }
+    if (e.target.id === 'sp-wadd') { if (!val('sp-wtext')) { toast('Write the headline first.'); return; } STAGE.extra.push({ type: 'wire', text: val('sp-wtext') }); renderStagePanel(); }
+    if (e.target.id === 'sp-fadd') { if (!val('sp-fhead')) { toast('Write the headline first.'); return; } STAGE.flash = { head: val('sp-fhead'), deck: val('sp-fdeck') }; renderStagePanel(); }
+  });
+  P.addEventListener('input', (e) => {
+    if (e.target.id === 'sp-size') { STAGE.size = Math.max(1, Math.min(99, +e.target.value || 1)); const sp = e.target.nextElementSibling; if (sp) sp.textContent = S.realText({ kind: 'army', owner: STAGE.owner }, STAGE.size); P.querySelectorAll('.sptile[data-pk="unit"] small').forEach((el) => { el.textContent = S.realShort({ kind: el.parentElement.dataset.pv, owner: STAGE.owner }, STAGE.size); }); }
+    if (e.target.id === 'sp-find') { STAGE.find = e.target.value; const pos = e.target.selectionStart; renderStagePanel(); const f = $('sp-find'); f.focus(); f.setSelectionRange(pos, pos); }
+  });
+  P.addEventListener('change', (e) => { if (e.target.id === 'pv-pub') { STAGE.pub = !e.target.checked; return; } if (e.target.id === 'sp-ab' || e.target.id === 'sp-db') { const a = e.target.id, v = e.target.value; renderStagePanel(); $(a).value = v; } });
+  // Drag a figurine from the sidebar and drop it on the map.
+  P.addEventListener('dragstart', (e) => { const tile = e.target.closest('.sptile'); if (!tile) return; e.dataTransfer.setData('text/plain', JSON.stringify([tile.dataset.pk, tile.dataset.pv])); e.dataTransfer.effectAllowed = 'copy'; });
+  const stage = $('stage-map');
+  stage.addEventListener('dragover', (e) => { if (STAGE) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  stage.addEventListener('drop', (e) => {
+    if (!STAGE) return; e.preventDefault(); let d; try { d = JSON.parse(e.dataTransfer.getData('text/plain')); } catch { return; }
+    const ll = mapGlobe?.groundAtClient(e.clientX, e.clientY); if (!ll) { toast('Drop it on land or sea.'); return; }
+    const keep = placing; placing = { ...placeSpec(d[0], d[1]) }; placeAt(ll[0], ll[1]); placing = keep; renderPlacebar();
+  });
+  $('tb-stage')?.addEventListener('click', () => previewOnMap('changes', null, (effects, base) => act({ type: 'effects.apply', effects, flash: base.flash, empty: true })));
 }
 // Apply a staff map action to the staged copy instead of the server.
 function stageAction(payload) {
@@ -2562,11 +2647,12 @@ function stageEffects(a, b, pub) {
 }
 async function goStage() {
   const st = STAGE; if (!st) return;
-  const fx = [...stageEffects(REAL, st.sim, st.pub), ...((st.payload?.effects || []).filter((e) => KEEP_FX.has(e.type)))];
-  exitStage(false); await st.go(fx, st.payload || {});
+  const fx = [...stageEffects(REAL, st.sim, st.pub), ...((st.payload?.effects || []).filter((e) => KEEP_FX.has(e.type))), ...st.extra];
+  exitStage(false); await st.go(fx, { ...(st.payload || {}), flash: st.flash || st.payload?.flash || null });
 }
 function exitStage(back) {
-  if (!STAGE) return; const reopen = STAGE.reopen; STAGE = null; $('prevbar').hidden = true;
+  if (!STAGE) return; const reopen = STAGE.reopen; STAGE = null; $('prevbar').hidden = true; document.querySelector('.staffmap')?.classList.remove('staging'); $('stagepanel').hidden = true; placing = null; renderPlacebar();
+  const ec = $('editcard'); if (ec && ec.parentElement !== $('stage-map')) { $('stage-map').appendChild(ec); ec.classList.remove('instage'); }
   STATE = REAL; REAL = null; featSig = ''; applyState(STATE); if (back && reopen) openModal(reopen);
 }
 function previewDiff(a, b) {
@@ -2609,6 +2695,7 @@ async function loadBackups() {
   } catch (e) { t.innerHTML = `<tbody><tr><td class="formnote">Could not load backups: ${esc(e.message || 'server error')}</td></tr></tbody>`; }
 }
 function bindStaff() {
+  bindStagePanel();
   $('bk-save')?.addEventListener('click', async () => { if (await backupCall({ do: 'save', label: $('bk-label').value })) { $('bk-label').value = ''; loadBackups(); } });
   $('bk-list')?.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-restore]'); if (!b) return;
@@ -2627,14 +2714,13 @@ function bindStaff() {
   document.querySelectorAll('.smodal').forEach((m) => m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-close]')) m.hidden = true; }));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelectorAll('.smodal').forEach((m) => (m.hidden = true)); });
   $('sd-toggle').addEventListener('click', () => { const d = $('sdrawer'); const shut = d.classList.toggle('shut'); $('sd-toggle').textContent = shut ? '›' : '‹'; $('sd-toggle').setAttribute('aria-expanded', !shut); });
-  $('btray').addEventListener('click', (e) => { if (e.target.id === 'bt-open') openModal('battle'); if (e.target.id === 'bt-clear') { battleSel.att.clear(); battleSel.def.clear(); syncBattleSelects(); renderEdit(); } });
   $('queue').addEventListener('click', (e) => {
     const off = e.target.closest('[data-off]'); if (off) { const [k, i] = off.dataset.off.split(':'); const set = (aiOff[k] = aiOff[k] || new Set()); set.has(+i) ? set.delete(+i) : set.add(+i); queueSig = ''; renderStaff(); return; }
     const re = e.target.closest('[data-retry]'); if (re) { delete aiAsked[re.dataset.retry]; delete aiErr[re.dataset.retry]; queueSig = ''; renderStaff(); return; }
     const sh = e.target.closest('[data-show]'); if (sh) { const q = STATE.queue.find((x) => x.id === sh.dataset.show); const at = q && qSpot(q); if (at && mapGlobe) mapGlobe.pulse(at, q.from); return; }
     const pv = e.target.closest('[data-prev]');
     if (pv) { const q = STATE.queue.find((x) => x.id === pv.dataset.prev); if (!q) return;
-      previewOnMap(`${q.from}: ${q.title}`, decisionFor(q, true), async (effects) => { if (await act({ type: 'decide', id: q.id, dec: 'manual', reply: ($('r-' + q.id)?.value || '').trim(), effects }, { quiet: true })) notify({ kind: 'approved', title: 'Approved and carried out', body: `${q.from}: ${q.title}` }); }); return; }
+      previewOnMap(`${q.from}: ${q.title}`, decisionFor(q, true), async (effects, base) => { if (await act({ type: 'decide', id: q.id, dec: 'manual', reply: ($('r-' + q.id)?.value || '').trim(), effects, flash: base.flash }, { quiet: true })) notify({ kind: 'approved', title: 'Approved and carried out', body: `${q.from}: ${q.title}` }); }); return; }
     const b = e.target.closest('[data-dec]'); if (!b) return; const q = STATE.queue.find((x) => x.id === b.dataset.q); if (q) decideQ(q, b.dataset.dec === 'approve', b);
   });
   bindFx($('view-staff-root'));
@@ -2647,7 +2733,7 @@ function bindStaff() {
     if (b.dataset.ch === 'back') act({ type: 'chair.back', id });
     if (b.dataset.ch === 'preview') {
       const d = STATE.directives.find((x) => x.id === id); const box = b.closest('.chair-row').querySelector('.fx'); const cb = b.parentElement.querySelector('[data-ch="carry"]');
-      previewOnMap(`directive ${d.no || ''}: ${d.title}`, null, (effects) => act({ type: 'effects.apply', directive: id, effects, empty: true }).then((ok) => ok && (chairSig = '')), 'dir');
+      previewOnMap(`directive ${d.no || ''}: ${d.title}`, null, (effects, base) => act({ type: 'effects.apply', directive: id, effects, flash: base.flash, empty: true }).then((ok) => ok && (chairSig = '')), 'dir');
     }
     if (b.dataset.ch === 'carry') {
       const d = STATE.directives.find((x) => x.id === id); const box = b.closest('.chair-row').querySelector('.fx');
@@ -2676,7 +2762,6 @@ function bindStaff() {
   $('replay-flash').addEventListener('click', () => act({ type: 'flash' }));
   $('cd-restart').addEventListener('click', () => act({ type: 'countdown', minutes: 15 }));
   $('clear-arrows').addEventListener('click', () => act({ type: 'arrows.clear' }));
-  $('free-prev').addEventListener('click', () => previewOnMap('make something happen', null, (effects) => { const head = $('ev-head').value.trim(), fl = $('ev-flash').checked; return act({ type: 'effects.apply', effects, headline: head || null, flash: fl && head ? { head, deck: '' } : null, empty: true }).then((ok) => { if (ok) { $('ev-head').value = ''; $('ev-flash').checked = false; } }); }, 'ev'));
   $('load-demo').addEventListener('click', () => act({ type: 'game.demo' }));
   $('reset-game').addEventListener('click', () => act({ type: 'game.reset', confirm: $('reset-confirm').value.trim().toUpperCase() }));
 }
@@ -2710,7 +2795,6 @@ export function start(root, props) {
   // Floating panels sit between the top bar and the bottom dock; keep their heights in CSS variables.
   const measure = () => { const t = root.querySelector('.topbar'), d = root.querySelector('.dock') || root.querySelector('.map-view > .bottom'); document.documentElement.style.setProperty('--topH', (t?.offsetHeight || 0) + 'px'); document.documentElement.style.setProperty('--botH', (d?.offsetHeight || 0) + 'px'); };
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null; root.querySelectorAll('.topbar, .dock, .map-view > .bottom').forEach((e) => ro?.observe(e)); measure();
-  if (STAFFMAP) renderBattleShell();
   if (EDIT) bindEdit();
   let stopped = false, timer, failures = 0;
   $('logout').addEventListener('click', async () => { await fetch('/api/crisis/logout', { method: 'POST' }); location.href = '/crisis'; });
