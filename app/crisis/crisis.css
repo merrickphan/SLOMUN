@@ -1129,3 +1129,4 @@ body *:not(.lbl) { letter-spacing: normal !important; }
 #c-to:focus { outline: none; border-bottom-color: #C8A030; }
 .cto label { font-weight: 700; }
 .qto { font-size: 13px; padding: 4px 8px; background: rgba(245,194,27,.12); border-left: 3px solid var(--gold); }
+.aibox .aiguess { grid-column: 1 / -1; color: var(--muted); font-style: italic; }

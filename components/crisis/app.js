@@ -806,7 +806,7 @@ function flagFill(ctx, owner, rings, X, Y, alpha) {
     ctx.globalAlpha = alpha; drawFlag(ctx, owner, X(x0), Y(top), X(x0 + w) - X(x0), Y(top - h) - Y(top)); ctx.restore();
   }
 }
-const flag = (owner, cls = 'fl') => `<svg class="${cls}" viewBox="0 0 30 20" preserveAspectRatio="none" aria-hidden="true">${FLAG_SVG[ownerOf(owner)] || `<rect width="30" height="20" fill="${colorOf(owner)}"/>`}</svg>`;
+const flag = (owner, cls = 'fl') => `<svg class="${cls}" viewBox="0 0 30 20" preserveAspectRatio="none" aria-hidden="true">${FLAG_SVG[ownerOf(owner)] || FLAG_X[flagKeyOf(owner)] || `<rect width="30" height="20" fill="${colorOf(owner)}"/>`}</svg>`;
 const D2R = Math.PI / 180;
 const UNIT_SCALE = 0.00357; // size of the 3D unit figures on the globe
 const PROP_K = UNIT_SCALE / 0.0105; // trenches, forts, factories and their smoke shrink with the units
@@ -2388,7 +2388,7 @@ const keptEffects = (key, b) => (b?.effects || []).filter((_, i) => !(aiOff[key]
 function aiBlock(q) {
   if (!q.ai || q.ai.v !== S.AI_VERSION) return `<div class="aibox wait">${aiErr[q.id] ? `${esc(aiErr[q.id])} <button type="button" class="dbtn" data-retry="${q.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading this request…'}</div>`;
   const A = planList(q.id, q.ai.approve, true), R = planList('r' + q.id, q.ai.reject, false);
-  return `<div class="aibox"><div><b>If approved</b><ul>${A || `<li class="none">${PROPS_AI === 'claude' ? 'Reply only, nothing changes on the map.' : '<b class="warn">Nothing will change.</b> Keyword mode only understands spies, sharing intel, wars and treaties. Add effects below, or set ANTHROPIC_API_KEY so Claude handles any plan.'}</li>`}</ul></div><div><b>If rejected</b><ul>${R || '<li class="none">Nothing happens.</li>'}</ul></div>${q.ai.approve?.staff_note ? `<small>${esc(q.ai.approve.staff_note)}</small>` : ''}</div>`;
+  return `<div class="aibox"><small class="aiguess">The assistant's guess before you reply. Your reply overrides it.</small><div><b>If approved</b><ul>${A || `<li class="none">${PROPS_AI === 'claude' ? 'Reply only, nothing changes on the map.' : '<b class="warn">Nothing will change.</b> Keyword mode only understands spies, sharing intel, wars and treaties. Add effects below, or set ANTHROPIC_API_KEY so Claude handles any plan.'}</li>`}</ul></div><div><b>If rejected</b><ul>${R || '<li class="none">Nothing happens.</li>'}</ul></div>${q.ai.approve?.staff_note ? `<small>${esc(q.ai.approve.staff_note)}</small>` : ''}</div>`;
 }
 let qFilter = 'pending', qCountry = '';
 function qDetail(q) {
@@ -2430,7 +2430,7 @@ function renderStaff() {
       <div class="qtop">${flag(q.country)}<b>${esc(q.from)}</b>${POWERS[q.country].label} · ${esc(q.time)}<span class="pill type">${TYPE_PILL[q.type] || q.type}</span><span class="pill ${q.vis}">${q.vis}</span>${q.status !== 'pending' ? `<span class="pill ${q.status}">${esc(q.outcome || q.status)}</span>` : ''}</div>
       ${q.detail?.to ? `<div class="qto">To <b>${esc(q.detail.to)}</b> (backroom) · ${esc(S.backroomNamed(q.detail.to)?.title || '')}. Reply as them.</div>` : ''}<div class="qtitle">${esc(q.title)}</div>${qDetail(q) ? `<div class="qdetail">${qDetail(q)}</div>` : ''}${qSpot(q) ? `<button type="button" class="dbtn small" data-show="${q.id}">Show on map</button>` : ''}
       ${q.status === 'pending' ? `${aiBlock(q)}
-        <textarea id="r-${q.id}" maxlength="800" aria-label="Reply to ${esc(q.from)}" placeholder="Reply (optional). Describe what happens and the effects are matched to your reply."></textarea>
+        <textarea id="r-${q.id}" maxlength="800" aria-label="Reply to ${esc(q.from)}" placeholder="Your reply decides what happens. Write it, then Approve or Reject: the assistant carries out exactly what you wrote, even if it is not what it suggested."></textarea>
         ${fxEditor(q.id, false, 'Add your own effects').replace('class="fx"', `class="fx" data-country="${q.country}" data-vis="${q.vis}" data-here="${q.detail?.at ? 1 : 0}"`)}
         <div class="qbtns"><button type="button" class="dbtn green" data-dec="approve" data-q="${q.id}">Approve</button><button type="button" class="dbtn red" data-dec="reject" data-q="${q.id}">Reject</button>${q.type === 'fleet' ? `<label class="check"><input type="checkbox" id="sec-${q.id}"${q.vis === 'private' ? ' checked' : ''}> Keep the move off the projector</label>` : ''}</div>`
       : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b>${q.effects ? `<br>Effects: ${q.effects.map(esc).join(', ')}` : ''}</div>`}
