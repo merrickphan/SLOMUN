@@ -1403,7 +1403,7 @@ function placeFromGallery(it) {
   if (!STAFFMAP) return;
   if (!STAGE) previewOnMap('placing figurines', null, (effects) => act({ type: 'effects.apply', effects }));
   document.querySelectorAll('.smodal').forEach((m) => (m.hidden = true));
-  placing = { ...it.place, data: { ...it.place.data }, public: STAGE?.pub !== false }; renderPlacebar();
+  placing = { ...it.place, data: { ...it.place.data }, public: STAGE?.pub !== false, repeat: true, count: 0 }; renderPlacebar();
 }
 function buildGallery() {
   GAL.tiles.forEach((tl) => tl.pivot.traverse((o) => o.isMesh && o.geometry.dispose()));
@@ -2063,10 +2063,12 @@ function placeAt(lon, lat) {
   if (placing.mode === 'feat') {
     const at = [+lon.toFixed(3), +lat.toFixed(3)];
     if (FEAT[placing.data.kind]?.line && !placing.at) { placing.at = at; renderPlacebar(); return true; }
-    const d = placing.data, a0 = placing.at || at, a2 = placing.at ? at : null; placing = null; renderPlacebar();
-    act({ type: 'feature.add', ...d, at: a0, ...(a2 ? { at2: a2 } : {}) }); return true;
+    const d = placing.data, a0 = placing.at || at, a2 = placing.at ? at : null;
+    if (placing.repeat) { placing.at = null; placing.count = (placing.count || 0) + 1; } else placing = null;
+    act({ type: 'feature.add', ...d, at: a0, ...(a2 ? { at2: a2 } : {}) }); renderPlacebar(); return true;
   }
-  const pl = placing; placing = null; renderPlacebar();
+  const pl = placing; if (pl.repeat) pl.count = (pl.count || 0) + 1; else placing = null;
+  setTimeout(renderPlacebar, 0);
   if (pl.mode === 'spy') {
     const rid = regionAt(lon, lat); const rg = rid && REGION[rid]; const c = countryAt(lon, lat); const target = rg ? ctrlOf(rg) : c ? ownerOf(c) : null;
     act({ type: 'effects.apply', effects: [{ type: 'agent', name: pl.data.name, target: POWERS[target]?.label || target || 'Germany', mission: 'Gather intelligence', to: [+lon.toFixed(3), +lat.toFixed(3)] }] }); return true;
@@ -2082,6 +2084,13 @@ function renderPlacebar() {
     b.innerHTML = `${!line ? 'Click the map where it goes.' : placing.at ? 'Now click where the line ends.' : 'Click where the line starts.'} <button type="button" class="dbtn" id="place-cancel">Cancel</button>${line && placing.at ? ' <button type="button" class="dbtn" id="place-one">Just that one spot</button>' : ''}`;
   } else if (placing?.mode === 'spy') { b.innerHTML = `Click where ${esc(placing.data.name || 'the')}'s agent goes. <button type="button" class="dbtn" id="place-cancel">Cancel</button>`; }
   else if (placing) b.innerHTML = `Click the map where ${placing.mode === 'add' ? 'the new unit should go' : 'the unit should move'} (${placing.public ? 'shown on the projector' : 'secret'}). <button type="button" class="dbtn" id="place-cancel">Cancel</button>`;
+  // Placing from Figurines repeats: drop as many as you like, then OK.
+  if (placing?.repeat) {
+    const what = placing.mode === 'feat' ? (FEAT[placing.data.kind]?.name || 'it') : placing.mode === 'spy' ? 'agents' : (KIND_NAME[placing.data.kind] || 'units').toLowerCase();
+    const line = placing.mode === 'feat' && FEAT[placing.data.kind]?.line;
+    b.innerHTML = `${line && placing.at ? 'Now click where the line ends.' : `Click the map to place ${esc(what)}${line ? ' (start, then end of the line)' : ''}.`} <b class="pcount">${placing.count || 0} placed</b> <button type="button" class="dbtn gold" id="place-ok">OK</button>`;
+    $('place-ok').addEventListener('click', () => { placing = null; renderPlacebar(); });
+  }
   $('place-cancel')?.addEventListener('click', () => { placing = null; renderPlacebar(); });
   $('place-one')?.addEventListener('click', () => { const d = placing.data, at = placing.at; placing = null; renderPlacebar(); act({ type: 'feature.add', ...d, at }); });
 }
