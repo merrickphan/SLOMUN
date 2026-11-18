@@ -1245,3 +1245,6 @@ img.fl { object-fit: cover; display: block; }
 .mappop.below::after { bottom: auto; top: -7px; transform: translateX(-50%) rotate(225deg); }
 .staffmap.staging .tok { cursor: grab; touch-action: none; }
 .mappop .mp-head > svg, .mappop .mp-head > img, .mappop .mp-head > .flag { flex: none; width: 27px !important; height: 18px !important; border-radius: 2px; }
+.selbox { position: absolute; z-index: 4; pointer-events: none; border: 1.5px dashed var(--gold); background: rgba(245,194,27,.12); border-radius: 3px; }
+.zoom .boxbtn[aria-pressed="true"] { background: var(--gold); color: #15110A; }
+.zoom .boxbtn svg { display: block; margin: auto; }

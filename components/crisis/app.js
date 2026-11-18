@@ -674,6 +674,7 @@ function scaffold(g) {
   for (const d of [-1, 1]) { box(s.x, 0.04, 0.04, 0xC9A060, c.x, h, c.z + d * s.z / 2, g); box(0.04, 0.04, s.z, 0xC9A060, c.x + d * s.x / 2, h, c.z, g); }
 }
 const featState = (f) => f.ruined ? 'ruined' : f.ready > (STATE?.update?.no ?? 0) ? 'building' : 'ready';
+const HIT_GEO = new THREE.BoxGeometry(1.4, 1.2, 1.4), HIT_MAT = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
 function makeProp(f, emitters) {
   const st = featState(f); const root = new THREE.Group(); const em = [];
   PROP[f.kind]?.(root, st, em, f);
@@ -682,6 +683,8 @@ function makeProp(f, emitters) {
   if (st === 'building') em.length = 0;
   bakeFigure(root, null);
   root.traverse((o) => { if (o.isMesh) { o.material = st === 'building' ? ghost(o.material) : st === 'ruined' ? ruin(o.material) : o.material; o.userData.featId = f.id; } });
+  // An invisible box around every feature so it can be clicked, even ones that are mostly smoke and flames (fire).
+  const hit = new THREE.Mesh(HIT_GEO, HIT_MAT); hit.position.y = 0.5; hit.userData.featId = f.id; root.add(hit);
   root.userData.em = em;
   return root;
 }
@@ -939,7 +942,7 @@ class Globe {
     this.addUnits(); this.addLights(); this.buildOverlay(); this.addPins(); this.addProps(); this.dirty = true;
   }
   addProps() {
-    if (this.propGroup) { this.scene.remove(this.propGroup); this.propGroup.traverse((o) => o.isMesh && o.geometry.dispose()); }
+    if (this.propGroup) { this.scene.remove(this.propGroup); this.propGroup.traverse((o) => o.isMesh && o.geometry !== HIT_GEO && o.geometry.dispose()); }
     this.propGroup = new THREE.Group(); this.propGroup.visible = SHOW_FEAT; this.scene.add(this.propGroup);
     const emit = []; const SPACING = 0.85 * PROP_K;
     for (const f of FEATS) {
@@ -1096,13 +1099,16 @@ class Globe {
     AGENTS.forEach((a, i) => {
       const c = a.at || CAPITAL[a.target]; if (!c) return; const fig = spyFigure(); bakeFigure(fig, null);
       const text = `${a.owner ? a.owner + "'s agent" : 'Your agent'} in ${POWERS[a.target]?.label || a.target}${a.mission ? ': ' + a.mission : ''}. Reveals forces nearby and can intercept notes.`;
-      fig.traverse((o) => { if (o.isMesh) o.userData.spy = text; });
-      this.place(fig, c[0] + 0.35 + (i % 3) * 0.25, c[1] - 0.25 - Math.floor(i / 3) * 0.25); fig.scale.setScalar(UNIT_SCALE * 1.1); this.spyGroup.add(fig);
+      fig.traverse((o) => { if (o.isMesh) { o.userData.spy = text; o.userData.spyId = a.id; o.userData.spyOwner = a.owner; } });
+      fig.userData.dragRoot = 'spy'; fig.userData.spyId = a.id; fig.userData.spyOwner = a.owner;
+      // A spy without its own spot sits beside the capital; one with a spot stands exactly there.
+      const off = a.at ? [0, 0] : [0.35 + (i % 3) * 0.25, -0.25 - Math.floor(i / 3) * 0.25]; fig.userData.off = off;
+      this.place(fig, c[0] + off[0], c[1] + off[1]); fig.scale.setScalar(UNIT_SCALE * 1.1); this.spyGroup.add(fig);
     });
     this.dirty = true;
   }
   markSelected(id) {
-    for (const [k, f] of Object.entries(this.figs || {})) f.traverse(o => { if (o.name === 'sel') o.visible = k === id; });
+    for (const [k, f] of Object.entries(this.figs || {})) f.traverse(o => { if (o.name === 'sel') o.visible = k === id || !!this.selSet?.has(k); });
     this.dirty = true;
   }
   refreshTexture() { if (this.patchTex) { this.patchTex.needsUpdate = true; this.dirty = true; } }
@@ -1211,7 +1217,7 @@ class Globe {
       const x = Math.round(p.x * 2) / 2, y = Math.round(p.y * 2) / 2;
       if (x !== it._x || y !== it._y) { it.el.style.transform = `translate3d(${x}px, ${y}px, 0) ${SHIFT[it.kind]}`; it._x = x; it._y = y; }
       if (it.kind === 'lbl') { const fs = Math.max(9, it.size * k).toFixed(1); if (fs !== it._fs) { it.el.style.fontSize = fs + 'px'; it._fs = fs; } }
-      if (it.kind === 'tok') { const sel = this.selectedUnit === it.id; if (sel !== it._sel) { it.el.classList.toggle('sel', sel); it._sel = sel; } }
+      if (it.kind === 'tok') { const sel = this.selectedUnit === it.id || !!this.selSet?.has(it.id); if (sel !== it._sel) { it.el.classList.toggle('sel', sel); it._sel = sel; } }
     }
     this.layoutExtras();
   }
@@ -1223,16 +1229,33 @@ class Globe {
     const groundAt = (e) => { const hit = rayAt(e).intersectObjects([this.patch, this.base].filter(Boolean))[0]; if (!hit) return null; const p = hit.point.clone().normalize(); return [+(Math.atan2(-p.z, p.x) / D2R).toFixed(3), +(Math.asin(p.y) / D2R).toFixed(3)]; };
     this.groundAtEvent = groundAt;
     c.addEventListener('pointerdown', (e) => {
+      // Area select: drag a box (with the Select area button on, or holding Ctrl).
+      if (e.button === 0 && this.opts.onBox && (this.boxMode || e.ctrlKey || e.metaKey)) {
+        const r = this.stage.getBoundingClientRect(); const el = document.createElement('div'); el.className = 'selbox'; this.stage.appendChild(el);
+        this.boxDrag = { x0: e.clientX - r.left, y0: e.clientY - r.top, x1: e.clientX - r.left, y1: e.clientY - r.top, el }; c.setPointerCapture(e.pointerId); return;
+      }
       // While staff stage changes, a unit can be picked up and dragged to a new spot.
       if (e.button === 0 && this.opts.canDrag?.() && this.unitGroup) {
         const uh = rayAt(e).intersectObject(this.unitGroup, true)[0]; const id = uh?.object.userData.unitId;
         if (id && this.figs[id]) { this.unitDrag = { id, x: e.clientX, y: e.clientY, moved: false, at: null }; c.setPointerCapture(e.pointerId); c.style.cursor = 'grabbing'; return; }
+        // Spies and map features can be picked up the same way.
+        const rootOf = (o, g) => { while (o && o.parent && o.parent !== g) o = o.parent; return o; };
+        const sh = this.spyGroup && rayAt(e).intersectObject(this.spyGroup, true)[0];
+        if (sh?.object.userData.spyId) { this.objDrag = { kind: 'spy', id: sh.object.userData.spyId, owner: sh.object.userData.spyOwner, obj: rootOf(sh.object, this.spyGroup), x: e.clientX, y: e.clientY, moved: false, at: null }; c.setPointerCapture(e.pointerId); return; }
+        const fh = this.propGroup?.visible && rayAt(e).intersectObject(this.propGroup, true)[0]; const fid = fh?.object.userData.featId; const ff = fid && FEATS.find((x) => x.id === fid);
+        if (ff) { this.objDrag = { kind: 'feat', id: fid, obj: rootOf(fh.object, this.propGroup), x: e.clientX, y: e.clientY, moved: false, at: null }; c.setPointerCapture(e.pointerId); return; }
       }
       const pan = e.button === 2 || e.pointerType === 'touch' || e.shiftKey;
       drag = { x: e.clientX, y: e.clientY, lon: this.view.lon, lat: this.view.lat, heading: this.view.heading, tilt: this.view.tilt, pan, button: e.button, moved: false };
       c.setPointerCapture(e.pointerId);
     });
     c.addEventListener('pointermove', (e) => {
+      const bd = this.boxDrag;
+      if (bd) { const r = this.stage.getBoundingClientRect(); bd.x1 = e.clientX - r.left; bd.y1 = e.clientY - r.top; Object.assign(bd.el.style, { left: Math.min(bd.x0, bd.x1) + 'px', top: Math.min(bd.y0, bd.y1) + 'px', width: Math.abs(bd.x1 - bd.x0) + 'px', height: Math.abs(bd.y1 - bd.y0) + 'px' }); return; }
+      const od = this.objDrag;
+      if (od) { if (Math.abs(e.clientX - od.x) + Math.abs(e.clientY - od.y) > 4) od.moved = true; if (!od.moved) return; const ll = groundAt(e); if (!ll) return; od.at = ll; c.style.cursor = 'grabbing';
+        if (od.kind === 'spy') { const off = od.obj.userData.off || [0, 0]; this.place(od.obj, ll[0] + off[0], ll[1] + off[1]); } else { const sc = od.obj.scale.x; this.place(od.obj, ll[0], ll[1]); od.obj.scale.setScalar(sc); }
+        this.dirty = true; return; }
       const ud = this.unitDrag;
       if (ud) { if (Math.abs(e.clientX - ud.x) + Math.abs(e.clientY - ud.y) > 4) ud.moved = true; if (!ud.moved) return; const ll = groundAt(e); if (!ll) return; ud.at = ll;
         this.place(this.figs[ud.id], ll[0], ll[1]); const it = this.items?.find((x) => x.kind === 'tok' && x.id === ud.id); if (it) { it.lon = ll[0]; it.lat = ll[1]; } this.dirty = true; return; }
@@ -1249,6 +1272,15 @@ class Globe {
       this.dirty = true;
     });
     c.addEventListener('pointerup', (e) => {
+      const bd = this.boxDrag;
+      if (bd) { this.boxDrag = null; bd.el.remove(); drag = null; const box = { x0: Math.min(bd.x0, bd.x1), y0: Math.min(bd.y0, bd.y1), x1: Math.max(bd.x0, bd.x1), y1: Math.max(bd.y0, bd.y1) };
+        if (box.x1 - box.x0 > 6 && box.y1 - box.y0 > 6) { const inside = (at, h = 0.004) => { if (!at) return false; const p = this.project(at[0], at[1], h); return p.ok && p.x >= box.x0 && p.x <= box.x1 && p.y >= box.y0 && p.y <= box.y1; }; this.opts.onBox(inside); }
+        return; }
+      const od = this.objDrag;
+      if (od) { this.objDrag = null; c.style.cursor = ''; drag = null;
+        if (od.moved && od.at) { if (od.kind === 'spy') this.opts.onSpyDrop?.(od.owner, od.id, od.at); else this.opts.onFeatDrop?.(od.id, od.at); }
+        else if (od.kind === 'spy') this.opts.onSpy?.(od.owner, od.id); else this.opts.onFeature?.(od.id);
+        return; }
       const ud = this.unitDrag;
       if (ud) { this.unitDrag = null; c.style.cursor = ''; if (ud.moved && ud.at) this.opts.onUnitDrop?.(ud.id, ud.at); else this.opts.onUnit?.(ud.id); drag = null; return; }
       if (drag && !drag.moved && drag.button === 0 && (this.opts.onCountry || this.opts.onUnit)) {
@@ -1259,7 +1291,7 @@ class Globe {
         const fh = this.propGroup?.visible && ray.intersectObject(this.propGroup, true)[0];
         if (fh?.object.userData.featId) { const id = fh.object.userData.featId; if (this.opts.onFeature) this.opts.onFeature(id); else { const f = FEATS.find((x) => x.id === id); if (f) toast(featTitle(f)); } drag = null; return; }
         const sh = this.spyGroup && ray.intersectObject(this.spyGroup, true)[0];
-        if (sh?.object.userData.spy) { toast(sh.object.userData.spy); drag = null; return; }
+        if (sh?.object.userData.spy) { if (this.opts.onSpy) this.opts.onSpy(sh.object.userData.spyOwner, sh.object.userData.spyId); else toast(sh.object.userData.spy); drag = null; return; }
         const hit = ray.intersectObjects([this.patch, this.base])[0];
         if (hit) { const p = hit.point.clone().normalize(); const lat = Math.asin(p.y) / D2R, lon = Math.atan2(-p.z, p.x) / D2R; if (this.opts.onGround && this.opts.onGround(lon, lat)) { drag = null; return; } const n = countryAt(lon, lat); if (n && this.opts.onCountry) this.opts.onCountry(n, lon, lat); else if (!n && this.opts.onSea) this.opts.onSea(lon, lat); }
       }
@@ -1379,7 +1411,8 @@ const PLANE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 const CASE_SVG = '<svg class="case" viewBox="0 0 32 28" aria-hidden="true"><rect x="2" y="8" width="28" height="18" rx="2.5" fill="#7A4A2A"/><rect x="2" y="8" width="28" height="7" rx="2.5" fill="#8E5A34"/><path d="M11 8V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3" fill="none" stroke="#3A2414" stroke-width="2.2"/><rect x="7" y="13" width="4" height="4" rx="1" fill="#D8B24A"/><rect x="21" y="13" width="4" height="4" rx="1" fill="#D8B24A"/></svg>';
 const GROUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2A5 5 0 0 1 21 19"/></svg>';
 const OVERLAYS = () => ['letterpop', 'reader', 'brief', 'compose', 'mcompose', 'lap', 'chat', 'bcompose'].map($).filter(Boolean);
-const ZOOM = (g) => `<div class="zoom glass" data-g="${g}"><button type="button" data-z="feat" class="featbtn" aria-pressed="${SHOW_FEAT}" aria-label="Show map features" title="Show map features (trenches, bunkers, factories)">${fIcon('fort')}</button><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="reset" aria-label="Reset view">FIT</button></div>`;
+const BOX_ICON = '<svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.4" aria-hidden="true"><rect x="3" y="3" width="16" height="16" rx="1.5"/></svg>';
+const ZOOM = (g) => `<div class="zoom glass" data-g="${g}">${g === 'map' && EDIT ? `<button type="button" data-z="box" class="boxbtn" aria-pressed="false" aria-label="Select an area" title="Select an area: drag a box over units, spies, features and regions (or hold Ctrl and drag)">${BOX_ICON}</button>` : ''}<button type="button" data-z="feat" class="featbtn" aria-pressed="${SHOW_FEAT}" aria-label="Show map features" title="Show map features (trenches, bunkers, factories)">${fIcon('fort')}</button><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="reset" aria-label="Reset view">FIT</button></div>`;
 const DATECARD = `<div class="date glass num"><span class="date-line"></span><small class="countdown">Next crisis update in <b>15:00</b></small></div>`;
 
 /* ---------- Staff screen: the map plus a request drawer and pop-ups ---------- */
@@ -1680,8 +1713,9 @@ function renderSel() {
   const sub = name !== owner ? `Controlled by ${p.label}` : '';
   box.innerHTML = `<div class="badge flagbadge">${flag(name)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill ${p.side}">${p.side === 'war' ? 'At war' : 'Neutral'}</span>${sub ? ' · ' + sub : ''}</div><div class="stats"><div><span>Treasury</span> <b class="num">$${p.treasury}M</b></div><div><span>Forces</span> <b class="num">${UNITS.filter((u) => u.owner === owner).length}</b></div><div><span>Commanders</span> ${p.delegates.map(esc).join(', ') || 'Crisis staff'}</div>${regionLine}</div></div>`;
 }
-function select(type, id, region, at) {
-  selected = { type, id, region, at: at ? [+at[0].toFixed(3), +at[1].toFixed(3)] : null }; confirmKill = null; if (EDIT) setTimeout(renderEdit, 0);
+function select(type, id, region, at, owner, group) {
+  selected = { type, id, region, owner, group, at: at ? [+at[0].toFixed(3), +at[1].toFixed(3)] : null };
+  if (mapGlobe) mapGlobe.selSet = group ? new Set(group.units) : null; confirmKill = null; if (EDIT) setTimeout(renderEdit, 0);
   if (mapGlobe) { mapGlobe.selectedUnit = type === 'unit' ? id : null; mapGlobe.markSelected(mapGlobe.selectedUnit); mapGlobe.repaintOcc(type === 'country' ? id : null); }
   renderSel(); if (STAFFMAP) renderPop();
 }
@@ -1703,6 +1737,18 @@ function renderPop() {
     const f = FEATS.find((x) => x.id === selected.id);
     if (f) { at = f.at; html = `<div class="mp-head">${flag(f.owner)}<b>${esc(f.label)}</b><button type="button" class="mp-x" id="mp-x" aria-label="Unselect">✕</button></div><p class="mp-k">${esc(FEAT[f.kind]?.name || '')} · ${esc(POWERS[f.owner]?.label || f.owner)}${f.ruined ? ' · destroyed' : ''}</p>
       <div class="mp-row"><button type="button" class="dbtn red" id="mp-fdel">Remove</button><button type="button" class="dbtn" id="mp-fruin">${f.ruined ? 'Repair' : 'Mark destroyed'}</button><button type="button" class="dbtn" id="mp-done">Done</button></div>`; }
+  } else if (selected.type === 'multi' && selected.group) {
+    const G = selected.group; at = selected.at;
+    const parts = [[G.units.length, 'unit'], [G.feats.length, 'feature'], [G.spies.length, 'spy'], [G.regions.length, 'region']].filter(([n]) => n).map(([n, w]) => `${n} ${w === 'spy' ? (n === 1 ? 'spy' : 'spies') : w + (n === 1 ? '' : 's')}`);
+    const things = G.units.length + G.feats.length + G.spies.length;
+    html = `<div class="mp-head"><b>${parts.join(' · ')}</b><button type="button" class="mp-x" id="mp-x" aria-label="Unselect">✕</button></div>
+      ${G.units.length > 1 ? '<p class="mp-k">Drag any of the selected units to move them all.</p>' : ''}
+      ${G.regions.length ? `<div class="mp-row"><select id="mp-owner" aria-label="Give regions to">${ownerOpts(ctrlOf(REGION[G.regions[0]]))}</select><button type="button" class="dbtn gold" id="mp-gall">Give ${G.regions.length} region${G.regions.length === 1 ? '' : 's'}</button></div>` : ''}
+      <div class="mp-row">${things ? `<button type="button" class="dbtn red" id="mp-dall">Delete ${things} thing${things === 1 ? '' : 's'}</button>` : ''}<button type="button" class="dbtn" id="mp-done">Done</button></div>`;
+  } else if (selected.type === 'spy') {
+    const g = AGENTS.find((x) => x.id === selected.id && x.owner === selected.owner); const r = g && ROSTER.find((x) => x.name === g.owner);
+    if (g) { at = g.at || CAPITAL[g.target]; html = `<div class="mp-head">${r ? flag(r.country) : ''}<b>${esc(g.owner)}'s agent</b><button type="button" class="mp-x" id="mp-x" aria-label="Unselect">✕</button></div><p class="mp-k">In ${esc(POWERS[g.target]?.label || g.target)} · ${esc(g.mission || 'Gather intelligence')}</p>
+      <div class="mp-row"><button type="button" class="dbtn red" id="mp-sdel">Remove</button><button type="button" class="dbtn" id="mp-scaught">Caught</button><button type="button" class="dbtn" id="mp-done">Done</button></div>`; }
   } else if (selected.region && REGION[selected.region] && selected.at) {
     const r = REGION[selected.region], c = ctrlOf(r), zone = REGIONS.filter((x) => x.country === r.country && x.zone === r.zone); at = selected.at;
     html = `<div class="mp-head">${flag(c)}<b>${esc(r.name)}</b><button type="button" class="mp-x" id="mp-x" aria-label="Unselect">✕</button></div><p class="mp-k">Held by ${esc(POWERS[c]?.label || c)}</p>
@@ -1710,6 +1756,25 @@ function renderPop() {
       <div class="mp-row"><button type="button" class="dbtn gold" id="mp-give">Give this region</button>${zone.length > 1 ? `<button type="button" class="dbtn" id="mp-zone">Whole ${esc(r.zone.toLowerCase())} zone</button>` : ''}</div>`;
   }
   el.hidden = !html; el.innerHTML = html; g.pop = html ? { el, at, h } : null; g.dirty = true;
+}
+/* Area select: everything inside the dragged box becomes one group. */
+function boxSelect(inside) {
+  const units = UNITS.filter((u) => inside(u.at, 0.01)).map((u) => u.id);
+  const feats = FEATS.filter((f) => inside(f.at)).map((f) => f.id);
+  const spies = AGENTS.filter((g) => inside(g.at || CAPITAL[g.target])).map((g) => ({ owner: g.owner, id: g.id }));
+  const regions = REGIONS.filter((r) => inside(r.c)).map((r) => r.id);
+  if (!units.length && !feats.length && !spies.length && !regions.length) { select('none'); return; }
+  const pts = [...units.map((id) => UNITS.find((u) => u.id === id).at), ...feats.map((id) => FEATS.find((f) => f.id === id).at), ...regions.map((id) => REGION[id].c)];
+  const at = pts.length ? [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length] : null;
+  select('multi', null, null, at, null, { units, feats, spies, regions });
+}
+function dropUnit(id, at) {
+  const G = selected.type === 'multi' && selected.group?.units.includes(id) ? selected.group.units : null; const pub = STAGE?.pub !== false;
+  if (!G || G.length < 2) { act({ type: 'unit.move', id, at, public: pub }); return; }
+  // Moving one unit of a selected group moves the whole group by the same amount, as one change (one Undo).
+  const me = UNITS.find((u) => u.id === id); const dx = at[0] - me.at[0], dy = at[1] - me.at[1];
+  act({ type: 'effects.apply', effects: G.map((uid) => { const u = UNITS.find((x) => x.id === uid); return u && { type: 'move', unit: uid, to: [+(u.at[0] + dx).toFixed(3), +(u.at[1] + dy).toFixed(3)], public: pub }; }).filter(Boolean) });
+  if (selected.at) selected.at = [selected.at[0] + dx, selected.at[1] + dy];
 }
 function bindPop(el) {
   const u = () => UNITS.find((x) => x.id === selected.id);
@@ -1721,6 +1786,11 @@ function bindPop(el) {
     const id = e.target.id;
     if (id === 'mp-x' || id === 'mp-done') { select('none'); return; }
     if (id === 'mp-del') { const x = u(); if (!x) return; if (!STAGE && e.target.dataset.sure !== '1') { e.target.dataset.sure = '1'; e.target.textContent = 'Click again (live)'; return; } act({ type: 'unit.destroy', id: x.id, public: STAGE ? STAGE.pub : true }); select('none'); }
+    if (id === 'mp-gall') { act({ type: 'region.set', ids: selected.group.regions, owner: $('mp-owner').value }); return; }
+    if (id === 'mp-dall') { const G = selected.group; if (!STAGE && e.target.dataset.sure !== '1') { e.target.dataset.sure = '1'; e.target.textContent = 'Click again (live)'; return; } const pub = STAGE ? STAGE.pub : true;
+      act({ type: 'effects.apply', effects: [...G.units.map((u) => ({ type: 'destroy', unit: u, public: pub })), ...G.feats.map((f) => ({ type: 'feature.edit', id: f, action: 'remove' })), ...G.spies.map((g) => ({ type: 'agent', action: 'remove', name: g.owner, id: g.id }))] }); select('none'); return; }
+    if (id === 'mp-sdel' || id === 'mp-scaught') { const g = AGENTS.find((x) => x.id === selected.id && x.owner === selected.owner); if (!g) return; const r = ROSTER.find((x) => x.name === g.owner);
+      act({ type: 'effects.apply', effects: [{ type: 'agent', name: g.owner, id: g.id, action: 'remove' }], headline: id === 'mp-scaught' ? `${(POWERS[g.target]?.label || g.target).toUpperCase()} · ${POWERS[r?.country]?.label || 'Foreign'} spy arrested` : '' }); select('none'); return; }
     if (id === 'mp-fdel') { act({ type: 'feature.edit', id: selected.id, action: 'remove' }); select('none'); }
     if (id === 'mp-fruin') { const f = FEATS.find((x) => x.id === selected.id); if (f) act({ type: 'feature.edit', id: f.id, action: f.ruined ? 'repair' : 'ruin' }); }
     if (id === 'mp-give' || id === 'mp-zone') { const r = REGION[selected.region]; const ids = id === 'mp-zone' ? REGIONS.filter((x) => x.country === r.country && x.zone === r.zone).map((x) => x.id) : [r.id]; act({ type: 'region.set', ids, owner: $('mp-owner').value }); }
@@ -2746,11 +2816,11 @@ function stageEffects(a, b, pub) {
   for (const u of b.units || []) {
     const o = A[u.id];
     if (!o) fx.push({ type: 'unit', owner: u.owner, kind: u.kind, str: u.str, name: u.name, note: u.note, to: u.at, public: pub });
-    else { if (Math.hypot(o.at[0] - u.at[0], o.at[1] - u.at[1]) > 0.02) fx.push({ type: 'move', unit: u.id, to: u.at, public: pub }); if (o.str !== u.str) fx.push({ type: 'strength', unit: u.id, delta: u.str - o.str }); }
+    else { if (Math.hypot(o.at[0] - u.at[0], o.at[1] - u.at[1]) > 0.02) fx.push({ type: 'move', unit: u.id, to: u.at, public: pub }); if (o.str !== u.str) fx.push({ type: 'strength', unit: u.id, delta: u.str - o.str }); if (o.name !== u.name) fx.push({ type: 'rename', unit: u.id, name: u.name }); }
   }
   for (const u of a.units || []) if (!(b.units || []).some((x) => x.id === u.id)) fx.push({ type: 'destroy', unit: u.id, public: pub });
   const fa = Object.fromEntries((a.features || []).map((f) => [f.id, f]));
-  for (const f of b.features || []) { const o = fa[f.id]; if (!o) fx.push({ type: 'feature', kind: f.kind, label: f.label, owner: f.owner, at: f.at, ...(f.to ? { at2: f.to } : {}), mod: f.mod, turns: Math.max(0, f.ready - (b.update?.no ?? 0)), public: pub && f.public !== false }); else if (!o.ruined && f.ruined) fx.push({ type: 'feature.edit', id: f.id, action: 'ruin', public: pub }); }
+  for (const f of b.features || []) { const o = fa[f.id]; if (!o) fx.push({ type: 'feature', kind: f.kind, label: f.label, owner: f.owner, at: f.at, ...(f.to ? { at2: f.to } : {}), mod: f.mod, turns: Math.max(0, f.ready - (b.update?.no ?? 0)), public: pub && f.public !== false }); else { if (!o.ruined && f.ruined) fx.push({ type: 'feature.edit', id: f.id, action: 'ruin', public: pub }); if (o.ruined && !f.ruined) fx.push({ type: 'feature.edit', id: f.id, action: 'repair' }); if (Math.hypot(o.at[0] - f.at[0], o.at[1] - f.at[1]) > 0.02) fx.push({ type: 'feature.edit', id: f.id, action: 'move', to: f.at }); } }
   for (const f of a.features || []) if (!(b.features || []).some((x) => x.id === f.id)) fx.push({ type: 'feature.edit', id: f.id, action: 'remove' });
   const byOwner = {}; for (const id of new Set([...Object.keys(a.control || {}), ...Object.keys(b.control || {})])) { const x = (a.control || {})[id], y = (b.control || {})[id]; if (x !== y && REGION[id]) (byOwner[y || baseOwner(REGION[id])] = byOwner[y || baseOwner(REGION[id])] || []).push(id); }
   for (const [owner, ids] of Object.entries(byOwner)) fx.push({ type: 'region', ids, owner, public: pub });
@@ -2760,7 +2830,7 @@ function stageEffects(a, b, pub) {
   const ag = (s) => Object.entries(s.agents || {}).flatMap(([name, l]) => l.map((g) => ({ ...g, name })));
   const ga = ag(a), gb = ag(b);
   for (const g of gb) if (!ga.some((x) => x.id === g.id)) fx.push({ type: 'agent', name: g.name, target: g.target, mission: g.mission, to: g.at });
-  for (const g of ga) if (!gb.some((x) => x.id === g.id)) fx.push({ type: 'agent', action: 'remove', name: g.name, id: g.id });
+  for (const g of ga) { const n = gb.find((x) => x.id === g.id); if (!n) fx.push({ type: 'agent', action: 'remove', name: g.name, id: g.id }); else if (Math.hypot(n.at[0] - g.at[0], n.at[1] - g.at[1]) > 0.02) fx.push({ type: 'agent', action: 'move', name: g.name, id: g.id, to: n.at }); }
   return fx;
 }
 function undoStage() { if (!STAGE?.hist.length) return; const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.sim = JSON.parse(STAGE.hist.pop()); showStage(prev); }
@@ -2783,19 +2853,22 @@ function previewDiff(a, b) {
     else {
       if (Math.hypot(o.at[0] - u.at[0], o.at[1] - u.at[1]) > 0.05) L.push(`${flag(u.owner)} <b>${esc(u.name)}</b> moves to ${esc(near(u.at))}`);
       if (o.str !== u.str) L.push(`${flag(u.owner)} <b>${esc(u.name)}</b>: ${S.realText(o)} → ${S.realText(u)}`);
+      if (o.name !== u.name) L.push(`${flag(u.owner)} <b>${esc(o.name)}</b> renamed <b>${esc(u.name)}</b>`);
     }
   }
   for (const u of a.units || []) if (!(b.units || []).some((x) => x.id === u.id)) L.push(`${flag(u.owner)} <b>${esc(u.name)}</b> is destroyed`);
   const ids = new Set([...Object.keys(a.control || {}), ...Object.keys(b.control || {})]);
   for (const id of ids) { const x = (a.control || {})[id], y = (b.control || {})[id]; if (x !== y && REGION[id]) L.push(y ? `${flag(y)} ${nm(y)} takes <b>${esc(REGION[id].name)}</b>` : `<b>${esc(REGION[id].name)}</b> goes back to ${nm(baseOwner(REGION[id]))}`); }
   const fa = new Set((a.features || []).map((f) => f.id));
-  for (const f of b.features || []) { const o = (a.features || []).find((x) => x.id === f.id); if (!fa.has(f.id)) L.push(`${flag(f.owner)} Builds <b>${esc(f.label)}</b>${f.ready > (b.update?.no ?? 0) ? `, ready after Update ${f.ready}` : ''}${f.public ? '' : ' (secret)'}`); else if (o && !o.ruined && f.ruined) L.push(`<b>${esc(f.label)}</b> is destroyed`); }
+  for (const f of b.features || []) { const o = (a.features || []).find((x) => x.id === f.id); if (!fa.has(f.id)) L.push(`${flag(f.owner)} Builds <b>${esc(f.label)}</b>${f.ready > (b.update?.no ?? 0) ? `, ready after Update ${f.ready}` : ''}${f.public ? '' : ' (secret)'}`); else if (o) { if (!o.ruined && f.ruined) L.push(`<b>${esc(f.label)}</b> is destroyed`); if (o.ruined && !f.ruined) L.push(`<b>${esc(f.label)}</b> is repaired`); if (Math.hypot(o.at[0] - f.at[0], o.at[1] - f.at[1]) > 0.02) L.push(`<b>${esc(f.label)}</b> moves to ${esc(near(f.at))}`); } }
   const rel = (s) => Object.fromEntries((s.relations || []).map((r) => [[r.a, r.b].sort().join('|'), r.status]));
   const ra = rel(a), rb = rel(b); for (const k of new Set([...Object.keys(ra), ...Object.keys(rb)])) if (ra[k] !== rb[k]) { const [x, y] = k.split('|'); L.push(`${flag(x)} ${nm(x)} and ${flag(y)} ${nm(y)}: <b>${rb[k] ? esc(S.RELATION_NAME[rb[k]] || rb[k]) : 'no longer ' + esc(S.RELATION_NAME[ra[k]] || ra[k]).toLowerCase()}</b>`); }
   for (const c of Object.keys(b.treasury || {})) { const d = (b.treasury[c] || 0) - ((a.treasury || {})[c] || 0); if (d) L.push(`${flag(c)} ${nm(c)} treasury ${d > 0 ? '+' : '−'}$${Math.abs(d)}M`); }
   for (const w of (b.wire || []).filter((w) => !(a.wire || []).includes(w))) L.push(`News wire: “${esc(w)}”`);
   if (b.flash && b.flash.id !== a.flash?.id) L.push(`Breaking news on every screen: <b>${esc(b.flash.head)}</b>`);
-  const ag = (s) => Object.values(s.agents || {}).flat().length; if (ag(b) !== ag(a)) L.push(`Spies on the map: ${ag(a)} → ${ag(b)}`);
+  const ag = (s) => Object.entries(s.agents || {}).flatMap(([name, l]) => l.map((g) => ({ ...g, name }))); const ga = ag(a), gb = ag(b);
+  for (const g of gb) { const o = ga.find((x) => x.id === g.id); if (!o) L.push(`New spy: ${esc(g.name)}'s agent near ${esc(near(g.at))}`); else if (Math.hypot(o.at[0] - g.at[0], o.at[1] - g.at[1]) > 0.02) L.push(`${esc(g.name)}'s agent moves to ${esc(near(g.at))}`); }
+  for (const g of ga) if (!gb.some((x) => x.id === g.id)) L.push(`${esc(g.name)}'s agent is removed`);
   if ((b.scheduled || []).length > (a.scheduled || []).length) L.push(`${(b.scheduled || []).length - (a.scheduled || []).length} effect(s) scheduled for a later crisis update`);
   return L;
 }
@@ -2819,6 +2892,8 @@ function bindStaff() {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
     if (STAGE && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); undoStage(); return; }
     if (e.key === 'Escape' && !typing) { if (placing) { placing = null; renderPlacebar(); } else if (selected.type !== 'none') select('none'); }
+    if (e.key === 'Escape' && !typing && mapGlobe?.boxMode) { mapGlobe.boxMode = false; document.querySelector('[data-z="box"]')?.setAttribute('aria-pressed', 'false'); mapGlobe.renderer.domElement.style.cursor = ''; }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && STAGE && selected.type === 'multi') { $('mp-dall')?.click(); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && selected.type === 'unit' && STAGE) { act({ type: 'unit.destroy', id: selected.id, public: STAGE.pub }); select('none'); }
   });
   $('bk-save')?.addEventListener('click', async () => { if (await backupCall({ do: 'save', label: $('bk-label').value })) { $('bk-label').value = ''; loadBackups(); } });
@@ -2929,6 +3004,7 @@ export function start(root, props) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('breaking').hidden = true; });
   document.querySelectorAll('.zoom').forEach((z) => z.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return; const g = z.dataset.g === 'map' ? mapGlobe : delGlobe; if (!g) return;
+    if (b.dataset.z === 'box') { g.boxMode = !g.boxMode; b.setAttribute('aria-pressed', g.boxMode); g.renderer.domElement.style.cursor = g.boxMode ? 'crosshair' : ''; return; }
     if (b.dataset.z === 'feat') { SHOW_FEAT = !SHOW_FEAT; try { localStorage.setItem('crisis-feat', SHOW_FEAT ? 'on' : 'off'); } catch {} b.setAttribute('aria-pressed', SHOW_FEAT); g.setFeatVisible(SHOW_FEAT); return; }
     if (b.dataset.z === 'in') g.zoomTo(1 + ((g.zt ?? g.view.dist) - 1) * 0.72);
     if (b.dataset.z === 'out') g.zoomTo(1 + ((g.zt ?? g.view.dist) - 1) * 1.38);
@@ -3009,7 +3085,11 @@ export function start(root, props) {
       if (stopped) return;
       if (VIEW === 'map') {
         patchCanvas = document.createElement('canvas'); patchCanvas.width = TW * TEXK; patchCanvas.height = TH * TEXK; paintTexture(patchCanvas, imgs);
-        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat), [lon, lat]), onUnit: (id) => select('unit', id), onFeature: (id) => select('feature', id), onGround: EDIT ? placeAt : null, canDrag: () => !!STAGE, onUnitDrop: (id, at) => act({ type: 'unit.move', id, at, public: STAGE?.pub !== false }), pins: STAFFMAP, onSea: EDIT ? (lon, lat) => select('sea', null, null, [lon, lat]) : null });
+        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat), [lon, lat]), onUnit: (id) => select('unit', id), onFeature: (id) => select('feature', id), onGround: EDIT ? placeAt : null, canDrag: () => !!STAGE, onUnitDrop: dropUnit,
+          onSpy: EDIT ? (owner, id) => select('spy', id, null, null, owner) : null,
+          onBox: EDIT ? boxSelect : null,
+          onSpyDrop: (owner, id, at) => act({ type: 'effects.apply', effects: [{ type: 'agent', action: 'move', name: owner, id, to: at }] }),
+          onFeatDrop: (id, at) => act({ type: 'effects.apply', effects: [{ type: 'feature.edit', id, action: 'move', to: at }] }), pins: STAFFMAP, onSea: EDIT ? (lon, lat) => select('sea', null, null, [lon, lat]) : null });
         mapGlobe.setTextures(world, patchCanvas, topo); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null);
       } else {
         fogCanvas = document.createElement('canvas'); fogCanvas.width = TW * TEXK; fogCanvas.height = TH * TEXK; paintTexture(fogCanvas, imgs);
