@@ -1102,3 +1102,25 @@ body *:not(.lbl) { letter-spacing: normal !important; }
   .chat:not([hidden]) .chatwin { animation: paperflat .32s var(--ease) both; }
   .chat.closing { animation: fadeout .2s forwards; }
 }
+
+/* Cities: clickable names with a dot, and the city card */
+.overlay .city { pointer-events: auto; background: none; border: 0; padding: 0 0 0 9px; cursor: pointer; font-size: 12px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px #000, 0 0 6px #000; white-space: nowrap; position: absolute; }
+.overlay .city::before { content: ""; position: absolute; left: 0; top: 50%; width: 5px; height: 5px; margin-top: -2px; background: #fff; border-radius: 50% !important; box-shadow: 0 0 0 1.5px rgba(0,0,0,.7); }
+.overlay .city.cap::before { width: 7px; height: 7px; margin-top: -3px; background: var(--gold); }
+.overlay .city:hover { color: var(--gold); }
+.overlay .city:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.citycard { position: fixed; z-index: 30; left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(var(--botH) + 70px); width: min(340px, calc(100vw - 28px)); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; background: rgba(22, 26, 33, 0.82); border: 1px solid var(--pane-edge); box-shadow: 0 14px 40px rgba(0,0,0,.45); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); color: var(--text); }
+.citycard .ecard-x { top: 8px; right: 8px; }
+.cchead { display: flex; align-items: center; gap: 10px; padding-right: 24px; }
+.cchead .fl { width: 30px; height: 20px; flex: none; }
+.cchead b { display: block; font-size: 20px; line-height: 1.1; }
+.cchead span { display: block; font-size: 12.5px; color: var(--muted); }
+.ccstat { margin: 0; font-size: 14px; }
+.ccstat .occ { color: #FFB3A6; }
+.ccnote { margin: 0; font-size: 13.5px; color: #C9CFDA; }
+.ccdl { margin: 0; display: grid; gap: 6px; }
+.ccdl dt { font-size: 12px; font-weight: 700; color: var(--muted); }
+.ccdl dd { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.ccdl .fl { width: 16px; height: 11px; display: inline-block; vertical-align: -1px; }
+@media (min-width: 901px) { .crisis-root:has(.dview) .citycard { bottom: calc(var(--botH) + 64px); } }
+@media (prefers-reduced-motion: no-preference) { .citycard.pop { animation: paperflat .28s var(--ease) both; } }

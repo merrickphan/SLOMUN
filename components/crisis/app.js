@@ -1027,8 +1027,10 @@ class Globe {
       if (!A.geo[n] && !A.wgeo[n]) continue; const d = document.createElement('div'); d.className = 'lbl'; d.textContent = LABEL_TEXT[n] || n; d.dataset.size = s;
       this.ov.appendChild(d); this.items.push({ el: d, lon: lo, lat: la, size: s, kind: 'lbl' });
     }
-    for (const [n, [lo, la]] of Object.entries(CITIES)) {
-      const d = document.createElement('div'); d.className = 'city'; d.textContent = n; this.ov.appendChild(d); this.items.push({ el: d, lon: lo, lat: la, kind: 'city' });
+    for (const c of Object.values(S.CITY)) {
+      const d = document.createElement('button'); d.type = 'button'; d.className = 'city' + (c.capital ? ' cap' : '') + (c.port ? ' port' : ''); d.textContent = c.name; d.title = `${c.name}: click for details`;
+      d.addEventListener('click', (e) => { e.stopPropagation(); showCity(c.name); });
+      this.ov.appendChild(d); this.items.push({ el: d, lon: c.at[0], lat: c.at[1], kind: 'city', major: c.major });
     }
     for (const u of UNITS) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'tok'; b.dataset.id = u.id;
@@ -1049,7 +1051,7 @@ class Globe {
     for (const it of this.items) {
       const p = this.project(it.lon, it.lat, it.kind === 'tok' ? (it.air ? 0.026 : 0.019) * UNIT_SCALE / 0.0105 : it.kind === 'feat' ? 0.012 * PROP_K : 0);
       let show = p.ok;
-      if (show && it.kind === 'city' && zoom < 0.85 && !['London', 'Paris', 'Berlin', 'Warsaw', 'Rome', 'Moscow'].includes(it.el.textContent)) show = false;
+      if (show && it.kind === 'city' && !it.major && zoom < 1.0) show = false;
       if (show !== it._show) { it.el.style.display = show ? '' : 'none'; it._show = show; }
       if (!show) continue;
       const x = Math.round(p.x * 2) / 2, y = Math.round(p.y * 2) / 2;
@@ -1354,7 +1356,7 @@ function skeleton(p) {
     <div class="dock"><div class="warbar" id="warbar" aria-live="polite"></div>
     <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div></div>
   </section>`;
-  return top + body + `<div class="notices" id="notices" aria-live="polite"></div>
+  return top + body + `<aside class="citycard" id="citycard" hidden aria-live="polite"></aside><div class="notices" id="notices" aria-live="polite"></div>
   <button type="button" class="mailbox" id="mailbox" hidden><span class="mb-env" aria-hidden="true"><i></i></span><span class="mb-txt"><b id="mb-title">Crisis staff replied</b><small id="mb-sub">Click to open</small></span><span class="mb-n num" id="mb-n" hidden></span></button>
   <div class="brief" id="brief" hidden><div class="bstage">
     <div class="bcase" aria-hidden="true"><div class="bhandle"></div><div class="blid"><i></i><i></i></div><div class="bbox"></div></div>
@@ -1573,13 +1575,13 @@ function repaintFog() {
   if (!delGlobe || !fogCanvas) return;
   paintFog(fogCanvas); paintWorld(delGlobe.worldCanvas, true); delGlobe.worldTex.needsUpdate = true; delGlobe.refreshTexture(); delGlobe.addLights(); delGlobe.addPins();
 }
-function setPick(loc) { pickLoc = loc; if (delGlobe) { delGlobe.pick = loc ? { at: loc.at, label: action === 'build' ? 'Build here' : 'Operation here' } : null; delGlobe.addPins(); } }
+function setPick(loc) { pickLoc = loc; if (delGlobe) { delGlobe.pick = loc ? { at: loc.at, label: 'Crisis note here' } : null; delGlobe.addPins(); } }
 function pickGround(lon, lat) {
-  if (!['build', 'op', 'secret'].includes(action) || $('p-act').hidden) return false;
+  if (action !== 'secret' || !$('compose')?.classList.contains('min')) return false;
   const rid = regionAt(lon, lat); const rg = rid && REGION[rid]; const country = countryAt(lon, lat);
   const holder = rg ? ctrlOf(rg) : country ? (OWNER[country] || A.wsub?.[country] || country) : null;
   const kind = action === 'build' ? BUILD_KIND[$('f-btype')?.value] : null;
-  if (action === 'build' && kind !== 'fleet' && holder !== ME) { toast(`You can only build on territory ${POWERS[ME].label} holds.`); return true; }
+
   const where = rg ? rg.name : country ? (LABEL_TEXT[country] || country) : 'open sea';
   setPick({ at: [+lon.toFixed(3), +lat.toFixed(3)], where }); renderLoc(); if ($('compose').classList.contains('min')) minCompose(false); return true;
 }
@@ -1589,6 +1591,27 @@ function pickForce(id) {
   if (u.owner !== ME) { toast(`${u.name} belongs to ${POWERS[u.owner].label}. You can only command ${POWERS[ME].label} forces.`); return; }
   pickedForce = id; action = 'fleet'; delGlobe.selectedUnit = id; delGlobe.markSelected(id);
   showTab('act'); renderTiles(); renderForm();
+}
+/* ---------- Cities: who holds them, what is there, and building ---------- */
+function cityHold(c) { const rid = regionAt(c.at[0], c.at[1]); const rg = rid && REGION[rid]; return rg ? ctrlOf(rg) : OWNER[c.country] || c.country; }
+const canBuildIn = (c, kind) => ME && cityHold(c) === ME && (kind !== 'fleet' || c.port);
+function showCity(name) {
+  const c = S.CITY[name]; const el = $('citycard'); if (!c || !el) return;
+  const holder = cityHold(c), base = OWNER[c.country] || c.country; const near = (at, r) => Math.hypot(at[0] - c.at[0], at[1] - c.at[1]) < r;
+  const units = UNITS.filter((u) => near(u.at, 1.1)); const feats = FEATS.filter((f) => near(f.at, 0.6));
+  const hl = POWERS[holder]?.label || holder, bl = POWERS[base]?.label || base;
+  const status = holder !== base ? `<b class="occ">Occupied by ${esc(hl)}</b> (part of ${esc(bl)} before the war)` : POWERS[holder] ? `Held by ${esc(hl)}` : `Neutral: ${esc(c.country)}`;
+  const kind = VIEW === 'delegate' && action === 'build' ? BUILD_KIND[$('f-btype')?.value] : null;
+  const build = VIEW === 'delegate' && ME ? (canBuildIn(c, kind) ? `<button type="button" class="dbtn gold" id="cc-build">Build here</button>` : `<p class="formnote">${holder !== ME ? `${POWERS[ME].label} cannot build here.` : 'No shipyard here. Ships need a port city.'}</p>`) : '';
+  el.innerHTML = `<button type="button" class="ecard-x" id="cc-x" aria-label="Close">✕</button>
+    <div class="cchead">${POWERS[holder] ? flag(holder) : ''}<div><b>${esc(c.name)}</b><span>${c.capital ? 'Capital · ' : ''}${c.port ? 'Port · ' : ''}${esc(c.country)}</span></div></div>
+    <p class="ccstat">${status}</p><p class="ccnote">${esc(c.note)}</p>
+    <dl class="ccdl"><div><dt>Forces nearby</dt><dd>${units.length ? units.map((u) => `${flag(u.owner)} ${esc(u.name)} · ${S.realText(u)}`).join('<br>') : 'None you can see'}</dd></div>
+    ${feats.length ? `<div><dt>Here</dt><dd>${feats.map((f) => `${esc(f.label)}${featState(f) === 'building' ? ' (being built)' : featState(f) === 'ruined' ? ' (destroyed)' : ''}`).join('<br>')}</dd></div>` : ''}
+    <div><dt>Builds here</dt><dd>${c.port ? 'Infantry, tanks, aircraft and ships' : 'Infantry, tanks and aircraft (no shipyard)'}</dd></div></dl>${build}`;
+  el.hidden = false; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  $('cc-x').addEventListener('click', () => (el.hidden = true));
+  $('cc-build')?.addEventListener('click', () => { action = 'build'; showTab('act'); renderTiles(); renderForm(); const sel = $('f-city'); if (sel) { sel.value = c.name; sel.dispatchEvent(new Event('change')); } el.hidden = true; });
 }
 /* Pop-up paper for writing, and the portfolio briefcase */
 function openCompose(id = 'compose') {
@@ -1611,8 +1634,9 @@ function closeBrief() { const el = $('brief'); if (!el || el.hidden) return; el.
 function renderTiles() {
   $('tiles').innerHTML = `<div class="quick" role="group" aria-label="Kind of request">${ACTIONS.map((a) => `<button type="button" class="qchip${a.id === 'secret' ? ' main' : ''}" data-a="${a.id}" aria-pressed="${a.id === action}">${a.label}</button>`).join('')}</div>`;
   $('tiles').querySelectorAll('.qchip').forEach((b) => b.addEventListener('click', () => { action = b.dataset.a; setPick(null); renderTiles(); renderForm(); }));
+  if (action !== 'build' && delGlobe?.pick && !pickLoc) { delGlobe.pick = null; delGlobe.addPins(); }
 }
-const locBlock = (required, note) => `<div class="${pickLoc ? 'picked' : 'pickprompt'}">${pickLoc ? `<div style="grid-column:1/3"><b>${esc(pickLoc.where)}</b><span>Location chosen. Click the map again to change it.</span></div><button type="button" class="unpick" aria-label="Clear location">✕</button>` : `${required ? 'Click your own territory on the map to choose where to build.' : (note ? 'Optional: click the map if your plan happens somewhere specific.' : 'Optional: click the map to mark where the operation happens.')}<span>${required ? 'Ships must be built on a coast. Crisis staff check the location.' : (note ? 'Crisis staff will see the spot you mark.' : 'Air reconnaissance reveals enemy units around the spot you pick.')}</span>`}</div>`;
+const locBlock = (required, note) => `<div class="${pickLoc ? 'picked' : 'pickprompt'}">${pickLoc ? `<div style="grid-column:1/3"><b>${esc(pickLoc.where)}</b><span>Location chosen. Click the map again to change it.</span></div><button type="button" class="unpick" aria-label="Clear location">✕</button>` : `${required ? 'Click your own territory on the map to choose where to build.' : (note ? 'Optional: use "Mark a spot on the map" if your plan happens somewhere specific.' : 'Optional: mark where the operation happens.')}<span>${required ? 'Ships must be built on a coast. Crisis staff check the location.' : (note ? 'Crisis staff will see the spot you mark.' : 'Air reconnaissance reveals enemy units around the spot you pick.')}</span>`}</div>`;
 // Update only the location box so the rest of the form keeps what the delegate already chose.
 function renderLoc() {
   const box = $('f-loc'); if (!box) return renderForm();
@@ -1637,7 +1661,7 @@ function renderForm() {
     <p class="formnote">Spy missions are always private. Crisis staff decide if your agent succeeds, fails, or gets caught.</p>`;
   if (action === 'money') body = `<label for="f-to">Send to<select id="f-to">${opt(TO())}</select></label><label for="f-amt">Amount ($ millions)<input id="f-amt" type="number" min="1" max="9999" value="10"></label><label for="f-text">Purpose (optional)<textarea id="f-text" maxlength="1200"></textarea></label>`;
   const LOC = locBlock;
-  if (action === 'build') body = `<div id="f-loc">${LOC(true)}</div><label for="f-btype">What to build<select id="f-btype">${opt(Object.keys(BUILD))}</select></label><label for="f-bqty">How many<input id="f-bqty" type="number" min="1" max="10" value="1"></label><p class="formnote" id="f-bcost"></p>`;
+  if (action === 'build') body = `<label for="f-btype">What to build<select id="f-btype">${opt(Object.keys(BUILD))}</select></label><label for="f-city">Where<select id="f-city"></select></label><p class="formnote">Forces can only be built in cities ${POWERS[ME].label} holds. Ships need a port city. You can also click a city on the map.</p><label for="f-bqty">How many<input id="f-bqty" type="number" min="1" max="10" value="1"></label><p class="formnote" id="f-bcost"></p>`;
   if (action === 'op') body = `<div id="f-loc">${LOC(false)}</div><label for="f-op">Operation<select id="f-op">${opt(['Naval blockade', 'Escort convoys', 'Air reconnaissance', 'Evacuate civilians', 'Other (describe below)'])}</select></label><label for="f-cost">Budget ($ millions)<input id="f-cost" type="number" min="1" max="9999" value="20"></label><label for="f-text">Details<textarea id="f-text" maxlength="1200" placeholder="Where, when and how."></textarea></label>`;
   if (action === 'propaganda') body = `<label for="f-aud">Audience<select id="f-aud">${opt(['People at home', 'Neutral countries', 'People in Germany', 'People in Britain', 'People in France', 'People in Italy', 'People in the Soviet Union', 'The United States', 'Japan'])}</select></label><label for="f-text">Message<textarea id="f-text" maxlength="1200" placeholder="What do you want them to believe?"></textarea></label>`;
   if (action === 'treaty') body = `<label for="f-with">Treaty with<select id="f-with">${ORDER.filter((k) => k !== ME).map((k) => `<option value="${k}">${POWERS[k].label}</option>`).join('')}</select></label>`;
@@ -1653,14 +1677,19 @@ function renderForm() {
   f.querySelector('#f-loc .unpick')?.addEventListener('click', () => { setPick(null); renderLoc(); });
   f.querySelector('.unfollow')?.addEventListener('click', () => { followParent = null; renderForm(); });
   f.querySelector('.picked:not(#f-loc .picked) .unpick')?.addEventListener('click', () => { pickedForce = null; if (delGlobe) { delGlobe.selectedUnit = null; delGlobe.markSelected(null); } renderForm(); });
-  if (action === 'build') { const upd = () => { const c = BUILD[f.querySelector('#f-btype').value] * (+f.querySelector('#f-bqty').value || 0); f.querySelector('#f-bcost').textContent = `Cost: $${c}M of your $${POWERS[ME].treasury}M treasury. Adds about ${S.realText({ kind: BUILD_KIND[f.querySelector('#f-btype').value], owner: ME }, +f.querySelector('#f-bqty').value || 0)}.`; }; f.querySelector('#f-btype').addEventListener('change', upd); f.querySelector('#f-bqty').addEventListener('input', upd); upd(); }
+  if (action === 'build') {
+    const fillCities = () => { const kind = BUILD_KIND[f.querySelector('#f-btype').value]; const sel = f.querySelector('#f-city'); const was = sel.value; const ok = Object.values(S.CITY).filter((c) => canBuildIn(c, kind)).sort((a, b) => b.capital - a.capital || a.name.localeCompare(b.name)); sel.innerHTML = ok.length ? ok.map((c) => `<option${c.name === was ? ' selected' : ''}>${esc(c.name)}</option>`).join('') : '<option value="">No city you hold can build this</option>'; };
+    f.querySelector('#f-btype').addEventListener('change', fillCities); fillCities();
+    f.querySelector('#f-city').addEventListener('change', () => { const c = S.CITY[f.querySelector('#f-city').value]; if (c && delGlobe) { delGlobe.pick = { at: c.at, label: 'Build in ' + c.name }; delGlobe.addPins(); } });
+    f.querySelector('#f-city').dispatchEvent(new Event('change'));
+    const upd = () => { const c = BUILD[f.querySelector('#f-btype').value] * (+f.querySelector('#f-bqty').value || 0); f.querySelector('#f-bcost').textContent = `Cost: $${c}M of your $${POWERS[ME].treasury}M treasury. Adds about ${S.realText({ kind: BUILD_KIND[f.querySelector('#f-btype').value], owner: ME }, +f.querySelector('#f-bqty').value || 0)}.`; }; f.querySelector('#f-btype').addEventListener('change', upd); f.querySelector('#f-bqty').addEventListener('input', upd); upd(); }
 }
 function summary() {
   const v = (id) => $(id)?.value;
   if (action === 'fleet') { const u = UNITS.find((x) => x.id === pickedForce); return u ? `Move ${u.name}: ${v('f-dest')}` : ''; }
   if (action === 'spy') return `Spy to ${CITY_OF[v('f-target')] || v('f-target')}: ${v('f-mission').toLowerCase()}`;
   if (action === 'money') return `Send $${v('f-amt')}M to ${v('f-to')}`;
-  if (action === 'build') return `Build ${v('f-bqty')} × ${v('f-btype').toLowerCase()}${pickLoc ? ' in ' + pickLoc.where : ''}`;
+  if (action === 'build') return `Build ${v('f-bqty')} × ${v('f-btype').toLowerCase()}${v('f-city') ? ' in ' + v('f-city') : ''}`;
   if (action === 'op') return `Fund ${v('f-op').toLowerCase()} with $${v('f-cost')}M${pickLoc ? ' near ' + pickLoc.where : ''}`;
   if (action === 'treaty') { const t = (v('f-text') || '').trim(); return t ? `Treaty with ${POWERS[v('f-with')].label}: ${t.length > 50 ? t.slice(0, 47) + '...' : t}` : ''; }
   const t = (v('f-text') || '').trim(); const kind = { secret: followParent ? 'Follow-up' : 'Crisis note', press: 'Press release', treaty: 'Treaty proposal', propaganda: `Propaganda to ${(v('f-aud') || '').replace(/^People/, 'people')}` }[action];
@@ -1673,7 +1702,7 @@ async function submitAction(e) {
   if (action === 'fleet') Object.assign(detail, { unit: pickedForce, dest: v('f-dest') });
   if (action === 'spy') Object.assign(detail, { target: v('f-target'), mission: v('f-mission'), cover: v('f-cover'), cost: +v('f-spycost') });
   if (action === 'money') Object.assign(detail, { to: v('f-to'), amount: +v('f-amt') });
-  if (action === 'build') { if (!pickLoc) { toast('Click your own territory on the map to choose where to build.'); return; } Object.assign(detail, { btype: v('f-btype'), qty: +v('f-bqty'), at: pickLoc.at, where: pickLoc.where }); }
+  if (action === 'build') { if (!v('f-city')) { toast('Pick a city you hold to build in.'); return; } Object.assign(detail, { btype: v('f-btype'), qty: +v('f-bqty'), city: v('f-city') }); }
   if (action === 'op') Object.assign(detail, { op: v('f-op'), cost: +v('f-cost'), ...(pickLoc ? { at: pickLoc.at, where: pickLoc.where } : {}) });
   if (action === 'treaty') detail.with = v('f-with');
   if (action === 'secret') Object.assign(detail, { cost: +v('f-cost') || 0, ...(pickLoc ? { at: pickLoc.at, where: pickLoc.where } : {}), ...(followParent ? { parent: followParent } : {}) });
