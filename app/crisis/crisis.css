@@ -1138,3 +1138,6 @@ body *:not(.lbl) { letter-spacing: normal !important; }
 .prevbar ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
 .prevbar .fl { width: 18px; height: 12px; display: inline-block; vertical-align: -1px; }
 @media (max-width: 900px) { .prevbar { left: 50%; width: calc(100% - 24px); } }
+.ftile.placeable { cursor: pointer; transition: border-color .15s, transform .12s var(--ease); }
+.ftile.placeable:hover, .ftile.placeable:focus-visible { border-color: var(--gold); transform: translateY(-2px); outline: none; }
+.prevbar .check { font-size: 13px !important; }

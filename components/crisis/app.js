@@ -1149,12 +1149,22 @@ class Globe {
     const c = this.renderer.domElement; let drag = null;
     // Left drag turns and tilts the camera. Right drag (or one finger on touch) moves across the map.
     c.addEventListener('contextmenu', (e) => e.preventDefault());
+    const rayAt = (e) => { const r = c.getBoundingClientRect(); const m = new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); const ray = new THREE.Raycaster(); ray.setFromCamera(m, this.camera); return ray; };
+    const groundAt = (e) => { const hit = rayAt(e).intersectObjects([this.patch, this.base].filter(Boolean))[0]; if (!hit) return null; const p = hit.point.clone().normalize(); return [+(Math.atan2(-p.z, p.x) / D2R).toFixed(3), +(Math.asin(p.y) / D2R).toFixed(3)]; };
     c.addEventListener('pointerdown', (e) => {
+      // While staff stage changes, a unit can be picked up and dragged to a new spot.
+      if (e.button === 0 && this.opts.canDrag?.() && this.unitGroup) {
+        const uh = rayAt(e).intersectObject(this.unitGroup, true)[0]; const id = uh?.object.userData.unitId;
+        if (id && this.figs[id]) { this.unitDrag = { id, x: e.clientX, y: e.clientY, moved: false, at: null }; c.setPointerCapture(e.pointerId); c.style.cursor = 'grabbing'; return; }
+      }
       const pan = e.button === 2 || e.pointerType === 'touch' || e.shiftKey;
       drag = { x: e.clientX, y: e.clientY, lon: this.view.lon, lat: this.view.lat, heading: this.view.heading, tilt: this.view.tilt, pan, button: e.button, moved: false };
       c.setPointerCapture(e.pointerId);
     });
     c.addEventListener('pointermove', (e) => {
+      const ud = this.unitDrag;
+      if (ud) { if (Math.abs(e.clientX - ud.x) + Math.abs(e.clientY - ud.y) > 4) ud.moved = true; if (!ud.moved) return; const ll = groundAt(e); if (!ll) return; ud.at = ll;
+        this.place(this.figs[ud.id], ll[0], ll[1]); const it = this.items?.find((x) => x.kind === 'tok' && x.id === ud.id); if (it) { it.lon = ll[0]; it.lat = ll[1]; } this.dirty = true; return; }
       if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
       const v = this.view;
       if (drag.pan) {
@@ -1168,6 +1178,8 @@ class Globe {
       this.dirty = true;
     });
     c.addEventListener('pointerup', (e) => {
+      const ud = this.unitDrag;
+      if (ud) { this.unitDrag = null; c.style.cursor = ''; if (ud.moved && ud.at) this.opts.onUnitDrop?.(ud.id, ud.at); else this.opts.onUnit?.(ud.id); drag = null; return; }
       if (drag && !drag.moved && drag.button === 0 && (this.opts.onCountry || this.opts.onUnit)) {
         const r = c.getBoundingClientRect(); const m = new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
         const ray = new THREE.Raycaster(); ray.setFromCamera(m, this.camera);
@@ -1323,7 +1335,7 @@ function staffModals(p) {
     + modal('ev', 'Make something happen', `<p class="formnote">Describe any event in plain words. To place units, pins or buildings yourself, just click the map instead.</p>
           <textarea id="ev-text" maxlength="1500" placeholder="For example: Hitler orders Rundstedt's panzers to take Warsaw within ten days, and rations fuel for the Luftwaffe."></textarea>
           <div class="row"><button type="button" class="dbtn gold" id="ev-preview">Preview</button></div><div id="ev-result"></div>
-          <div id="free-fx">${fxEditor('free', false, 'Or build the effects by hand')}</div><button type="button" class="dbtn" id="free-apply">Apply the hand-made effects</button><button type="button" class="dbtn" id="free-prev">Preview on the map</button>`, true)
+          <div id="free-fx">${fxEditor('free', false, 'Or build the effects by hand')}</div><button type="button" class="dbtn" id="free-apply">Apply the hand-made effects</button><button type="button" class="dbtn gold" id="free-prev">Set it up on the map by hand</button>`, true)
     + modal('battle', 'Battle calculator', '<p class="formnote">Tip: click units on the map and choose "Attacker" or "Defender". Battles in approved crisis notes roll by themselves.</p><div id="battle"></div>', true)
     + modal('rels', 'Wars, treaties and conditions', '<div id="rels"></div>')
     + modal('feat', 'Map features, spies and scheduled events', '<p class="formnote">Click any feature on the map to change it, or click the map to build one. Spies show on the map as dark pins.</p><div id="featlist"></div>', true)
@@ -1358,9 +1370,9 @@ function syncClockUI(fill) {
 let GAL = null;
 function galleryItems(owner) {
   return [
-    ...KINDS.map((k) => ({ name: KIND_NAME[k], sub: 'Unit', make: () => makeFigure({ id: 'gal-' + k, kind: k, owner, str: k === 'air' ? 8 : 6, at: [0, 0] }) })),
-    { name: 'Spy', sub: 'Agent, seen by its own side and staff', make: () => { const f = spyFigure(); bakeFigure(f, null); return f; } },
-    ...Object.entries(FEAT).map(([k, v]) => ({ name: v.name, sub: [v.mod ? `${v.mod > 0 ? '+' : ''}${v.mod} defense` : 'No battle bonus', v.line ? 'can run as a line' : ''].filter(Boolean).join(' · '), make: () => makeProp({ id: 'gal', kind: k, owner, at: [0, 0], ready: 0, ruined: false }) })),
+    ...KINDS.map((k) => ({ place: { mode: 'add', data: { owner, kind: k, str: 3, name: `New ${KIND_NAME[k].toLowerCase()}` } }, name: KIND_NAME[k], sub: 'Unit', make: () => makeFigure({ id: 'gal-' + k, kind: k, owner, str: k === 'air' ? 8 : 6, at: [0, 0] }) })),
+    { place: { mode: 'spy', data: { name: (ROSTER.find((r) => r.country === owner && !r.political) || ROSTER.find((r) => r.country === owner))?.name } }, name: 'Spy', sub: 'Agent, seen by its own side and staff', make: () => { const f = spyFigure(); bakeFigure(f, null); return f; } },
+    ...Object.entries(FEAT).map(([k, v]) => ({ place: { mode: 'feat', data: { kind: k, owner, label: v.name } }, name: v.name, sub: [v.mod ? `${v.mod > 0 ? '+' : ''}${v.mod} defense` : 'No battle bonus', v.line ? 'can run as a line' : ''].filter(Boolean).join(' · '), make: () => makeProp({ id: 'gal', kind: k, owner, at: [0, 0], ready: 0, ruined: false }) })),
   ];
 }
 function startGallery() {
@@ -1386,6 +1398,13 @@ function startGallery() {
   };
   GAL.raf = requestAnimationFrame(loop);
 }
+// Picking a figurine starts staging (if it is not on already) and waits for a click on the map.
+function placeFromGallery(it) {
+  if (!STAFFMAP) return;
+  if (!STAGE) previewOnMap('placing figurines', null, (effects) => act({ type: 'effects.apply', effects }));
+  document.querySelectorAll('.smodal').forEach((m) => (m.hidden = true));
+  placing = { ...it.place, data: { ...it.place.data }, public: STAGE?.pub !== false }; renderPlacebar();
+}
 function buildGallery() {
   GAL.tiles.forEach((tl) => tl.pivot.traverse((o) => o.isMesh && o.geometry.dispose()));
   const grid = $('fgrid'); grid.innerHTML = ''; GAL.tiles = [];
@@ -1397,6 +1416,7 @@ function buildGallery() {
     const cv = document.createElement('canvas'); cv.width = GAL.W * GAL.pr; cv.height = GAL.H * GAL.pr;
     const cap = document.createElement('figcaption'); cap.innerHTML = `<b>${esc(it.name)}</b><small>${esc(it.sub)}</small>`;
     fig.append(cv, cap); grid.appendChild(fig); GAL.tiles.push({ pivot, cv, ctx: cv.getContext('2d') });
+    if (it.place) { fig.classList.add('placeable'); fig.tabIndex = 0; fig.title = `Place ${it.name} on the map`; const pick = () => placeFromGallery(it); fig.addEventListener('click', pick); fig.addEventListener('keydown', (e) => e.key === 'Enter' && pick()); }
   }
 }
 function skeleton(p) {
@@ -1495,6 +1515,7 @@ async function fetchState() {
   SKEW = j.now - Date.now(); if (!j.unchanged) { lastChange = Date.now(); applyState(j); }
 }
 async function act(payload, opt = {}) {
+  if (STAGE && STAGEABLE.has(payload?.type)) return stageAction(payload);
   try {
     const r = await fetch('/api/crisis/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(AS ? { ...payload, as: AS } : payload) });
     if (r.status === 401) { location.href = '/crisis'; return false; }
@@ -1508,7 +1529,7 @@ async function act(payload, opt = {}) {
 
 function applyState(v) {
   if (!v) return;
-  if (PREVIEW) { STATE = v; VER = v.version; return; } // keep showing the preview; the real state is applied on exit
+  if (STAGE) { REAL = v; VER = v.version; return; } // keep showing the staged copy; the real state is applied on exit
   const first = !STATE; const prev = STATE ? Object.fromEntries(UNITS.map((u) => [u.id, u])) : null;
   STATE = v; VER = v.version; UNITS = v.units || [];
   const arrowSig = JSON.stringify([v.arrows || [], v.control || {}]); const arrowsChanged = arrowSig !== JSON.stringify([LIVE_ARROWS, CONTROL]); LIVE_ARROWS = v.arrows || []; CONTROL = v.control || {};
@@ -2046,6 +2067,10 @@ function placeAt(lon, lat) {
     act({ type: 'feature.add', ...d, at: a0, ...(a2 ? { at2: a2 } : {}) }); return true;
   }
   const pl = placing; placing = null; renderPlacebar();
+  if (pl.mode === 'spy') {
+    const rid = regionAt(lon, lat); const rg = rid && REGION[rid]; const c = countryAt(lon, lat); const target = rg ? ctrlOf(rg) : c ? ownerOf(c) : null;
+    act({ type: 'effects.apply', effects: [{ type: 'agent', name: pl.data.name, target: POWERS[target]?.label || target || 'Germany', mission: 'Gather intelligence', to: [+lon.toFixed(3), +lat.toFixed(3)] }] }); return true;
+  }
   if (pl.mode === 'move') act({ type: 'unit.move', id: pl.id, at: [lon, lat], public: pl.public });
   if (pl.mode === 'add') act({ type: 'unit.add', ...pl.data, at: [lon, lat], public: pl.public });
   return true;
@@ -2055,7 +2080,8 @@ function renderPlacebar() {
   if (placing?.mode === 'feat') {
     const line = FEAT[placing.data.kind]?.line;
     b.innerHTML = `${!line ? 'Click the map where it goes.' : placing.at ? 'Now click where the line ends.' : 'Click where the line starts.'} <button type="button" class="dbtn" id="place-cancel">Cancel</button>${line && placing.at ? ' <button type="button" class="dbtn" id="place-one">Just that one spot</button>' : ''}`;
-  } else if (placing) b.innerHTML = `Click the map where ${placing.mode === 'add' ? 'the new unit should go' : 'the unit should move'} (${placing.public ? 'shown on the projector' : 'secret'}). <button type="button" class="dbtn" id="place-cancel">Cancel</button>`;
+  } else if (placing?.mode === 'spy') { b.innerHTML = `Click where ${esc(placing.data.name || 'the')}'s agent goes. <button type="button" class="dbtn" id="place-cancel">Cancel</button>`; }
+  else if (placing) b.innerHTML = `Click the map where ${placing.mode === 'add' ? 'the new unit should go' : 'the unit should move'} (${placing.public ? 'shown on the projector' : 'secret'}). <button type="button" class="dbtn" id="place-cancel">Cancel</button>`;
   $('place-cancel')?.addEventListener('click', () => { placing = null; renderPlacebar(); });
   $('place-one')?.addEventListener('click', () => { const d = placing.data, at = placing.at; placing = null; renderPlacebar(); act({ type: 'feature.add', ...d, at }); });
 }
@@ -2439,7 +2465,7 @@ function renderStaff() {
       ${q.status === 'pending' ? `${aiBlock(q)}
         <textarea id="r-${q.id}" maxlength="800" aria-label="Reply to ${esc(q.from)}" placeholder="Your reply decides what happens. Write it, then Approve or Reject: the assistant carries out exactly what you wrote, even if it is not what it suggested."></textarea>
         ${fxEditor(q.id, false, 'Add your own effects').replace('class="fx"', `class="fx" data-country="${q.country}" data-vis="${q.vis}" data-here="${q.detail?.at ? 1 : 0}"`)}
-        <div class="qbtns"><button type="button" class="dbtn green" data-dec="approve" data-q="${q.id}">Approve</button><button type="button" class="dbtn red" data-dec="reject" data-q="${q.id}">Reject</button><button type="button" class="dbtn" data-prev="${q.id}" title="See on the map what Approve would do">Preview</button>${q.type === 'fleet' ? `<label class="check"><input type="checkbox" id="sec-${q.id}"${q.vis === 'private' ? ' checked' : ''}> Keep the move off the projector</label>` : ''}</div>`
+        <div class="qbtns"><button type="button" class="dbtn green" data-dec="approve" data-q="${q.id}">Approve</button><button type="button" class="dbtn red" data-dec="reject" data-q="${q.id}">Reject</button><button type="button" class="dbtn gold" data-prev="${q.id}" title="Set up what happens on the map by hand, then Go">Stage on map</button>${q.type === 'fleet' ? `<label class="check"><input type="checkbox" id="sec-${q.id}"${q.vis === 'private' ? ' checked' : ''}> Keep the move off the projector</label>` : ''}</div>`
       : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b>${q.effects ? `<br>Effects: ${q.effects.map(esc).join(', ')}` : ''}</div>`}
     </div>`).join('') || '<p class="formnote">Nothing waiting. New requests appear here a second or two after delegates send them.</p>';
   })); }
@@ -2460,7 +2486,7 @@ function renderChair() {
     ${d.status === 'chair' ? `<div class="qbtns"><button type="button" class="dbtn gold" data-ch="floor" data-d="${d.id}">Put it on the floor</button><button type="button" class="dbtn" data-ch="back" data-d="${d.id}">Send back</button></div>` : ''}
     ${d.status === 'floor' ? `<div class="votes"><label>For <input type="number" min="0" id="vf-${d.id}" value="0"></label><label>Against <input type="number" min="0" id="va-${d.id}" value="0"></label><button type="button" class="dbtn gold" data-ch="vote" data-d="${d.id}">Record placard vote</button></div>` : ''}
     ${d.status === 'passed' && !d.carried ? `${d.ai ? `<div class="aibox"><div><b>Carrying it out will</b><ul>${planList('d' + d.id, d.ai, true) || '<li class="none">Nothing on the map. Add effects by hand if needed.</li>'}</ul></div>${d.ai.staff_note ? `<small>${esc(d.ai.staff_note)}</small>` : ''}</div>` : `<div class="aibox wait">${aiErr[d.id] ? `${esc(aiErr[d.id])} <button type="button" class="dbtn" data-retry="${d.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading the clauses…'}</div>`}
-      ${fxEditor('dir-' + d.id, false, 'Add your own effects')}<div class="qbtns"><button type="button" class="dbtn gold" data-ch="carry" data-d="${d.id}">Carry out the directive</button><button type="button" class="dbtn" data-ch="preview" data-d="${d.id}">Preview on the map</button></div>` : ''}
+      ${fxEditor('dir-' + d.id, false, 'Add your own effects')}<div class="qbtns"><button type="button" class="dbtn gold" data-ch="carry" data-d="${d.id}">Carry out the directive</button><button type="button" class="dbtn" data-ch="preview" data-d="${d.id}">Stage on map</button></div>` : ''}
     ${d.carried ? `<small class="formnote">Carried out: ${d.carried.map(esc).join(', ') || 'no map changes'}</small>` : ''}
   </div>`).join('') || '<p class="formnote">No directives yet. They appear here once delegates send them for signatures.</p>';
 }
@@ -2495,30 +2521,74 @@ async function buildDecision(q, ok, btn) {
   const dec = !ok ? (q.type === 'spy' ? 'spy-fail' : 'reject') : q.type === 'fleet' ? ($('sec-' + q.id)?.checked ? 'move-secret' : 'move-public') : q.type === 'spy' ? 'spy-ok' : 'approve';
   return { type: 'decide', id: q.id, dec, reply: reply || b.reply || '', effects: [...(b.effects || []), ...manual], headline: b.headline, flash: b.flash, when: readWhen(box) };
 }
-/* ---------- Preview on the map: run the change on a copy of the game, show it, then do it or go back ---------- */
-let PREVIEW = null;
-function previewOnMap(label, payload, commit, reopen) {
+/* ---------- Stage on the map: set things up by hand on a copy of the game, then Go ---------- */
+// While staging, every staff map edit (drag a unit, spawn forces, place figurines or spies, give regions, battles)
+// changes only a copy of the game in this browser. Go sends the finished result to every screen at once.
+let STAGE = null, REAL = null;
+const STAGEABLE = new Set(['unit.add', 'unit.move', 'unit.edit', 'unit.destroy', 'feature.add', 'feature.edit', 'region.set', 'effects.apply', 'battle.resolve', 'arrows.clear']);
+const KEEP_FX = new Set(['intel', 'message', 'asset', 'wire', 'reveal', 'trait', 'status']); // effects that are not on the map: sent as the assistant wrote them
+function previewOnMap(label, payload, go, reopen) {
   if (!STATE || !mapGlobe) { toast('The map is still loading.'); return; }
-  const sim = JSON.parse(JSON.stringify(STATE)); let msg;
-  try { msg = simulateAction(sim, { role: 'staff' }, payload); } catch (e) { toast(e.message, 'error'); return; }
+  if (STAGE) exitStage(false);
+  const sim = JSON.parse(JSON.stringify(STATE));
+  if (payload) { try { simulateAction(sim, { role: 'staff' }, payload); } catch (e) { toast(e.message, 'error'); return; } }
   document.querySelectorAll('.smodal').forEach((m) => (m.hidden = true));
-  const before = STATE, prev = Object.fromEntries(UNITS.map((u) => [u.id, u]));
-  PREVIEW = { commit, reopen };
+  REAL = STATE; STAGE = { label, payload, go, reopen, sim, pub: true };
+  showStage(Object.fromEntries(UNITS.map((u) => [u.id, u])));
+}
+function showStage(prev) {
+  const sim = STAGE.sim; STATE = sim;
   UNITS = sim.units || []; FEATS = sim.features || []; CONTROL = sim.control || {}; MARKERS = sim.markers || [];
   AGENTS = Object.entries(sim.agents || {}).flatMap(([owner, l]) => l.map((g) => ({ ...g, owner })));
-  mapGlobe.sync(prev); mapGlobe.addProps(); mapGlobe.repaintOcc(null); mapGlobe.addPins();
-  const L = previewDiff(before, sim); const battle = (payload.effects || []).some((e) => e.type === 'battle');
-  const bar = $('prevbar'); bar.hidden = false;
-  bar.innerHTML = `<div class="pvhead"><b>Preview: ${esc(label)}</b><span>Nothing has changed yet. This is what the map would look like.</span></div>
-    <ul>${L.map((x) => `<li>${x}</li>`).join('') || '<li class="formnote">Nothing on the map changes. Only the reply is sent.</li>'}</ul>
-    ${battle ? '<p class="formnote">Battle results here are one possible dice roll. The real roll happens when you press Do it.</p>' : ''}
-    <div class="row"><button type="button" class="dbtn gold" id="pv-go">Do it</button><button type="button" class="dbtn" id="pv-back">Back</button></div>`;
-  $('pv-go').addEventListener('click', () => { const c = PREVIEW?.commit; exitPreview(false); c?.(); });
-  $('pv-back').addEventListener('click', () => exitPreview(true));
+  mapGlobe.sync(prev); mapGlobe.addProps(); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null); mapGlobe.addPins(); if (EDIT) renderEdit();
+  const L = previewDiff(REAL, sim); const bar = $('prevbar'); bar.hidden = false;
+  bar.innerHTML = `<div class="pvhead"><b>Staging: ${esc(STAGE.label)}</b><span>Only you see this. Drag units to move them, click the map to spawn forces, build or give regions, or place a figurine from Figurines. Press Go to send it to every screen.</span></div>
+    <ul>${L.map((x) => `<li>${x}</li>`).join('') || '<li class="formnote">No map changes yet.</li>'}</ul>
+    <label class="check"><input type="checkbox" id="pv-pub"${STAGE.pub ? ' checked' : ''}> The projector shows these changes (unticked: secret, staff and the owners only)</label>
+    <div class="row"><button type="button" class="dbtn gold" id="pv-go">Go</button><button type="button" class="dbtn" id="pv-reset">Start over</button><button type="button" class="dbtn" data-modal="gallery">Figurines</button><button type="button" class="dbtn" id="pv-back">Cancel</button></div>`;
+  $('pv-go').addEventListener('click', goStage);
+  $('pv-back').addEventListener('click', () => exitStage(true));
+  $('pv-reset').addEventListener('click', () => { const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.sim = JSON.parse(JSON.stringify(REAL)); STAGE.payload = null; showStage(prev); });
+  $('pv-pub').addEventListener('change', (e) => (STAGE.pub = e.target.checked));
+  bar.querySelector('[data-modal]').addEventListener('click', () => openModal('gallery'));
 }
-function exitPreview(back) {
-  if (!PREVIEW) return; const reopen = PREVIEW.reopen; PREVIEW = null; $('prevbar').hidden = true;
-  featSig = ''; applyState(STATE); if (back && reopen) openModal(reopen);
+// Apply a staff map action to the staged copy instead of the server.
+function stageAction(payload) {
+  const prev = Object.fromEntries(UNITS.map((u) => [u.id, u]));
+  try { simulateAction(STAGE.sim, { role: 'staff' }, payload); } catch (e) { toast(e.message, 'error'); return false; }
+  showStage(prev); return true;
+}
+// Turn everything that differs between the real game and the staged copy into effects.
+function stageEffects(a, b, pub) {
+  const fx = []; const A = Object.fromEntries((a.units || []).map((u) => [u.id, u]));
+  for (const u of b.units || []) {
+    const o = A[u.id];
+    if (!o) fx.push({ type: 'unit', owner: u.owner, kind: u.kind, str: u.str, name: u.name, note: u.note, to: u.at, public: pub });
+    else { if (Math.hypot(o.at[0] - u.at[0], o.at[1] - u.at[1]) > 0.02) fx.push({ type: 'move', unit: u.id, to: u.at, public: pub }); if (o.str !== u.str) fx.push({ type: 'strength', unit: u.id, delta: u.str - o.str }); }
+  }
+  for (const u of a.units || []) if (!(b.units || []).some((x) => x.id === u.id)) fx.push({ type: 'destroy', unit: u.id, public: pub });
+  const fa = Object.fromEntries((a.features || []).map((f) => [f.id, f]));
+  for (const f of b.features || []) { const o = fa[f.id]; if (!o) fx.push({ type: 'feature', kind: f.kind, label: f.label, owner: f.owner, at: f.at, ...(f.to ? { at2: f.to } : {}), mod: f.mod, turns: Math.max(0, f.ready - (b.update?.no ?? 0)), public: pub && f.public !== false }); else if (!o.ruined && f.ruined) fx.push({ type: 'feature.edit', id: f.id, action: 'ruin', public: pub }); }
+  for (const f of a.features || []) if (!(b.features || []).some((x) => x.id === f.id)) fx.push({ type: 'feature.edit', id: f.id, action: 'remove' });
+  const byOwner = {}; for (const id of new Set([...Object.keys(a.control || {}), ...Object.keys(b.control || {})])) { const x = (a.control || {})[id], y = (b.control || {})[id]; if (x !== y && REGION[id]) (byOwner[y || baseOwner(REGION[id])] = byOwner[y || baseOwner(REGION[id])] || []).push(id); }
+  for (const [owner, ids] of Object.entries(byOwner)) fx.push({ type: 'region', ids, owner, public: pub });
+  const rel = (s) => Object.fromEntries((s.relations || []).map((r) => [[r.a, r.b].sort().join('|'), r.status]));
+  const ra = rel(a), rb = rel(b); for (const k of new Set([...Object.keys(ra), ...Object.keys(rb)])) if (ra[k] !== rb[k]) { const [x, y] = k.split('|'); fx.push({ type: 'relation', country: x, other: y, status: rb[k] || 'none' }); }
+  for (const c of Object.keys(b.treasury || {})) { const d = (b.treasury[c] || 0) - ((a.treasury || {})[c] || 0); if (d) fx.push({ type: 'money', country: c, amount: d }); }
+  const ag = (s) => Object.entries(s.agents || {}).flatMap(([name, l]) => l.map((g) => ({ ...g, name })));
+  const ga = ag(a), gb = ag(b);
+  for (const g of gb) if (!ga.some((x) => x.id === g.id)) fx.push({ type: 'agent', name: g.name, target: g.target, mission: g.mission, to: g.at });
+  for (const g of ga) if (!gb.some((x) => x.id === g.id)) fx.push({ type: 'agent', action: 'remove', name: g.name, id: g.id });
+  return fx;
+}
+async function goStage() {
+  const st = STAGE; if (!st) return;
+  const fx = [...stageEffects(REAL, st.sim, st.pub), ...((st.payload?.effects || []).filter((e) => KEEP_FX.has(e.type)))];
+  exitStage(false); await st.go(fx, st.payload || {});
+}
+function exitStage(back) {
+  if (!STAGE) return; const reopen = STAGE.reopen; STAGE = null; $('prevbar').hidden = true;
+  STATE = REAL; REAL = null; featSig = ''; applyState(STATE); if (back && reopen) openModal(reopen);
 }
 function previewDiff(a, b) {
   const L = [], nm = (c) => esc(POWERS[c]?.label || c), near = (at) => { const rid = at && regionAt(at[0], at[1]); return rid ? REGION[rid].name : 'open sea'; };
@@ -2547,7 +2617,7 @@ function previewDiff(a, b) {
 }
 let evPlan = null;
 function renderEvPlan() {
-  $('ev-result').innerHTML = evPlan ? `<div class="aibox"><div><b>This will</b><ul>${planList('ev', evPlan, true) || '<li class="none">The assistant found nothing to change. Try describing it differently.</li>'}</ul></div>${evPlan.staff_note ? `<small>${esc(evPlan.staff_note)}</small>` : ''}</div><div class="row"><button type="button" class="dbtn gold" id="ev-go">Make it happen</button><button type="button" class="dbtn" id="ev-prev">Preview on the map</button><button type="button" class="dbtn" id="ev-cancel">Cancel</button></div>` : '';
+  $('ev-result').innerHTML = evPlan ? `<div class="aibox"><div><b>This will</b><ul>${planList('ev', evPlan, true) || '<li class="none">The assistant found nothing to change. Try describing it differently.</li>'}</ul></div>${evPlan.staff_note ? `<small>${esc(evPlan.staff_note)}</small>` : ''}</div><div class="row"><button type="button" class="dbtn gold" id="ev-go">Make it happen</button><button type="button" class="dbtn" id="ev-prev">Stage on map</button><button type="button" class="dbtn" id="ev-cancel">Cancel</button></div>` : '';
 }
 
 /* ---------- Backups (staff) ---------- */
@@ -2589,7 +2659,8 @@ function bindStaff() {
     const sh = e.target.closest('[data-show]'); if (sh) { const q = STATE.queue.find((x) => x.id === sh.dataset.show); const at = q && qSpot(q); if (at && mapGlobe) mapGlobe.pulse(at, q.from); return; }
     const pv = e.target.closest('[data-prev]');
     if (pv) { const q = STATE.queue.find((x) => x.id === pv.dataset.prev); const ab = pv.parentElement.querySelector('[data-dec="approve"]'); if (!q || !ab) return; pv.disabled = true;
-      buildDecision(q, true, ab).then((p) => { pv.closest('.qcard')?.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = false)); ab.textContent = 'Approve'; pv.disabled = false; if (p) previewOnMap(`approve ${q.from}'s request`, p, () => decideQ(q, true, ab)); }); return; }
+      buildDecision(q, true, ab).then((p) => { pv.closest('.qcard')?.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = false)); ab.textContent = 'Approve'; pv.disabled = false;
+        if (p) previewOnMap(`${q.from}: ${q.title}`, p, async (effects, base) => { if (await act({ type: 'decide', id: q.id, dec: 'manual', reply: base.reply || '', effects, headline: base.headline, flash: base.flash }, { quiet: true })) notify({ kind: 'approved', title: 'Approved and carried out', body: `${q.from}: ${q.title}` }); }); }); return; }
     const b = e.target.closest('[data-dec]'); if (!b) return; const q = STATE.queue.find((x) => x.id === b.dataset.q); if (q) decideQ(q, b.dataset.dec === 'approve', b);
   });
   bindFx($('view-staff-root'));
@@ -2602,7 +2673,7 @@ function bindStaff() {
     if (b.dataset.ch === 'back') act({ type: 'chair.back', id });
     if (b.dataset.ch === 'preview') {
       const d = STATE.directives.find((x) => x.id === id); const box = b.closest('.chair-row').querySelector('.fx'); const cb = b.parentElement.querySelector('[data-ch="carry"]');
-      previewOnMap(`carry out directive ${d.no || ''}`, { type: 'effects.apply', directive: id, effects: [...keptEffects('d' + id, d.ai), ...readFx(box)], headline: d.ai?.headline, flash: d.ai?.flash, when: readWhen(box), empty: true }, () => { openModal('dir'); setTimeout(() => cb?.click(), 50); }, 'dir');
+      previewOnMap(`directive ${d.no || ''}: ${d.title}`, { type: 'effects.apply', effects: [...keptEffects('d' + id, d.ai), ...readFx(box)], headline: d.ai?.headline, flash: d.ai?.flash }, (effects, base) => act({ type: 'effects.apply', directive: id, effects, headline: base.headline, flash: base.flash, empty: true }).then((ok) => ok && (chairSig = '')), 'dir');
     }
     if (b.dataset.ch === 'carry') {
       const d = STATE.directives.find((x) => x.id === id); const box = b.closest('.chair-row').querySelector('.fx');
@@ -2620,7 +2691,7 @@ function bindStaff() {
   $('ev-result').addEventListener('click', async (e) => {
     const off = e.target.closest('[data-off]'); if (off) { const i = +off.dataset.off.split(':')[1]; const set = (aiOff.ev = aiOff.ev || new Set()); set.has(i) ? set.delete(i) : set.add(i); renderEvPlan(); return; }
     if (e.target.id === 'ev-cancel') { evPlan = null; renderEvPlan(); }
-    if (e.target.id === 'ev-prev' && evPlan) previewOnMap('make something happen', { type: 'effects.apply', effects: keptEffects('ev', evPlan), headline: evPlan.headline, flash: evPlan.flash }, () => { openModal('ev'); setTimeout(() => $('ev-go')?.click(), 50); }, 'ev');
+    if (e.target.id === 'ev-prev' && evPlan) { const plan = evPlan; previewOnMap('make something happen', { type: 'effects.apply', effects: keptEffects('ev', plan), headline: plan.headline, flash: plan.flash }, (effects, base) => act({ type: 'effects.apply', effects, headline: base.headline, flash: base.flash }).then((ok) => { if (ok) { evPlan = null; $('ev-text').value = ''; renderEvPlan(); } }), 'ev'); }
     if (e.target.id === 'ev-go') { if (await act({ type: 'effects.apply', effects: keptEffects('ev', evPlan), headline: evPlan.headline, flash: evPlan.flash })) { evPlan = null; $('ev-text').value = ''; renderEvPlan(); } }
   });
   $('rels').addEventListener('click', (e) => {
@@ -2644,7 +2715,7 @@ function bindStaff() {
   $('replay-flash').addEventListener('click', () => act({ type: 'flash' }));
   $('cd-restart').addEventListener('click', () => act({ type: 'countdown', minutes: 15 }));
   $('clear-arrows').addEventListener('click', () => act({ type: 'arrows.clear' }));
-  $('free-prev').addEventListener('click', () => { const box = $('free-fx').querySelector('.fx'); const fx = readFx(box); if (!fx.length) { toast('Add at least one effect first.'); return; } previewOnMap('hand-made effects', { type: 'effects.apply', effects: fx, when: readWhen(box) }, () => { openModal('ev'); setTimeout(() => $('free-apply').click(), 50); }, 'ev'); });
+  $('free-prev').addEventListener('click', () => previewOnMap('set things up by hand', null, (effects) => act({ type: 'effects.apply', effects }), 'ev'));
   $('free-apply').addEventListener('click', async () => { const box = $('free-fx').querySelector('.fx'); const fx = readFx(box); if (!fx.length) { toast('Add at least one effect first.'); return; } if (await act({ type: 'effects.apply', effects: fx, when: readWhen(box) })) box.querySelector('.fx-rows').innerHTML = ''; });
   $('load-demo').addEventListener('click', () => act({ type: 'game.demo' }));
   $('reset-game').addEventListener('click', () => act({ type: 'game.reset', confirm: $('reset-confirm').value.trim().toUpperCase() }));
@@ -2769,7 +2840,7 @@ export function start(root, props) {
       if (stopped) return;
       if (VIEW === 'map') {
         patchCanvas = document.createElement('canvas'); patchCanvas.width = TW * TEXK; patchCanvas.height = TH * TEXK; paintTexture(patchCanvas, imgs);
-        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat), [lon, lat]), onUnit: (id) => select('unit', id), onFeature: (id) => select('feature', id), onGround: EDIT ? placeAt : null, pins: STAFFMAP, onSea: EDIT ? (lon, lat) => select('sea', null, null, [lon, lat]) : null });
+        mapGlobe = new Globe($('stage-map'), $('ov-map'), { onCountry: (n, lon, lat) => select('country', n, regionAt(lon, lat), [lon, lat]), onUnit: (id) => select('unit', id), onFeature: (id) => select('feature', id), onGround: EDIT ? placeAt : null, canDrag: () => !!STAGE, onUnitDrop: (id, at) => act({ type: 'unit.move', id, at, public: STAGE?.pub !== false }), pins: STAFFMAP, onSea: EDIT ? (lon, lat) => select('sea', null, null, [lon, lat]) : null });
         mapGlobe.setTextures(world, patchCanvas, topo); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null);
       } else {
         fogCanvas = document.createElement('canvas'); fogCanvas.width = TW * TEXK; fogCanvas.height = TH * TEXK; paintTexture(fogCanvas, imgs);
