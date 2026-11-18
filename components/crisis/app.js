@@ -15,6 +15,7 @@ ROSTER.forEach((r) => POWERS[r.country]?.delegates.push(r.name));
 Object.entries(S.MINORS).forEach(([k, v]) => { POWERS[k] = { ...v, delegates: [], treasury: 0 }; });
 const isMajor = (c) => !!POWERS[c] && !POWERS[c].minor;
 let A = { geo: {}, wgeo: {}, towns: [], wtowns: [], wsub: {}, wlabels: {} };
+let GONE = new Set(); // ids the server says were really destroyed (not just hidden by fog)
 let UNITS = [], ALLIES = [], AGENTS = [], LIVE_ARROWS = [], CONTROL = {}, RSHAPE = {}, MARKERS = [], RECON = [];
 const REGION = Object.fromEntries(REGIONS.map((r) => [r.id, r]));
 const baseOwner = (r) => OWNER[r.country] || r.country;
@@ -100,7 +101,7 @@ function paintTexture(canvas, imgs, sel) {
   ctx.globalAlpha = 0.95; ctx.drawImage(sea, 0, 0); ctx.globalAlpha = 1;
   // See-through country colors.
   for (const [name, g] of Object.entries(A.geo)) {
-    { const k = flagKeyOf(name); if (k) { flagFill(ctx, k, g.r, tx, ty, 0.3); continue; } }
+    if (flagKeyOf(name)) continue; // flags are painted on the territory layer so they can grow with conquests
     ringPath(ctx, g.r);
     ctx.save(); ctx.clip('evenodd');
     ctx.fillStyle = colorOf(name);
@@ -129,18 +130,22 @@ const OW = 2048 * TEXK, OH = Math.round(OW * (LAT1 - LAT0) / (LON1 - LON0)), FW 
 function paintOccupation(canvas, sel) {
   const ctx = canvas.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
   const k = canvas.width / TW; ctx.setTransform(k, 0, 0, k, 0, 0); ctx.globalAlpha = 1; ctx.lineJoin = 'round';
-  // Occupied regions: stripes in the occupier's color, like wartime maps.
+  paintTerritoryFlags(ctx);
+  // Occupied regions: the occupier's flag already covers them (continuous with its homeland); add light hatching so the front still reads.
   for (const [id, owner] of Object.entries(CONTROL)) {
-    const sh = RSHAPE[id]; if (!sh) continue; const col = POWERS[owner]?.color || NEUTRALS[owner] || '#999';
-    if (POWERS[owner]) flagFill(ctx, owner, sh.r, tx, ty, 0.42);
+    const sh = RSHAPE[id]; if (!sh) continue; const col = POWERS[owner]?.color || NEUTRALS[owner] || '#999'; const flagged = !!flagKeyOf(owner);
     ctx.save(); ringPath(ctx, sh.r); ctx.clip('evenodd');
-    ctx.globalAlpha = POWERS[owner] ? 0.12 : 0.28; ctx.fillStyle = col; ctx.fillRect(0, 0, TW, TH); ctx.globalAlpha = 0.7; ctx.strokeStyle = col; ctx.lineWidth = 6;
+    if (!flagged) { ctx.globalAlpha = 0.28; ctx.fillStyle = col; ctx.fillRect(0, 0, TW, TH); }
+    ctx.globalAlpha = flagged ? 0.16 : 0.7; ctx.strokeStyle = flagged ? '#14110a' : col; ctx.lineWidth = flagged ? 4 : 6;
     const xs = sh.r.flat().map((p) => tx(p[0])), ys = sh.r.flat().map((p) => ty(p[1]));
     const x0 = Math.min(...xs) - 200, x1 = Math.max(...xs) + 200, y0 = Math.min(...ys), y1 = Math.max(...ys);
     for (let x = x0; x < x1; x += 22) { ctx.beginPath(); ctx.moveTo(x, y1 + 10); ctx.lineTo(x + (y1 - y0) + 20, y0 - 10); ctx.stroke(); }
     ctx.restore();
     ringPath(ctx, sh.r); ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(10,10,10,0.55)'; ctx.lineWidth = 3; ctx.setLineDash([10, 8]); ctx.stroke(); ctx.setLineDash([]);
   }
+  // Staff: the region(s) picked on the map get a gold outline so it is clear what a change will cover.
+  if (STAFFMAP) { const ids = selected.type === 'multi' ? selected.group?.regions || [] : selected.region ? [selected.region] : [];
+    for (const id of ids) { const sh = RSHAPE[id]; if (!sh) continue; ringPath(ctx, sh.r); ctx.fillStyle = 'rgba(245,194,27,0.22)'; ctx.fill('evenodd'); ctx.strokeStyle = '#F5C21B'; ctx.lineWidth = 4; ctx.stroke(); } }
   if (sel && A.geo[sel]) {
     ringPath(ctx, A.geo[sel].r);
     ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fill('evenodd');
@@ -831,6 +836,31 @@ function drawFlag(ctx, owner, x, y, w, h) {
 }
 // One flag for each piece of land, clipped to the country's outline. The width is corrected for latitude, since
 // the map is stretched sideways toward the poles, so every flag keeps its real 3:2 shape on the globe.
+/* One flag per country across everything it holds: its homeland minus regions it lost, plus regions it took,
+   drawn with a single flag frame so conquered land looks like part of the same country. */
+const ringArea = (r) => { let a = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]); return Math.abs(a / 2); };
+function paintTerritoryFlags(ctx) {
+  const lost = {}, gained = {};
+  for (const [id, o] of Object.entries(CONTROL)) { const r = REGION[id], sh = RSHAPE[id]; if (!r || !sh) continue; const b = baseOwner(r); if (o === b) continue; (lost[b] = lost[b] || []).push(...sh.r); (gained[o] = gained[o] || []).push(...sh.r); }
+  // The homeland ring each flag key grows from: the largest ring of the country itself (not its colonies).
+  const main = {};
+  for (const [name, g] of Object.entries(A.geo)) { const k = flagKeyOf(name); if (!k || A.wsub?.[name]) continue; for (const r of g.r) { const a = ringArea(r); if (!main[k] || a > main[k].a) main[k] = { r, a }; } }
+  const frameOf = (k, pts) => { let lo0 = 1e9, la0 = 1e9, lo1 = -1e9, la1 = -1e9; for (const [lo, la] of pts) { if (lo < lo0) lo0 = lo; if (lo > lo1) lo1 = lo; if (la < la0) la0 = la; if (la > la1) la1 = la; }
+    const bw = lo1 - lo0, bh = la1 - la0; if (bw <= 0 || bh <= 0) return null; const mid = (la0 + la1) / 2, c = Math.max(0.25, Math.cos(mid * D2R)), ar = flagAR(k);
+    const h = Math.max(bh, bw * c / ar), w = h * ar / c; return { x0: lo0 + (bw - w) / 2, top: mid + h / 2, w, h }; };
+  const draw = (k, f) => { ctx.globalAlpha = 0.3; drawFlag(ctx, k, tx(f.x0), ty(f.top), tx(f.x0 + f.w) - tx(f.x0), ty(f.top - f.h) - ty(f.top)); };
+  for (const [name, g] of Object.entries(A.geo)) {
+    const k = flagKeyOf(name); if (!k) continue; const o = A.wsub?.[name] ? null : k; const L = (o && lost[o]) || [];
+    for (const ring of g.r) {
+      const grow = main[k]?.r === ring && gained[k]; const f = frameOf(k, grow ? ring.concat(...gained[k]) : ring); if (!f) continue;
+      ctx.save(); ringPath(ctx, [ring]); ctx.clip(); if (L.length) { ringPath(ctx, [ring, ...L]); ctx.clip('evenodd'); } draw(k, f); ctx.restore();
+      if (grow) { ctx.save(); ringPath(ctx, gained[k]); ctx.clip(); draw(k, f); ctx.restore(); }
+    }
+  }
+  // Land taken by a country that has no homeland ring here still gets its flag, framed on what it took.
+  for (const [k, rings] of Object.entries(gained)) if (!main[k] && flagKeyOf(k)) { const f = frameOf(k, rings.flat()); if (f) { ctx.save(); ringPath(ctx, rings); ctx.clip(); draw(flagKeyOf(k), f); ctx.restore(); } }
+  ctx.globalAlpha = 1;
+}
 function flagFill(ctx, owner, rings, X, Y, alpha) {
   const all = () => { ctx.beginPath(); for (const r of rings) { r.forEach(([lo, la], i) => (i ? ctx.lineTo(X(lo), Y(la)) : ctx.moveTo(X(lo), Y(la)))); ctx.closePath(); } };
   const cosAt = (la) => Math.max(0.25, Math.cos(la * Math.PI / 180));
@@ -857,7 +887,14 @@ function inRing(lon, lat, ring) {
   }
   return inside;
 }
-function regionAt(lon, lat) { for (const [id, g] of Object.entries(RSHAPE)) { let c = 0; for (const r of g.r) if (inRing(lon, lat, r)) c++; if (c % 2) return id; } return null; }
+function regionAt(lon, lat) {
+  for (const [id, g] of Object.entries(RSHAPE)) {
+    if (!g.bb) { let a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (const r of g.r) for (const [x, y] of r) { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; } g.bb = [a, b, c, d]; }
+    if (lon < g.bb[0] || lon > g.bb[2] || lat < g.bb[1] || lat > g.bb[3]) continue;
+    let n = 0; for (const r of g.r) if (inRing(lon, lat, r)) n++; if (n % 2) return id;
+  }
+  return null;
+}
 function countryAt(lon, lat) {
   for (const [n, g] of Object.entries(A.geo)) { let c = 0; for (const r of g.r) if (inRing(lon, lat, r)) c++; if (c % 2) return n; }
   for (const [n, rings] of Object.entries(A.wgeo)) for (const r of rings) if (inRing(lon, lat, r)) return n;
@@ -942,6 +979,8 @@ class Globe {
     this.addUnits(); this.addLights(); this.buildOverlay(); this.addPins(); this.addProps(); this.dirty = true;
   }
   addProps() {
+    const was = this._fst || null; this._fst = Object.fromEntries(FEATS.map((f) => [f.id, { st: featState(f), at: f.at }]));
+    if (was) for (const [id, o] of Object.entries(was)) { const now = this._fst[id]; if (GONE.has(id) && o.st !== 'ruined' && (!now || now.st === 'ruined')) this.burst(o.at, 'building', 'Destroyed'); }
     if (this.propGroup) { this.scene.remove(this.propGroup); this.propGroup.traverse((o) => o.isMesh && o.geometry !== HIT_GEO && o.geometry.dispose()); }
     this.propGroup = new THREE.Group(); this.propGroup.visible = SHOW_FEAT; this.scene.add(this.propGroup);
     const emit = []; const SPACING = 0.85 * PROP_K;
@@ -1066,19 +1105,34 @@ class Globe {
     const ids = UNITS.map((u) => u.id).sort().join(), old = Object.keys(this.figs).sort().join();
     const changed = !prev || ids !== old || UNITS.some((u) => prev[u.id] && (prev[u.id].str !== u.str || prev[u.id].spotted !== u.spotted));
     // Units that vanished were destroyed: sink or burst them before the rebuild drops them.
-    if (prev) for (const id of Object.keys(this.figs)) if (!UNITS.some((u) => u.id === id)) this.killFigure(id, prev[id]);
+    if (prev) for (const id of Object.keys(this.figs)) if (!UNITS.some((u) => u.id === id)) { if (GONE.has(id)) this.killFigure(id, prev[id]); }
     if (changed) { this.rebuild(); this.markSelected(this.selectedUnit); }
     if (prev) for (const u of UNITS) { const p = prev[u.id]; if (p && (p.at[0] !== u.at[0] || p.at[1] !== u.at[1])) this.animateUnit(u.id, p.at, u.at); }
   }
+  // A destroyed unit: ships roll over and sink, planes spiral down, ground forces jolt, tip over and burn.
   killFigure(id, u) {
     const f = this.figs[id]; if (!f) return; this.unitGroup.remove(f); this.scene.add(f); delete this.figs[id];
-    if (u) {
-      const p = this.project(u.at[0], u.at[1], 0.01);
-      if (p.ok) { const b = document.createElement('div'); b.className = 'boom' + (u.kind === 'fleet' ? ' sink' : ''); b.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`; b.innerHTML = `<i></i><span>${u.kind === 'fleet' ? 'Sunk' : u.kind === 'air' ? 'Shot down' : 'Destroyed'}</span>`; this.ov.appendChild(b); setTimeout(() => b.remove(), 2600); }
-    }
-    const t0 = performance.now(), s0 = f.scale.x, n = f.position.clone().normalize(), p0 = f.position.clone();
-    const step = (now) => { const k = Math.min(1, (now - t0) / 1400); f.scale.setScalar(s0 * (1 - k)); f.position.copy(p0).addScaledVector(n, -0.004 * k); this.dirty = true; if (k < 1) requestAnimationFrame(step); else this.scene.remove(f); };
+    const kind = u?.kind || 'army'; if (u) this.burst(u.at, kind === 'fleet' ? 'sea' : kind === 'air' ? 'air' : kind === 'armor' ? 'armor' : 'ground', kind === 'fleet' ? 'Sunk' : kind === 'air' ? 'Shot down' : 'Destroyed');
+    const t0 = performance.now(), s0 = f.scale.x, n = f.position.clone().normalize(), p0 = f.position.clone(), q0 = f.quaternion.clone();
+    const east = new THREE.Vector3(0, 1, 0).cross(n).normalize(); const calm = CALM(); const T = calm ? 300 : kind === 'fleet' ? 3200 : kind === 'air' ? 2600 : 2200;
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / T); f.quaternion.copy(q0); f.position.copy(p0);
+      if (kind === 'fleet') { const roll = Math.min(1, k * 1.6) * 1.25; f.rotateZ(roll); f.rotateX(Math.max(0, k - 0.4) * 0.9); f.position.addScaledVector(n, -0.0065 * Math.pow(k, 1.6)); f.scale.setScalar(s0 * (k > 0.85 ? 1 - (k - 0.85) / 0.15 : 1)); }
+      else if (kind === 'air') { f.rotateY(k * 9); f.rotateX(k * 1.1); f.position.addScaledVector(east, 0.012 * k).addScaledVector(n, 0.004 * (1 - k) - 0.004 * k * k); f.scale.setScalar(s0 * (1 - 0.7 * k)); }
+      else { const jolt = k < 0.12 ? Math.sin(k * 160) * 0.08 : 0; f.rotateZ(jolt + Math.min(1, Math.max(0, (k - 0.1) / 0.35)) * 1.35); f.position.addScaledVector(n, -0.0035 * Math.max(0, k - 0.5) * 2); f.scale.setScalar(s0 * (k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1)); }
+      this.dirty = true; if (k < 1) requestAnimationFrame(step); else this.scene.remove(f);
+    };
     requestAnimationFrame(step);
+  }
+  // An explosion drawn over the globe that stays pinned to its spot while the camera moves.
+  burst(at, type, label) {
+    if (!at || CALM()) return;
+    const d = document.createElement('div'); d.className = `boom2 b-${type}`;
+    const bits = (cls, n) => Array.from({ length: n }, (_, i) => `<i class="${cls}" style="--i:${i};--a:${Math.round(i * 360 / n + (i % 2) * 17)}deg"></i>`).join('');
+    d.innerHTML = `<i class="flash"></i><i class="ring"></i>${type === 'sea' ? bits('plume', 5) + bits('ripple', 3) : bits('smoke', type === 'building' ? 7 : 5) + bits('spark', type === 'air' ? 6 : 10)}${type === 'air' ? '<i class="trail"></i>' : ''}${type === 'building' ? bits('debris', 8) : ''}`; // no text label, just the animation
+    this.stage.appendChild(d); const b = { el: d, at }; (this.bursts = this.bursts || []).push(b); this.dirty = true;
+    const p = this.project(at[0], at[1], 0.004); if (p.ok) d.style.transform = `translate3d(${Math.round(p.x)}px, ${Math.round(p.y)}px, 0)`; else d.style.display = 'none';
+    setTimeout(() => { d.remove(); this.bursts = this.bursts.filter((x) => x !== b); }, 4200);
   }
   rebuild() {
     if (this.unitGroup) this.scene.remove(this.unitGroup);
@@ -1123,6 +1177,8 @@ class Globe {
     this.ghost = list || []; this.ghostSvg.querySelector('g').innerHTML = this.ghost.map(() => '<path class="gh-under"/><path class="gh-line" marker-end="url(#gh-head)"/>').join(''); this.dirty = true;
   }
   layoutExtras() {
+    for (const b of this.bursts || []) { const p = this.project(b.at[0], b.at[1], 0.004); b.el.style.display = p.ok ? '' : 'none'; if (p.ok) b.el.style.transform = `translate3d(${Math.round(p.x)}px, ${Math.round(p.y)}px, 0)`; }
+    if (this.bursts?.length) this.dirty = true;
     if (this.ghostSvg && this.ghost?.length) {
       const ps = this.ghostSvg.querySelectorAll('path.gh-line, path.gh-under');
       this.ghost.forEach((g, i) => {
@@ -1133,7 +1189,7 @@ class Globe {
         under.setAttribute('d', d); line.setAttribute('d', d);
       });
     }
-    if (this.pop?.el && this.pop.at) { const p = this.project(this.pop.at[0], this.pop.at[1], this.pop.h || 0.006); this.pop.el.style.display = p.ok ? '' : 'none'; if (p.ok) { const below = p.y - (this.pop.el.offsetHeight || 160) - 22 < 70; this.pop.el.classList.toggle('below', below); const x = Math.max(145, Math.min(this._w - 145, p.x)); this.pop.el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(p.y)}px, 0) translate(-50%, ${below ? '22px' : 'calc(-100% - 22px)'})`; } }
+    if (this.pop?.el && this.pop.at) { const p = this.project(this.pop.at[0], this.pop.at[1], this.pop.h || 0.006); this.pop.el.style.display = p.ok ? '' : 'none'; if (p.ok) { const below = p.y - (this.pop.el.offsetHeight || 160) - 22 < 70; this.pop.el.classList.toggle('below', below); const sp = document.getElementById('stagepanel'), sr = this.stage.getBoundingClientRect(); const right = sp && !sp.hidden ? Math.min(this._w, sp.getBoundingClientRect().left - sr.left) : this._w; const x = Math.max(145, Math.min(right - 150, p.x)); this.pop.el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(p.y)}px, 0) translate(-50%, ${below ? '22px' : 'calc(-100% - 22px)'})`; } }
   }
   repaintOcc(sel) { if (!this.occCanvas) return; paintOccupation(this.occCanvas, sel); this.occTex.needsUpdate = true; this.dirty = true; }
   repaintFog() { if (!this.fogCanvas) return; paintFogLayer(this.fogCanvas); this.fogTex.needsUpdate = true; this.dirty = true; }
@@ -1629,7 +1685,7 @@ function applyState(v) {
   if (!v) return;
   if (STAGE) { REAL = v; VER = v.version; return; } // keep showing the staged copy; the real state is applied on exit
   const first = !STATE; const prev = STATE ? Object.fromEntries(UNITS.map((u) => [u.id, u])) : null;
-  STATE = v; VER = v.version; UNITS = v.units || [];
+  STATE = v; VER = v.version; UNITS = v.units || []; GONE = new Set(v.destroyed || []);
   const arrowSig = JSON.stringify([v.arrows || [], v.control || {}]); const arrowsChanged = arrowSig !== JSON.stringify([LIVE_ARROWS, CONTROL]); LIVE_ARROWS = v.arrows || []; CONTROL = v.control || {};
   const markSig = JSON.stringify(v.markers || []); const marksChanged = markSig !== JSON.stringify(MARKERS); MARKERS = v.markers || []; RECON = v.recon || [];
   const fsig = JSON.stringify([v.features || [], v.update?.no]); const featsChanged = fsig !== featSig; featSig = fsig;
@@ -1716,7 +1772,7 @@ function renderSel() {
 function select(type, id, region, at, owner, group) {
   selected = { type, id, region, owner, group, at: at ? [+at[0].toFixed(3), +at[1].toFixed(3)] : null };
   if (mapGlobe) mapGlobe.selSet = group ? new Set(group.units) : null; confirmKill = null; if (EDIT) setTimeout(renderEdit, 0);
-  if (mapGlobe) { mapGlobe.selectedUnit = type === 'unit' ? id : null; mapGlobe.markSelected(mapGlobe.selectedUnit); mapGlobe.repaintOcc(type === 'country' ? id : null); }
+  if (mapGlobe) { mapGlobe.selectedUnit = type === 'unit' ? id : null; mapGlobe.markSelected(mapGlobe.selectedUnit); mapGlobe.repaintOcc(type === 'country' && !STAFFMAP ? id : null); }
   renderSel(); if (STAFFMAP) renderPop();
 }
 /* ---------- Click card on the staff map: edit what was clicked, right where it is ---------- */
@@ -1750,10 +1806,10 @@ function renderPop() {
     if (g) { at = g.at || CAPITAL[g.target]; html = `<div class="mp-head">${r ? flag(r.country) : ''}<b>${esc(g.owner)}'s agent</b><button type="button" class="mp-x" id="mp-x" aria-label="Unselect">✕</button></div><p class="mp-k">In ${esc(POWERS[g.target]?.label || g.target)} · ${esc(g.mission || 'Gather intelligence')}</p>
       <div class="mp-row"><button type="button" class="dbtn red" id="mp-sdel">Remove</button><button type="button" class="dbtn" id="mp-scaught">Caught</button><button type="button" class="dbtn" id="mp-done">Done</button></div>`; }
   } else if (selected.region && REGION[selected.region] && selected.at) {
-    const r = REGION[selected.region], c = ctrlOf(r), zone = REGIONS.filter((x) => x.country === r.country && x.zone === r.zone); at = selected.at;
-    html = `<div class="mp-head">${flag(c)}<b>${esc(r.name)}</b><button type="button" class="mp-x" id="mp-x" aria-label="Unselect">✕</button></div><p class="mp-k">Held by ${esc(POWERS[c]?.label || c)}</p>
+    const r = REGION[selected.region], c = ctrlOf(r), zone = REGIONS.filter((x) => x.country === r.country && x.area === r.area); at = selected.at;
+    html = `<div class="mp-head">${flag(c)}<b>${esc(r.name)}</b><button type="button" class="mp-x" id="mp-x" aria-label="Unselect">✕</button></div><p class="mp-k">${r.area && r.area !== r.name ? `Part of ${esc(r.area)} · ` : ''}Held by ${esc(POWERS[c]?.label || c)}</p>
       <div class="mp-row"><select id="mp-owner" aria-label="Give to">${ownerOpts(c)}</select></div>
-      <div class="mp-row"><button type="button" class="dbtn gold" id="mp-give">Give this region</button>${zone.length > 1 ? `<button type="button" class="dbtn" id="mp-zone">Whole ${esc(r.zone.toLowerCase())} zone</button>` : ''}</div>`;
+      <div class="mp-row"><button type="button" class="dbtn gold" id="mp-give">Give this region</button>${zone.length > 1 ? `<button type="button" class="dbtn" id="mp-zone">All of ${esc(r.area)} (${zone.length})</button>` : ''}</div>`;
   }
   el.hidden = !html; el.innerHTML = html; g.pop = html ? { el, at, h } : null; g.dirty = true;
 }
@@ -1793,7 +1849,7 @@ function bindPop(el) {
       act({ type: 'effects.apply', effects: [{ type: 'agent', name: g.owner, id: g.id, action: 'remove' }], headline: id === 'mp-scaught' ? `${(POWERS[g.target]?.label || g.target).toUpperCase()} · ${POWERS[r?.country]?.label || 'Foreign'} spy arrested` : '' }); select('none'); return; }
     if (id === 'mp-fdel') { act({ type: 'feature.edit', id: selected.id, action: 'remove' }); select('none'); }
     if (id === 'mp-fruin') { const f = FEATS.find((x) => x.id === selected.id); if (f) act({ type: 'feature.edit', id: f.id, action: f.ruined ? 'repair' : 'ruin' }); }
-    if (id === 'mp-give' || id === 'mp-zone') { const r = REGION[selected.region]; const ids = id === 'mp-zone' ? REGIONS.filter((x) => x.country === r.country && x.zone === r.zone).map((x) => x.id) : [r.id]; act({ type: 'region.set', ids, owner: $('mp-owner').value }); }
+    if (id === 'mp-give' || id === 'mp-zone') { const r = REGION[selected.region]; const ids = id === 'mp-zone' ? REGIONS.filter((x) => x.country === r.country && x.area === r.area).map((x) => x.id) : [r.id]; act({ type: 'region.set', ids, owner: $('mp-owner').value }); }
   });
 }
 function renderFloor() {
@@ -2311,7 +2367,7 @@ function renderEdit() {
     if (f) html += `<h3>${fIcon(f.kind)} ${esc(f.label)}</h3><p class="formnote">${esc(featTitle(f))}</p>
       <div class="row">${f.ruined ? '<button type="button" class="dbtn green" data-fe="repair">Repair</button>' : '<button type="button" class="dbtn red" data-fe="ruin">Destroy</button>'}${featState(f) === 'building' ? '<button type="button" class="dbtn gold" data-fe="finish">Finish now</button>' : ''}<button type="button" class="dbtn" data-fe="remove">Remove from map</button></div>`;
   } else if (selected.region && REGION[selected.region]) {
-    const r = REGION[selected.region]; const c = ctrlOf(r); const zone = REGIONS.filter((x) => x.country === r.country && x.zone === r.zone);
+    const r = REGION[selected.region]; const c = ctrlOf(r); const zone = REGIONS.filter((x) => x.country === r.country && x.area === r.area);
     html += `<h3>${esc(r.name)}</h3><p class="formnote">${esc(r.country)} · ${r.zone.toLowerCase()} zone (${zone.length} regions) · held by <b>${esc(POWERS[c]?.label || c)}</b></p>
       <div class="row"><span class="formnote">Give to</span><select id="e-owner">${ownerOptions(c)}</select></div>
       <div class="row"><button type="button" class="dbtn gold" data-e="region">This region</button>${zone.length > 1 ? `<button type="button" class="dbtn" data-e="zone">The whole ${esc(r.zone.toLowerCase())} zone</button>` : ''}<label class="check"><input type="checkbox" id="e-announce" checked> Announce</label></div>
@@ -2365,7 +2421,7 @@ function bindEdit() {
       return;
     }
     if (k === 'region' || k === 'zone') {
-      const r = REGION[selected.region]; const ids = k === 'zone' ? REGIONS.filter((x) => x.country === r.country && x.zone === r.zone).map((x) => x.id) : [r.id];
+      const r = REGION[selected.region]; const ids = k === 'zone' ? REGIONS.filter((x) => x.country === r.country && x.area === r.area).map((x) => x.id) : [r.id];
       act({ type: 'region.set', ids, owner: $('e-owner').value, announce: $('e-announce')?.checked });
     }
     if ((k === 'spawn-pub' || k === 'spawn-sec') && at) {
@@ -2451,15 +2507,15 @@ function bindFx(root) {
 let tCountry = null, fCountry = '';
 function renderTerritory() {
   const box = $('territory'); if (!box) return; tCountry = tCountry || $('t-country').value;
-  const list = REGIONS.filter((r) => r.country === tCountry); const zones = [...new Set(list.map((r) => r.zone))];
+  const list = REGIONS.filter((r) => r.country === tCountry); const zones = [...new Set(list.map((r) => r.area || r.zone))];
   const checked = new Set([...box.querySelectorAll('input[data-r]:checked')].map((i) => i.dataset.r));
   box.innerHTML = zones.map((z) => `<div class="zone"><label class="check zhead"><input type="checkbox" data-z="${esc(z)}"> <b>${esc(z)}</b></label>
-    ${list.filter((r) => r.zone === z).map((r) => { const c = ctrlOf(r); const occ = c !== baseOwner(r); return `<label class="check"><input type="checkbox" data-r="${r.id}"${checked.has(r.id) ? ' checked' : ''}> ${esc(r.name)} <span class="pill ${occ ? 'war' : 'neutral'}">${POWERS[c]?.short || c}</span></label>`; }).join('')}</div>`).join('') +
+    ${list.filter((r) => (r.area || r.zone) === z).map((r) => { const c = ctrlOf(r); const occ = c !== baseOwner(r); return `<label class="check"><input type="checkbox" data-r="${r.id}"${checked.has(r.id) ? ' checked' : ''}> ${esc(r.name)} <span class="pill ${occ ? 'war' : 'neutral'}">${POWERS[c]?.short || c}</span></label>`; }).join('')}</div>`).join('') +
     `<div class="row"><span class="formnote">Give selected to</span><select id="t-owner">${ownerOptions(POWERS[tCountry] ? tCountry : OWNER[tCountry] || tCountry)}</select><label class="check"><input type="checkbox" id="t-announce" checked> Announce on the wire</label><button type="button" class="dbtn gold" id="t-apply">Apply</button></div>`;
 }
 function bindTerritory() {
   $('t-country').addEventListener('change', (e) => { tCountry = e.target.value; $('territory').innerHTML = ''; renderTerritory(); });
-  $('territory').addEventListener('change', (e) => { const z = e.target.dataset.z; if (z) $('territory').querySelectorAll('input[data-r]').forEach((i) => { if (REGION[i.dataset.r].zone === z) i.checked = e.target.checked; }); });
+  $('territory').addEventListener('change', (e) => { const z = e.target.dataset.z; if (z) $('territory').querySelectorAll('input[data-r]').forEach((i) => { if ((REGION[i.dataset.r].area || REGION[i.dataset.r].zone) === z) i.checked = e.target.checked; }); });
   $('territory').addEventListener('click', async (e) => {
     if (e.target.id !== 't-apply') return; const ids = [...$('territory').querySelectorAll('input[data-r]:checked')].map((i) => i.dataset.r);
     if (!ids.length) { toast('Tick at least one region.'); return; }
