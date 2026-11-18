@@ -22,7 +22,7 @@ let TOWNS = []; // named towns shown as glowing dots: [lon, lat, brightness, cou
 let GONE = new Set(); // ids the server says were really destroyed (not just hidden by fog)
 let UNITS = [], ALLIES = [], AGENTS = [], LIVE_ARROWS = [], CONTROL = {}, RSHAPE = {}, MARKERS = [], RECON = [];
 const REGION = Object.fromEntries(REGIONS.map((r) => [r.id, r]));
-const baseOwner = (r) => OWNER[r.country] || r.country;
+const baseOwner = (r) => r.owner || OWNER[r.country] || r.country; // who held the state in September 1938
 const ctrlOf = (r) => CONTROL[r.id] || baseOwner(r);
 let imgs, patchCanvas, fogCanvas, mapGlobe, delGlobe;
 
@@ -60,7 +60,7 @@ function worldBase() {
   // Tints and borders go on their own layer, then the sharp coastline mask trims everything that spills into the sea.
   const lay = document.createElement('canvas'); lay.width = WW; lay.height = WH; const l = lay.getContext('2d');
   const path = (rings) => { l.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? l.lineTo(X(x), Y(y)) : l.moveTo(X(x), Y(y))); l.closePath(); } };
-  for (const [n, rings] of Object.entries(G)) { const k = flagKeyOf(n); if (k) { flagFill(l, k, rings, X, Y, 0.5); continue; } path(rings); l.fillStyle = worldColor(n); l.globalAlpha = 0.34; l.fill('evenodd'); }
+  // Flags and colors are painted on the world territory layer, which follows who holds each state.
   l.globalAlpha = 1; l.lineJoin = 'round'; l.lineCap = 'round';
   for (const rings of Object.values(G)) { path(rings); l.strokeStyle = 'rgba(10,20,40,0.4)'; l.lineWidth = 2 * TEXK; l.stroke(); l.strokeStyle = 'rgba(225,240,255,0.5)'; l.lineWidth = 0.8 * TEXK; l.stroke(); }
   l.globalCompositeOperation = 'destination-out'; l.drawImage(imgs.wwater, 0, 0, WW, WH);
@@ -103,22 +103,7 @@ function paintTexture(canvas, imgs, sel) {
   s.fillStyle = grad; s.fillRect(0, 0, TW, TH);
   s.globalCompositeOperation = 'destination-in'; s.drawImage(imgs.water, 0, 0, TW, TH);
   ctx.globalAlpha = 0.95; ctx.drawImage(sea, 0, 0); ctx.globalAlpha = 1;
-  // See-through country colors.
-  for (const [name, g] of Object.entries(A.geo)) {
-    if (flagKeyOf(name)) continue; // flags are painted on the territory layer so they can grow with conquests
-    ringPath(ctx, g.r);
-    ctx.save(); ctx.clip('evenodd');
-    ctx.fillStyle = colorOf(name);
-    ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = 0.3; ctx.fillRect(0, 0, TW, TH);
-    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.24; ctx.fillRect(0, 0, TW, TH);
-    ctx.restore();
-  }
-  // Occupied Czech lands: hatch.
-  const cz = A.geo['Czechoslovakia']; if (cz) {
-    ctx.save(); ringPath(ctx, cz.r); ctx.clip('evenodd'); ctx.globalAlpha = 0.3; ctx.strokeStyle = '#2a2a20'; ctx.lineWidth = 5;
-    for (let x = tx(10); x < tx(25); x += 16) { ctx.beginPath(); ctx.moveTo(x, ty(52)); ctx.lineTo(x + 140, ty(47)); ctx.stroke(); }
-    ctx.restore();
-  }
+  // Country colors and flags are painted on the territory layer, which follows who holds each state.
   // Borders are drawn as sharp 3D lines on the globe (Globe.addBorders), not painted here, so they stay crisp when zoomed in.
   ctx.globalAlpha = 1; ctx.lineJoin = 'round';
   ctx.setTransform(1, 0, 0, 1, 0, 0); feather(canvas);
@@ -129,9 +114,9 @@ const OW = TEXK === 2 ? 6144 : 2048, OH = Math.round(OW * (LAT1 - LAT0) / (LON1 
 function paintOccupation(canvas, sel) {
   const ctx = canvas.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
   const k = canvas.width / TW; ctx.setTransform(k, 0, 0, k, 0, 0); ctx.globalAlpha = 1; ctx.lineJoin = 'round';
-  paintTerritoryFlags(ctx);
-  // Occupied regions: the occupier's flag already covers them (continuous with its homeland); add light hatching so the front still reads.
-  for (const [id, owner] of Object.entries(CONTROL)) {
+  paintTerritory(ctx, tx, ty, [LON0 - 2, LAT0 - 2, LON1 + 2, LAT1 + 2]);
+  // Occupied states: the occupier's flag already covers them (continuous with its homeland); light hatching marks the front.
+  for (const [id, owner] of Object.entries(CONTROL)) { if (REGION[id] && owner === baseOwner(REGION[id])) continue;
     const sh = RSHAPE[id]; if (!sh) continue; const col = POWERS[owner]?.color || NEUTRALS[owner] || '#999'; const flagged = !!flagKeyOf(owner);
     ctx.save(); ringPath(ctx, sh.r); ctx.clip('evenodd');
     if (!flagged) { ctx.globalAlpha = 0.28; ctx.fillStyle = col; ctx.fillRect(0, 0, TW, TH); }
@@ -201,6 +186,7 @@ const UNIFORM = {
   'Italy': { cloth: 0x7E7E62, helmet: 0x5C5E48, style: 'stahl' },
   'USSR': { cloth: 0x7A7448, helmet: 0x4E5634, style: 'stahl' },
   'Finland': { cloth: 0x6E7068, helmet: 0x55574F, style: 'stahl' },
+  'Czechoslovakia': { cloth: 0x7A7650, helmet: 0x5A5C42, style: 'stahl' },
   'Japan': { cloth: 0x857A4C, helmet: 0x6A6440, style: 'stahl' },
   'United States': { cloth: 0x7E7550, helmet: 0x5A5A3C, style: 'brodie' },
 };
@@ -781,6 +767,16 @@ const FLAG_X = {
   'Union of South Africa': H3('#E77817', '#fff', '#00247D') + '<g transform="translate(11.2,7.6) scale(.16)">' + '<rect width="15" height="10" fill="#012169"/><path d="M0,0L15,10M15,0L0,10" stroke="#fff" stroke-width="2"/><path d="M7.5,0V10M0,5H15" stroke="#fff" stroke-width="3"/><path d="M7.5,0V10M0,5H15" stroke="#C8102E" stroke-width="1.7"/>' + '</g><rect x="14" y="8" width="2" height="4" fill="#E77817"/><rect x="14" y="8" width="2" height="1.3" fill="#fff"/><rect x="16.6" y="8" width="2.4" height="4" fill="#C8102E"/><rect x="17.4" y="8" width="1.6" height="4" fill="#007A3D"/><rect x="16.6" y="9.3" width="0.8" height="1.3" fill="#fff"/>', 'Uruguay': STRIPES(9, '#fff', '#0038A8') + '<rect width="11" height="11.1" fill="#fff"/>' + SUN(5.5, 5.5, 3.6, 16, '#FCD116', 0.55),
   'Venezuela': H3('#FFCC00', '#00247D', '#CF142B') + [-3, -2, -1, 0, 1, 2, 3].map((k) => { const a = (k * 22 - 90) * Math.PI / 180; return STAR(15 + 4.2 * Math.cos(a), 12.6 + 4.2 * Math.sin(a), 0.65, '#fff'); }).join(''), 'Yemen': '<rect width="30" height="20" fill="#C8102E"/><path d="M8,10h14" stroke="#fff" stroke-width="1.5"/>',
   'Yugoslavia': H3('#0C4076', '#fff', '#C6363C'),
+  // Countries of the 1938 map and states staff can create later.
+  'Czechoslovakia': '<rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#D7141A"/><path d="M0,0L15,10L0,20z" fill="#11457E"/>',
+  'Spanish Republic': H3('#C8102E', '#F1BF00', '#7B4594'),
+  'Danzig': '<rect width="30" height="20" fill="#C00"/><path d="M7.5,7.5h3M9,6v3M7.5,13.5h3M9,12v3" stroke="#fff" stroke-width="1.2"/><path d="M6.8,4.8l1-1.6 1.2,1 1.2-1 1,1.6z" fill="#F2C230"/>',
+  'Manchukuo': '<rect width="30" height="20" fill="#F9D616"/><rect width="10" height="1.75" fill="#C8102E"/><rect y="1.75" width="10" height="1.75" fill="#1C3C8C"/><rect y="3.5" width="10" height="1.75" fill="#fff"/><rect y="5.25" width="10" height="1.75" fill="#111"/>',
+  'Mengjiang': '<rect width="30" height="20" fill="#F9C80E"/><rect y="5" width="30" height="2" fill="#1C3C8C"/><rect y="7" width="30" height="1" fill="#fff"/><rect y="8" width="30" height="4" fill="#C8102E"/><rect y="12" width="30" height="1" fill="#fff"/><rect y="13" width="30" height="2" fill="#1C3C8C"/>',
+  'Communist China': '<rect width="30" height="20" fill="#C8102E"/><circle cx="15" cy="10" r="5.2" fill="none" stroke="#F2C230" stroke-width=".9"/><path d="M11.2,10h7.6M15,5.2v9.6" stroke="#F2C230" stroke-width=".5"/><path d="M12.6,12.8l4.6-4.6M16.6,7.6l1.4,1.4" stroke="#F2C230" stroke-width="1.2"/><path d="M13.2,8.2a3.4,3.4 0 1 0 4.4,4.4" fill="none" stroke="#F2C230" stroke-width="1.1"/>',
+  'Slovakia': H3('#fff', '#0B4EA2', '#EE1C25'), 'Bohemia and Moravia': H3('#fff', '#D7141A', '#11457E'),
+  'Carpatho-Ukraine': '<rect width="30" height="10" fill="#0057B7"/><rect y="10" width="30" height="10" fill="#FFD500"/>',
+  'Croatia': H3('#C8102E', '#fff', '#171796') + '<path d="M12,6h6v5.5q0,3-3,4q-3-1-3-4z" fill="#fff" stroke="#C8102E" stroke-width=".4"/><path d="M12,6h1.5v1.5h-1.5zM15,6h1.5v1.5h-1.5zM13.5,7.5h1.5v1.5h-1.5zM16.5,7.5h1.5v1.5h-1.5zM12,9h1.5v1.5h-1.5zM15,9h1.5v1.5h-1.5zM13.5,10.5h1.5v1.5h-1.5zM16.5,10.5h1.5v1.5h-1.5z" fill="#C8102E"/>',
 };
 // Map names that fly another country's flag (colonies, mandates, puppet or renamed states).
 const FLAG_ALIAS = {
@@ -791,11 +787,13 @@ const FLAG_ALIAS = {
   'Bahamas': 'United Kingdom', 'Belize': 'United Kingdom', 'Ceylon': 'United Kingdom', 'Fiji': 'United Kingdom', 'Gambia, The': 'United Kingdom', 'Guyana': 'United Kingdom', 'Jamaica': 'United Kingdom',
   'Malawi': 'United Kingdom', 'Sudan': 'United Kingdom', 'Trinidad': 'United Kingdom', 'Dominion of Newfoundland': 'United Kingdom', 'India': 'United Kingdom', 'Israel': 'United Kingdom',
   'Mesopotamia': 'Iraq', 'Libya': 'Italy',
+  'Nationalist Spain': 'Spain', 'Nationalist China': 'China', 'Shanxi': 'China', 'Guangxi': 'China', 'Yunnan': 'China', 'Xibei San Ma': 'China', 'Sinkiang': 'China',
+  'Vichy France': 'France', 'Generalgouvernement': 'Germany', 'RK Ostland': 'Germany', 'RK Ukraine': 'Germany', 'RK Norwegen': 'Germany', 'RK Niederlande': 'Germany', 'RK Moskowien': 'Germany', 'RK Kaukasus': 'Germany',
 };
 function flagKeyOf(name) { const o = ownerOf(name); if (FLAG_SVG[o]) return o; const a = FLAG_ALIAS[name]; if (a) return FLAG_SVG[a] ? a : FLAG_X[a] ? a : null; return FLAG_X[name] ? name : null; }
 // Real flags (1939 versions) downloaded from Wikimedia Commons and the flag-icons set, saved as images in
 // public/crisis/flags. [file name, width / height]. Germany is left out on purpose and uses the drawn tricolor above.
-const FLAG_PNG = {"United States":["united-states",1.9],"United Kingdom":["united-kingdom",1.3333],"France":["france",1.5],"Poland":["poland",1.6],"Italy":["italy",1.5],"USSR":["ussr",2],"Finland":["finland",1.6364],"Japan":["japan",1.4286],"Afghanistan":["afghanistan",1.5],"Albania":["albania",1.4],"Andorra":["andorra",1.4286],"Argentina":["argentina",1.6],"Australia":["australia",2],"Belgium":["belgium",1.1538],"Bhutan":["bhutan",1.5],"Bolivia":["bolivia",1.4667],"Brazil":["brazil",1.4286],"Brunei":["brunei",2],"Bulgaria":["bulgaria",1.6667],"Canada":["canada",2],"Chile":["chile",1.5],"China":["china",1.5],"Colombia":["colombia",1.5],"Costa Rica":["costa-rica",1.6667],"Cuba":["cuba",2],"Denmark":["denmark",1.3214],"Dominican Republic":["dominican-republic",1.5],"Ecuador":["ecuador",1.5],"Egypt":["egypt",1.5],"El Salvador":["el-salvador",1.7725],"Estonia":["estonia",1.3333],"Greece":["greece",1.5],"Guatemala":["guatemala",1.3333],"Haiti":["haiti",1.6667],"Honduras":["honduras",1.3333],"Hungary":["hungary",1.3333],"Iran":["iran",3],"Iraq":["iraq",2],"Ireland":["ireland",2],"Latvia":["latvia",1.3333],"Liberia":["liberia",1.9],"Lithuania":["lithuania",1.6667],"Luxembourg":["luxembourg",1.6667],"Mexico":["mexico",1.75],"Mongolia":["mongolia",1.6667],"Nepal":["nepal",0.8203],"Netherlands":["netherlands",1.5],"New Zealand":["new-zealand",2],"Nicaragua":["nicaragua",1.6667],"Norway":["norway",1.375],"Panama":["panama",1.5],"Paraguay":["paraguay",1.8182],"Peru":["peru",1.5],"Philippines":["philippines",2],"Portugal":["portugal",1.3333],"Romania":["romania",1.5],"Saudi Arabia":["saudi-arabia",1.5],"Siam":["siam",1.5],"Spain":["spain",1.5],"Sweden":["sweden",1.6],"Switzerland":["switzerland",1],"Tibet":["tibet",1.6],"Turkey":["turkey",1.5],"Uruguay":["uruguay",1.5],"Yemen":["yemen",2],"Yugoslavia":["yugoslavia",1.5]};
+const FLAG_PNG = {"United States":["united-states",1.9],"United Kingdom":["united-kingdom",1.3333],"France":["france",1.5],"Poland":["poland",1.6],"Italy":["italy",1.5],"USSR":["ussr",2],"Finland":["finland",1.6364],"Japan":["japan",1.4286],"Afghanistan":["afghanistan",1.5],"Albania":["albania",1.4],"Andorra":["andorra",1.4286],"Argentina":["argentina",1.6],"Australia":["australia",2],"Belgium":["belgium",1.1538],"Bhutan":["bhutan",1.5],"Bolivia":["bolivia",1.4667],"Brazil":["brazil",1.4286],"Brunei":["brunei",2],"Bulgaria":["bulgaria",1.6667],"Canada":["canada",2],"Chile":["chile",1.5],"China":["china",1.5],"Colombia":["colombia",1.5],"Costa Rica":["costa-rica",1.6667],"Cuba":["cuba",2],"Denmark":["denmark",1.3214],"Dominican Republic":["dominican-republic",1.5],"Ecuador":["ecuador",1.5],"Egypt":["egypt",1.5],"El Salvador":["el-salvador",1.7725],"Estonia":["estonia",1.3333],"Greece":["greece",1.5],"Guatemala":["guatemala",1.3333],"Haiti":["haiti",1.6667],"Honduras":["honduras",1.3333],"Hungary":["hungary",1.3333],"Iran":["iran",3],"Iraq":["iraq",2],"Ireland":["ireland",2],"Latvia":["latvia",1.3333],"Liberia":["liberia",1.9],"Lithuania":["lithuania",1.6667],"Luxembourg":["luxembourg",1.6667],"Mexico":["mexico",1.75],"Mongolia":["mongolia",1.6667],"Nepal":["nepal",0.8203],"Netherlands":["netherlands",1.5],"New Zealand":["new-zealand",2],"Nicaragua":["nicaragua",1.6667],"Norway":["norway",1.375],"Panama":["panama",1.5],"Paraguay":["paraguay",1.8182],"Peru":["peru",1.5],"Philippines":["philippines",2],"Portugal":["portugal",1.3333],"Romania":["romania",1.5],"Saudi Arabia":["saudi-arabia",1.5],"Siam":["siam",1.5],"Spain":["spain",1.5],"Sweden":["sweden",1.6],"Switzerland":["switzerland",1],"Tibet":["tibet",1.6],"Turkey":["turkey",1.5],"Uruguay":["uruguay",1.5],"Yemen":["yemen",2],"Yugoslavia":["yugoslavia",1.5],"Czechoslovakia":["czechoslovakia",1.5],"Spanish Republic":["spanish-republic",1.6667],"Danzig":["danzig",1.4894],"Manchukuo":["manchukuo",1.5],"Mengjiang":["mengjiang",1.5],"Slovakia":["slovakia-1939",1.5],"Bohemia and Moravia":["bohemia-moravia",1.5]};
 const FLAG_IMG = {};
 function loadFlagImages() {
   return Promise.all(Object.entries(FLAG_PNG).map(([k, [slug]]) => new Promise((res) => { const i = new Image(); i.onload = () => { FLAG_IMG[k] = i; res(); }; i.onerror = () => res(); i.src = `/crisis/flags/${slug}.png`; })));
@@ -838,27 +836,62 @@ function drawFlag(ctx, owner, x, y, w, h) {
 /* One flag per country across everything it holds: its homeland minus regions it lost, plus regions it took,
    drawn with a single flag frame so conquered land looks like part of the same country. */
 const ringArea = (r) => { let a = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]); return Math.abs(a / 2); };
-function paintTerritoryFlags(ctx) {
-  const lost = {}, gained = {};
-  for (const [id, o] of Object.entries(CONTROL)) { const r = REGION[id], sh = RSHAPE[id]; if (!r || !sh) continue; const b = baseOwner(r); if (o === b) continue; (lost[b] = lost[b] || []).push(...sh.r); (gained[o] = gained[o] || []).push(...sh.r); }
-  // The homeland ring each flag key grows from: the largest ring of the country itself (not its colonies).
-  const main = {};
-  for (const [name, g] of Object.entries(A.geo)) { const k = flagKeyOf(name); if (!k || A.wsub?.[name]) continue; for (const r of g.r) { const a = ringArea(r); if (!main[k] || a > main[k].a) main[k] = { r, a }; } }
-  const frameOf = (k, pts) => { let lo0 = 1e9, la0 = 1e9, lo1 = -1e9, la1 = -1e9; for (const [lo, la] of pts) { if (lo < lo0) lo0 = lo; if (lo > lo1) lo1 = lo; if (la < la0) la0 = la; if (la > la1) la1 = la; }
-    const bw = lo1 - lo0, bh = la1 - la0; if (bw <= 0 || bh <= 0) return null; const mid = (la0 + la1) / 2, c = Math.max(0.25, Math.cos(mid * D2R)), ar = flagAR(k);
-    const h = Math.max(bh, bw * c / ar), w = h * ar / c; return { x0: lo0 + (bw - w) / 2, top: mid + h / 2, w, h }; };
-  const draw = (k, f) => { ctx.globalAlpha = 0.3; drawFlag(ctx, k, tx(f.x0), ty(f.top), tx(f.x0 + f.w) - tx(f.x0), ty(f.top - f.h) - ty(f.top)); };
-  for (const [name, g] of Object.entries(A.geo)) {
-    const k = flagKeyOf(name); if (!k) continue; const o = A.wsub?.[name] ? null : k; const L = (o && lost[o]) || [];
-    for (const ring of g.r) {
-      const grow = main[k]?.r === ring && gained[k]; const f = frameOf(k, grow ? ring.concat(...gained[k]) : ring); if (!f) continue;
-      ctx.save(); ringPath(ctx, [ring]); ctx.clip(); if (L.length) { ringPath(ctx, [ring, ...L]); ctx.clip('evenodd'); } draw(k, f); ctx.restore();
-      if (grow) { ctx.save(); ringPath(ctx, gained[k]); ctx.clip(); draw(k, f); ctx.restore(); }
-    }
+// Owners whose flag is the same as another owner's: a light wash of their own color tells them apart on the map.
+const SHARED_FLAG = new Set(['Shanxi', 'Guangxi', 'Yunnan', 'Xibei San Ma', 'Sinkiang', 'Vichy France', 'Generalgouvernement', 'RK Ostland', 'RK Ukraine', 'RK Norwegen', 'RK Niederlande', 'RK Moskowien', 'RK Kaukasus']);
+/* Who holds what: every state belongs to an owner, and touching states with the same owner form one block. Each block
+   gets one flag stretched across it, so conquered land joins the conqueror's flag and a split country gets two. */
+let TB = { sig: null, blocks: [] };
+function territoryBlocks() {
+  const sig = JSON.stringify(CONTROL) + REGIONS.length + Object.keys(RSHAPE).length; if (sig === TB.sig) return TB.blocks;
+  const own = {}; for (const r of REGIONS) own[r.id] = CONTROL[r.id] || baseOwner(r);
+  const seen = new Set(), blocks = [];
+  for (const r of REGIONS) {
+    if (seen.has(r.id) || !RSHAPE[r.id]) continue; const o = own[r.id], ids = [], st = [r.id]; seen.add(r.id);
+    while (st.length) { const id = st.pop(); ids.push(id); for (const n of RSHAPE[id].n || []) if (!seen.has(n) && own[n] === o && RSHAPE[n]) { seen.add(n); st.push(n); } }
+    let lo0 = 1e9, la0 = 1e9, lo1 = -1e9, la1 = -1e9, area = 0;
+    for (const id of ids) for (const ring of RSHAPE[id].r) for (const [lo, la] of ring) { if (lo < lo0) lo0 = lo; if (lo > lo1) lo1 = lo; if (la < la0) la0 = la; if (la > la1) la1 = la; }
+    area = (lo1 - lo0) * (la1 - la0);
+    blocks.push({ owner: o, ids, bb: [lo0, la0, lo1, la1], area });
   }
-  // Land taken by a country that has no homeland ring here still gets its flag, framed on what it took.
-  for (const [k, rings] of Object.entries(gained)) if (!main[k] && flagKeyOf(k)) { const f = frameOf(k, rings.flat()); if (f) { ctx.save(); ringPath(ctx, rings); ctx.clip(); draw(flagKeyOf(k), f); ctx.restore(); } }
+  blocks.sort((a, b) => b.area - a.area); // big blocks first, so enclaves are painted over them
+  TB = { sig, blocks }; return blocks;
+}
+function paintTerritory(ctx, X, Y, view) {
+  for (const b of territoryBlocks()) {
+    if (view && (b.bb[2] < view[0] || b.bb[0] > view[2] || b.bb[3] < view[1] || b.bb[1] > view[3])) continue;
+    const k = flagKeyOf(b.owner);
+    ctx.save(); ctx.beginPath();
+    for (const id of b.ids) for (const r of RSHAPE[id].r) { r.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)))); ctx.closePath(); }
+    ctx.clip();
+    if (k) {
+      const [lo0, la0, lo1, la1] = b.bb, bw = lo1 - lo0, bh = la1 - la0, mid = (la0 + la1) / 2, c = Math.max(0.25, Math.cos(mid * D2R)), ar = flagAR(k);
+      const h = Math.max(bh, bw * c / ar), w = h * ar / c, x0 = lo0 + (bw - w) / 2, top = mid + h / 2;
+      ctx.globalAlpha = 0.3; drawFlag(ctx, k, X(x0), Y(top), X(x0 + w) - X(x0), Y(top - h) - Y(top));
+      if (SHARED_FLAG.has(b.owner)) { ctx.globalAlpha = 0.24; ctx.fillStyle = colorOf(b.owner); ctx.fillRect(X(lo0) - 4, Y(la1) - 4, X(lo1) - X(lo0) + 8, Y(la0) - Y(la1) + 8); }
+    } else { ctx.globalAlpha = 0.32; ctx.fillStyle = worldColor(b.owner); ctx.fillRect(X(b.bb[0]) - 4, Y(b.bb[3]) - 4, X(b.bb[2]) - X(b.bb[0]) + 8, Y(b.bb[1]) - Y(b.bb[3]) + 8); }
+    ctx.restore();
+  }
   ctx.globalAlpha = 1;
+}
+// Light hatching over land held by someone other than its September 1938 owner, so the front still reads.
+function paintOccupiedHatch(ctx, X, Y, scale) {
+  for (const [id, owner] of Object.entries(CONTROL)) {
+    const sh = RSHAPE[id], r = REGION[id]; if (!sh || !r || owner === baseOwner(r)) continue;
+    ctx.save(); ctx.beginPath(); for (const ring of sh.r) { ring.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)))); ctx.closePath(); } ctx.clip();
+    ctx.globalAlpha = 0.16; ctx.strokeStyle = '#14110a'; ctx.lineWidth = 4 * scale;
+    const xs = sh.r.flat().map((p) => X(p[0])), ys = sh.r.flat().map((p) => Y(p[1]));
+    const x0 = Math.min(...xs) - 200 * scale, x1 = Math.max(...xs) + 200 * scale, y0 = Math.min(...ys), y1 = Math.max(...ys);
+    for (let x = x0; x < x1; x += 22 * scale) { ctx.beginPath(); ctx.moveTo(x, y1 + 10); ctx.lineTo(x + (y1 - y0) + 20, y0 - 10); ctx.stroke(); }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+// The same territory for the whole globe (outside the sharper Europe patch).
+const WOW = 4096, WOH = 2048;
+function paintWorldTerritory(canvas) {
+  const ctx = canvas.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, WOW, WOH); ctx.lineJoin = 'round';
+  const X = (lon) => (lon + 180) / 360 * WOW, Y = (lat) => (90 - lat) / 180 * WOH;
+  paintTerritory(ctx, X, Y, null); paintOccupiedHatch(ctx, X, Y, 0.25);
 }
 function flagFill(ctx, owner, rings, X, Y, alpha) {
   const all = () => { ctx.beginPath(); for (const r of rings) { r.forEach(([lo, la], i) => (i ? ctx.lineTo(X(lo), Y(la)) : ctx.moveTo(X(lo), Y(la)))); ctx.closePath(); } };
@@ -994,6 +1027,10 @@ class Globe {
     this.occTex = new THREE.CanvasTexture(this.occCanvas); this.occTex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
     const ogeo = new THREE.SphereGeometry(1.0012, 360, 220, (LON0 + 180) * D2R, (LON1 - LON0) * D2R, (90 - LAT1) * D2R, (LAT1 - LAT0) * D2R);
     this.scene.add(new THREE.Mesh(ogeo, new THREE.MeshLambertMaterial({ map: this.occTex, transparent: true, depthWrite: false })));
+    // Who holds each state outside Europe, on a layer just under the Europe patch.
+    this.wocCanvas = document.createElement('canvas'); this.wocCanvas.width = WOW; this.wocCanvas.height = WOH; paintWorldTerritory(this.wocCanvas); this.wocSig = JSON.stringify(CONTROL);
+    this.wocTex = new THREE.CanvasTexture(this.wocCanvas); this.wocTex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    this.scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.0004, 192, 144), new THREE.MeshLambertMaterial({ map: this.wocTex, transparent: true, depthWrite: false })));
     this.addBorders();
     if (this.opts.fog) {
       this.fogCanvas = document.createElement('canvas'); this.fogCanvas.width = FW; this.fogCanvas.height = FH; paintFogLayer(this.fogCanvas);
@@ -1221,7 +1258,10 @@ class Globe {
     }
     if (this.pop?.el && this.pop.at) { const p = this.project(this.pop.at[0], this.pop.at[1], this.pop.h || 0.006); this.pop.el.style.display = p.ok ? '' : 'none'; if (p.ok) { const below = p.y - (this.pop.el.offsetHeight || 160) - 22 < 70; this.pop.el.classList.toggle('below', below); const sp = document.getElementById('stagepanel'), sr = this.stage.getBoundingClientRect(); const right = sp && !sp.hidden ? Math.min(this._w, sp.getBoundingClientRect().left - sr.left) : this._w; const x = Math.max(145, Math.min(right - 150, p.x)); this.pop.el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(p.y)}px, 0) translate(-50%, ${below ? '22px' : 'calc(-100% - 22px)'})`; } }
   }
-  repaintOcc(sel) { if (!this.occCanvas) return; paintOccupation(this.occCanvas, sel); this.occTex.needsUpdate = true; this.dirty = true; }
+  repaintOcc(sel) {
+    if (!this.occCanvas) return; paintOccupation(this.occCanvas, sel); this.occTex.needsUpdate = true; this.dirty = true;
+    const sig = JSON.stringify(CONTROL); if (this.wocCanvas && sig !== this.wocSig) { this.wocSig = sig; paintWorldTerritory(this.wocCanvas); this.wocTex.needsUpdate = true; }
+  }
   repaintFog() { if (!this.fogCanvas) return; paintFogLayer(this.fogCanvas); this.fogTex.needsUpdate = true; this.dirty = true; }
   resize() {
     const w = this.stage.clientWidth, h = this.stage.clientHeight; if (!w || !h) return;
@@ -1804,12 +1844,12 @@ function renderSel() {
     return;
   }
   const name = selected.id; const owner = ownerOf(name); const p = POWERS[owner];
-  const title = name === 'Czechoslovakia' ? 'Bohemia, Moravia and Slovakia' : (p && name === owner ? p.label : LABEL_TEXT[name] || name);
+  const title = p && name === owner ? p.label : LABEL_TEXT[name] || name;
   if (!p || p.minor) { const rg = selected.region && REGION[selected.region]; const rc = rg && ctrlOf(rg); box.innerHTML = `<div class="badge" style="background:${colorOf(name)}">${initials(title)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill neutral">Neutral</span></div><div class="stats"><div><span>Controlled by</span> Crisis staff</div>${rg ? `<div><span>Region</span> ${esc(rg.name)}${rc !== baseOwner(rg) ? ` · <b>held by ${POWERS[rc]?.label || rc}</b>` : ''}</div>` : ''}</div></div>`; return; }
   const rg = selected.region && REGION[selected.region]; const rc = rg && ctrlOf(rg);
   const regionLine = rg ? `<div><span>Region</span> ${esc(rg.name)} (${rg.zone.toLowerCase()})${rc !== baseOwner(rg) ? ` · <b>held by ${POWERS[rc]?.label || rc}</b>` : ''}</div>` : '';
   const sub = name !== owner ? `Controlled by ${p.label}` : '';
-  box.innerHTML = `<div class="badge flagbadge">${flag(name)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub"><span class="pill ${p.side}">${p.side === 'war' ? 'At war' : 'Neutral'}</span>${sub ? ' · ' + sub : ''}</div><div class="stats"><div><span>Treasury</span> <b class="num">$${p.treasury}M</b></div><div><span>Forces</span> <b class="num">${UNITS.filter((u) => u.owner === owner).length}</b></div><div><span>Commanders</span> ${p.delegates.map(esc).join(', ') || 'Crisis staff'}</div>${regionLine}</div></div>`;
+  box.innerHTML = `<div class="badge flagbadge">${flag(name)}</div><div><div class="sel-title">${esc(title)}</div><div class="sel-sub">${(() => { const war = (STATE?.relations || []).some((r) => r.status === 'war' && (r.a === owner || r.b === owner)); return `<span class="pill ${war ? 'war' : 'neutral'}">${war ? 'At war' : 'At peace'}</span>`; })()}${sub ? ' · ' + sub : ''}</div><div class="stats"><div><span>Treasury</span> <b class="num">$${p.treasury}M</b></div><div><span>Forces</span> <b class="num">${UNITS.filter((u) => u.owner === owner).length}</b></div><div><span>Commanders</span> ${p.delegates.map(esc).join(', ') || 'Crisis staff'}</div>${regionLine}</div></div>`;
 }
 function select(type, id, region, at, owner, group) {
   selected = { type, id, region, owner, group, at: at ? [+at[0].toFixed(3), +at[1].toFixed(3)] : null };
@@ -3224,7 +3264,7 @@ export function start(root, props) {
         mapGlobe.setTextures(world, patchCanvas, topo); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null);
       } else {
         fogCanvas = document.createElement('canvas'); fogCanvas.width = TW * TEXK; fogCanvas.height = TH * TEXK; paintTexture(fogCanvas, imgs);
-        const cap = { 'United Kingdom': [-0.13, 51.5], France: [2.35, 48.86], Poland: [21, 52.2], Germany: [13.4, 52.5], USSR: [37.6, 55.75], Italy: [12.5, 41.9], Finland: [24.9, 60.2] }[ME] || [15, 50];
+        const cap = { 'United Kingdom': [-0.13, 51.5], France: [2.35, 48.86], Poland: [21, 52.2], Germany: [13.4, 52.5], USSR: [37.6, 55.75], Italy: [12.5, 41.9], Finland: [24.9, 60.2], Czechoslovakia: [15.5, 49.8] }[ME] || [15, 50];
         const home = ME === 'United States' ? { lon: -70, lat: 34.5, dist: 2.9 } : ME === 'Japan' ? { lon: 128, lat: 38.5, dist: 2.1 } : { lon: cap[0], lat: cap[1] + 1.5, dist: 1.75 };
         delGlobe = new Globe($('stage-del'), $('ov-del'), { fog: true, pins: true, onGround: pickGround, lon: home.lon, lat: home.lat - 2.5, dist: home.dist, onUnit: (id) => pickForce(id) });
         delGlobe.setTextures(world, fogCanvas, topo); delGlobe.repaintOcc(null); fogSig = JSON.stringify([UNITS.map((u) => [u.id, u.at]), AGENTS, LIVE_ARROWS, CONTROL, RECON]);
