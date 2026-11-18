@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as S from '@/lib/crisis/scenario';
 import { REGIONS } from '@/lib/crisis/regions';
+import { applyAction as simulateAction } from '@/lib/crisis/engine';
 
 const { LON0, LON1, LAT0, LAT1, OWNER, NEUTRALS, LABELS, SKIP_WORLD, LABEL_TEXT, CITIES, CAPITAL, CITY_OF, BUILD, BUILD_KIND,
   KIND_NAME, DEST_BY_KIND, ROSTER, POWER_TEXT, ALWAYS, LIMITS_ALWAYS, SECRET, SPECIAL, SIGS_NEEDED, DSTATUS, ORDER, KINDS } = S;
@@ -1322,7 +1323,7 @@ function staffModals(p) {
     + modal('ev', 'Make something happen', `<p class="formnote">Describe any event in plain words. To place units, pins or buildings yourself, just click the map instead.</p>
           <textarea id="ev-text" maxlength="1500" placeholder="For example: Hitler orders Rundstedt's panzers to take Warsaw within ten days, and rations fuel for the Luftwaffe."></textarea>
           <div class="row"><button type="button" class="dbtn gold" id="ev-preview">Preview</button></div><div id="ev-result"></div>
-          <div id="free-fx">${fxEditor('free', false, 'Or build the effects by hand')}</div><button type="button" class="dbtn" id="free-apply">Apply the hand-made effects</button>`, true)
+          <div id="free-fx">${fxEditor('free', false, 'Or build the effects by hand')}</div><button type="button" class="dbtn" id="free-apply">Apply the hand-made effects</button><button type="button" class="dbtn" id="free-prev">Preview on the map</button>`, true)
     + modal('battle', 'Battle calculator', '<p class="formnote">Tip: click units on the map and choose "Attacker" or "Defender". Battles in approved crisis notes roll by themselves.</p><div id="battle"></div>', true)
     + modal('rels', 'Wars, treaties and conditions', '<div id="rels"></div>')
     + modal('feat', 'Map features, spies and scheduled events', '<p class="formnote">Click any feature on the map to change it, or click the map to build one. Spies show on the map as dark pins.</p><div id="featlist"></div>', true)
@@ -1416,7 +1417,7 @@ function skeleton(p) {
       <div class="queuecard glass"><b class="num" id="pend-count">0</b><span>Requests waiting<br>for crisis staff</span></div>
       <div class="floorcard glass" id="floorcard" hidden></div>
       <div class="update glass" id="update-card"></div>
-      <div class="selcard glass" id="selpanel" aria-live="polite"></div>${EDIT ? '<div class="editcard" id="editcard" hidden></div><div class="placebar" id="placebar" hidden></div><div class="btray glass" id="btray" hidden></div>' : ''}
+      <div class="selcard glass" id="selpanel" aria-live="polite"></div>${EDIT ? '<div class="editcard" id="editcard" hidden></div><div class="prevbar" id="prevbar" hidden></div><div class="placebar" id="placebar" hidden></div><div class="btray glass" id="btray" hidden></div>' : ''}
       <div class="hint glass">Left-drag to turn · right-drag to move · scroll to zoom</div>${ZOOM('map')}
     </div>
     <div class="bottom"><div class="ticker" aria-label="News wire"><div class="tag">Wire</div><div class="feed"><div class="track" id="track"></div></div></div></div>
@@ -1507,6 +1508,7 @@ async function act(payload, opt = {}) {
 
 function applyState(v) {
   if (!v) return;
+  if (PREVIEW) { STATE = v; VER = v.version; return; } // keep showing the preview; the real state is applied on exit
   const first = !STATE; const prev = STATE ? Object.fromEntries(UNITS.map((u) => [u.id, u])) : null;
   STATE = v; VER = v.version; UNITS = v.units || [];
   const arrowSig = JSON.stringify([v.arrows || [], v.control || {}]); const arrowsChanged = arrowSig !== JSON.stringify([LIVE_ARROWS, CONTROL]); LIVE_ARROWS = v.arrows || []; CONTROL = v.control || {};
@@ -2437,7 +2439,7 @@ function renderStaff() {
       ${q.status === 'pending' ? `${aiBlock(q)}
         <textarea id="r-${q.id}" maxlength="800" aria-label="Reply to ${esc(q.from)}" placeholder="Your reply decides what happens. Write it, then Approve or Reject: the assistant carries out exactly what you wrote, even if it is not what it suggested."></textarea>
         ${fxEditor(q.id, false, 'Add your own effects').replace('class="fx"', `class="fx" data-country="${q.country}" data-vis="${q.vis}" data-here="${q.detail?.at ? 1 : 0}"`)}
-        <div class="qbtns"><button type="button" class="dbtn green" data-dec="approve" data-q="${q.id}">Approve</button><button type="button" class="dbtn red" data-dec="reject" data-q="${q.id}">Reject</button>${q.type === 'fleet' ? `<label class="check"><input type="checkbox" id="sec-${q.id}"${q.vis === 'private' ? ' checked' : ''}> Keep the move off the projector</label>` : ''}</div>`
+        <div class="qbtns"><button type="button" class="dbtn green" data-dec="approve" data-q="${q.id}">Approve</button><button type="button" class="dbtn red" data-dec="reject" data-q="${q.id}">Reject</button><button type="button" class="dbtn" data-prev="${q.id}" title="See on the map what Approve would do">Preview</button>${q.type === 'fleet' ? `<label class="check"><input type="checkbox" id="sec-${q.id}"${q.vis === 'private' ? ' checked' : ''}> Keep the move off the projector</label>` : ''}</div>`
       : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b>${q.effects ? `<br>Effects: ${q.effects.map(esc).join(', ')}` : ''}</div>`}
     </div>`).join('') || '<p class="formnote">Nothing waiting. New requests appear here a second or two after delegates send them.</p>';
   })); }
@@ -2458,7 +2460,7 @@ function renderChair() {
     ${d.status === 'chair' ? `<div class="qbtns"><button type="button" class="dbtn gold" data-ch="floor" data-d="${d.id}">Put it on the floor</button><button type="button" class="dbtn" data-ch="back" data-d="${d.id}">Send back</button></div>` : ''}
     ${d.status === 'floor' ? `<div class="votes"><label>For <input type="number" min="0" id="vf-${d.id}" value="0"></label><label>Against <input type="number" min="0" id="va-${d.id}" value="0"></label><button type="button" class="dbtn gold" data-ch="vote" data-d="${d.id}">Record placard vote</button></div>` : ''}
     ${d.status === 'passed' && !d.carried ? `${d.ai ? `<div class="aibox"><div><b>Carrying it out will</b><ul>${planList('d' + d.id, d.ai, true) || '<li class="none">Nothing on the map. Add effects by hand if needed.</li>'}</ul></div>${d.ai.staff_note ? `<small>${esc(d.ai.staff_note)}</small>` : ''}</div>` : `<div class="aibox wait">${aiErr[d.id] ? `${esc(aiErr[d.id])} <button type="button" class="dbtn" data-retry="${d.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading the clauses…'}</div>`}
-      ${fxEditor('dir-' + d.id, false, 'Add your own effects')}<div class="qbtns"><button type="button" class="dbtn gold" data-ch="carry" data-d="${d.id}">Carry out the directive</button></div>` : ''}
+      ${fxEditor('dir-' + d.id, false, 'Add your own effects')}<div class="qbtns"><button type="button" class="dbtn gold" data-ch="carry" data-d="${d.id}">Carry out the directive</button><button type="button" class="dbtn" data-ch="preview" data-d="${d.id}">Preview on the map</button></div>` : ''}
     ${d.carried ? `<small class="formnote">Carried out: ${d.carried.map(esc).join(', ') || 'no map changes'}</small>` : ''}
   </div>`).join('') || '<p class="formnote">No directives yet. They appear here once delegates send them for signatures.</p>';
 }
@@ -2472,6 +2474,13 @@ function renderRels() {
 }
 const qSpot = (q) => q.detail?.at || (q.type === 'fleet' && STATE.units.find((u) => u.id === q.detail?.unit)?.at) || null;
 async function decideQ(q, ok, btn) {
+  const p = await buildDecision(q, ok, btn); if (!p) return;
+  const done = await act(p, { quiet: true });
+  if (done) notify({ kind: ok ? 'approved' : 'rejected', title: ok ? 'Approved and sent back' : 'Rejected and sent back', body: `${q.from}: ${q.title}` });
+  if (!done) { btn.closest('.qcard')?.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = false)); btn.textContent = ok ? 'Approve' : 'Reject'; }
+}
+// Everything an Approve or Reject would send, including the assistant's reading of the chair's reply.
+async function buildDecision(q, ok, btn) {
   const card = btn.closest('.qcard'); const reply = ($('r-' + q.id)?.value || '').trim(); const box = card.querySelector('.fx');
   const manual = readFx(box); const key = ok ? q.id : 'r' + q.id;
   // Don't approve on an empty plan just because the assistant hasn't answered yet.
@@ -2484,13 +2493,61 @@ async function decideQ(q, ok, btn) {
     try { const j = await assist({ kind: 'request', id: q.id, decision: ok ? 'approve' : 'reject', reply }); if (j.result) b = j.result; } catch (e) { toast(e.message + ' Using the earlier suggestion.'); }
   }
   const dec = !ok ? (q.type === 'spy' ? 'spy-fail' : 'reject') : q.type === 'fleet' ? ($('sec-' + q.id)?.checked ? 'move-secret' : 'move-public') : q.type === 'spy' ? 'spy-ok' : 'approve';
-  const done = await act({ type: 'decide', id: q.id, dec, reply: reply || b.reply || '', effects: [...(b.effects || []), ...manual], headline: b.headline, flash: b.flash, when: readWhen(box) }, { quiet: true });
-  if (done) notify({ kind: ok ? 'approved' : 'rejected', title: ok ? 'Approved and sent back' : 'Rejected and sent back', body: `${q.from}: ${q.title}` });
-  if (!done) { card.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = false)); btn.textContent = ok ? 'Approve' : 'Reject'; }
+  return { type: 'decide', id: q.id, dec, reply: reply || b.reply || '', effects: [...(b.effects || []), ...manual], headline: b.headline, flash: b.flash, when: readWhen(box) };
+}
+/* ---------- Preview on the map: run the change on a copy of the game, show it, then do it or go back ---------- */
+let PREVIEW = null;
+function previewOnMap(label, payload, commit, reopen) {
+  if (!STATE || !mapGlobe) { toast('The map is still loading.'); return; }
+  const sim = JSON.parse(JSON.stringify(STATE)); let msg;
+  try { msg = simulateAction(sim, { role: 'staff' }, payload); } catch (e) { toast(e.message, 'error'); return; }
+  document.querySelectorAll('.smodal').forEach((m) => (m.hidden = true));
+  const before = STATE, prev = Object.fromEntries(UNITS.map((u) => [u.id, u]));
+  PREVIEW = { commit, reopen };
+  UNITS = sim.units || []; FEATS = sim.features || []; CONTROL = sim.control || {}; MARKERS = sim.markers || [];
+  AGENTS = Object.entries(sim.agents || {}).flatMap(([owner, l]) => l.map((g) => ({ ...g, owner })));
+  mapGlobe.sync(prev); mapGlobe.addProps(); mapGlobe.repaintOcc(null); mapGlobe.addPins();
+  const L = previewDiff(before, sim); const battle = (payload.effects || []).some((e) => e.type === 'battle');
+  const bar = $('prevbar'); bar.hidden = false;
+  bar.innerHTML = `<div class="pvhead"><b>Preview: ${esc(label)}</b><span>Nothing has changed yet. This is what the map would look like.</span></div>
+    <ul>${L.map((x) => `<li>${x}</li>`).join('') || '<li class="formnote">Nothing on the map changes. Only the reply is sent.</li>'}</ul>
+    ${battle ? '<p class="formnote">Battle results here are one possible dice roll. The real roll happens when you press Do it.</p>' : ''}
+    <div class="row"><button type="button" class="dbtn gold" id="pv-go">Do it</button><button type="button" class="dbtn" id="pv-back">Back</button></div>`;
+  $('pv-go').addEventListener('click', () => { const c = PREVIEW?.commit; exitPreview(false); c?.(); });
+  $('pv-back').addEventListener('click', () => exitPreview(true));
+}
+function exitPreview(back) {
+  if (!PREVIEW) return; const reopen = PREVIEW.reopen; PREVIEW = null; $('prevbar').hidden = true;
+  featSig = ''; applyState(STATE); if (back && reopen) openModal(reopen);
+}
+function previewDiff(a, b) {
+  const L = [], nm = (c) => esc(POWERS[c]?.label || c), near = (at) => { const rid = at && regionAt(at[0], at[1]); return rid ? REGION[rid].name : 'open sea'; };
+  const A = Object.fromEntries((a.units || []).map((u) => [u.id, u]));
+  for (const u of b.units || []) {
+    const o = A[u.id];
+    if (!o) L.push(`${flag(u.owner)} New: <b>${esc(u.name)}</b>, ${S.realText(u)}, near ${esc(near(u.at))}`);
+    else {
+      if (Math.hypot(o.at[0] - u.at[0], o.at[1] - u.at[1]) > 0.05) L.push(`${flag(u.owner)} <b>${esc(u.name)}</b> moves to ${esc(near(u.at))}`);
+      if (o.str !== u.str) L.push(`${flag(u.owner)} <b>${esc(u.name)}</b>: ${S.realText(o)} → ${S.realText(u)}`);
+    }
+  }
+  for (const u of a.units || []) if (!(b.units || []).some((x) => x.id === u.id)) L.push(`${flag(u.owner)} <b>${esc(u.name)}</b> is destroyed`);
+  const ids = new Set([...Object.keys(a.control || {}), ...Object.keys(b.control || {})]);
+  for (const id of ids) { const x = (a.control || {})[id], y = (b.control || {})[id]; if (x !== y && REGION[id]) L.push(y ? `${flag(y)} ${nm(y)} takes <b>${esc(REGION[id].name)}</b>` : `<b>${esc(REGION[id].name)}</b> goes back to ${nm(baseOwner(REGION[id]))}`); }
+  const fa = new Set((a.features || []).map((f) => f.id));
+  for (const f of b.features || []) { const o = (a.features || []).find((x) => x.id === f.id); if (!fa.has(f.id)) L.push(`${flag(f.owner)} Builds <b>${esc(f.label)}</b>${f.ready > (b.update?.no ?? 0) ? `, ready after Update ${f.ready}` : ''}${f.public ? '' : ' (secret)'}`); else if (o && !o.ruined && f.ruined) L.push(`<b>${esc(f.label)}</b> is destroyed`); }
+  const rel = (s) => Object.fromEntries((s.relations || []).map((r) => [[r.a, r.b].sort().join('|'), r.status]));
+  const ra = rel(a), rb = rel(b); for (const k of new Set([...Object.keys(ra), ...Object.keys(rb)])) if (ra[k] !== rb[k]) { const [x, y] = k.split('|'); L.push(`${flag(x)} ${nm(x)} and ${flag(y)} ${nm(y)}: <b>${rb[k] ? esc(S.RELATION_NAME[rb[k]] || rb[k]) : 'no longer ' + esc(S.RELATION_NAME[ra[k]] || ra[k]).toLowerCase()}</b>`); }
+  for (const c of Object.keys(b.treasury || {})) { const d = (b.treasury[c] || 0) - ((a.treasury || {})[c] || 0); if (d) L.push(`${flag(c)} ${nm(c)} treasury ${d > 0 ? '+' : '−'}$${Math.abs(d)}M`); }
+  for (const w of (b.wire || []).filter((w) => !(a.wire || []).includes(w))) L.push(`News wire: “${esc(w)}”`);
+  if (b.flash && b.flash.id !== a.flash?.id) L.push(`Breaking news on every screen: <b>${esc(b.flash.head)}</b>`);
+  const ag = (s) => Object.values(s.agents || {}).flat().length; if (ag(b) !== ag(a)) L.push(`Spies on the map: ${ag(a)} → ${ag(b)}`);
+  if ((b.scheduled || []).length > (a.scheduled || []).length) L.push(`${(b.scheduled || []).length - (a.scheduled || []).length} effect(s) scheduled for a later crisis update`);
+  return L;
 }
 let evPlan = null;
 function renderEvPlan() {
-  $('ev-result').innerHTML = evPlan ? `<div class="aibox"><div><b>This will</b><ul>${planList('ev', evPlan, true) || '<li class="none">The assistant found nothing to change. Try describing it differently.</li>'}</ul></div>${evPlan.staff_note ? `<small>${esc(evPlan.staff_note)}</small>` : ''}</div><div class="row"><button type="button" class="dbtn gold" id="ev-go">Make it happen</button><button type="button" class="dbtn" id="ev-cancel">Cancel</button></div>` : '';
+  $('ev-result').innerHTML = evPlan ? `<div class="aibox"><div><b>This will</b><ul>${planList('ev', evPlan, true) || '<li class="none">The assistant found nothing to change. Try describing it differently.</li>'}</ul></div>${evPlan.staff_note ? `<small>${esc(evPlan.staff_note)}</small>` : ''}</div><div class="row"><button type="button" class="dbtn gold" id="ev-go">Make it happen</button><button type="button" class="dbtn" id="ev-prev">Preview on the map</button><button type="button" class="dbtn" id="ev-cancel">Cancel</button></div>` : '';
 }
 
 /* ---------- Backups (staff) ---------- */
@@ -2530,6 +2587,9 @@ function bindStaff() {
     const off = e.target.closest('[data-off]'); if (off) { const [k, i] = off.dataset.off.split(':'); const set = (aiOff[k] = aiOff[k] || new Set()); set.has(+i) ? set.delete(+i) : set.add(+i); queueSig = ''; renderStaff(); return; }
     const re = e.target.closest('[data-retry]'); if (re) { delete aiAsked[re.dataset.retry]; delete aiErr[re.dataset.retry]; queueSig = ''; renderStaff(); return; }
     const sh = e.target.closest('[data-show]'); if (sh) { const q = STATE.queue.find((x) => x.id === sh.dataset.show); const at = q && qSpot(q); if (at && mapGlobe) mapGlobe.pulse(at, q.from); return; }
+    const pv = e.target.closest('[data-prev]');
+    if (pv) { const q = STATE.queue.find((x) => x.id === pv.dataset.prev); const ab = pv.parentElement.querySelector('[data-dec="approve"]'); if (!q || !ab) return; pv.disabled = true;
+      buildDecision(q, true, ab).then((p) => { pv.closest('.qcard')?.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = false)); ab.textContent = 'Approve'; pv.disabled = false; if (p) previewOnMap(`approve ${q.from}'s request`, p, () => decideQ(q, true, ab)); }); return; }
     const b = e.target.closest('[data-dec]'); if (!b) return; const q = STATE.queue.find((x) => x.id === b.dataset.q); if (q) decideQ(q, b.dataset.dec === 'approve', b);
   });
   bindFx($('view-staff-root'));
@@ -2540,6 +2600,10 @@ function bindStaff() {
     const b = e.target.closest('[data-ch]'); if (!b) return; const id = b.dataset.d;
     if (b.dataset.ch === 'floor') act({ type: 'chair.floor', id });
     if (b.dataset.ch === 'back') act({ type: 'chair.back', id });
+    if (b.dataset.ch === 'preview') {
+      const d = STATE.directives.find((x) => x.id === id); const box = b.closest('.chair-row').querySelector('.fx'); const cb = b.parentElement.querySelector('[data-ch="carry"]');
+      previewOnMap(`carry out directive ${d.no || ''}`, { type: 'effects.apply', directive: id, effects: [...keptEffects('d' + id, d.ai), ...readFx(box)], headline: d.ai?.headline, flash: d.ai?.flash, when: readWhen(box), empty: true }, () => { openModal('dir'); setTimeout(() => cb?.click(), 50); }, 'dir');
+    }
     if (b.dataset.ch === 'carry') {
       const d = STATE.directives.find((x) => x.id === id); const box = b.closest('.chair-row').querySelector('.fx');
       const fx = [...keptEffects('d' + id, d.ai), ...readFx(box)];
@@ -2556,6 +2620,7 @@ function bindStaff() {
   $('ev-result').addEventListener('click', async (e) => {
     const off = e.target.closest('[data-off]'); if (off) { const i = +off.dataset.off.split(':')[1]; const set = (aiOff.ev = aiOff.ev || new Set()); set.has(i) ? set.delete(i) : set.add(i); renderEvPlan(); return; }
     if (e.target.id === 'ev-cancel') { evPlan = null; renderEvPlan(); }
+    if (e.target.id === 'ev-prev' && evPlan) previewOnMap('make something happen', { type: 'effects.apply', effects: keptEffects('ev', evPlan), headline: evPlan.headline, flash: evPlan.flash }, () => { openModal('ev'); setTimeout(() => $('ev-go')?.click(), 50); }, 'ev');
     if (e.target.id === 'ev-go') { if (await act({ type: 'effects.apply', effects: keptEffects('ev', evPlan), headline: evPlan.headline, flash: evPlan.flash })) { evPlan = null; $('ev-text').value = ''; renderEvPlan(); } }
   });
   $('rels').addEventListener('click', (e) => {
@@ -2579,6 +2644,7 @@ function bindStaff() {
   $('replay-flash').addEventListener('click', () => act({ type: 'flash' }));
   $('cd-restart').addEventListener('click', () => act({ type: 'countdown', minutes: 15 }));
   $('clear-arrows').addEventListener('click', () => act({ type: 'arrows.clear' }));
+  $('free-prev').addEventListener('click', () => { const box = $('free-fx').querySelector('.fx'); const fx = readFx(box); if (!fx.length) { toast('Add at least one effect first.'); return; } previewOnMap('hand-made effects', { type: 'effects.apply', effects: fx, when: readWhen(box) }, () => { openModal('ev'); setTimeout(() => $('free-apply').click(), 50); }, 'ev'); });
   $('free-apply').addEventListener('click', async () => { const box = $('free-fx').querySelector('.fx'); const fx = readFx(box); if (!fx.length) { toast('Add at least one effect first.'); return; } if (await act({ type: 'effects.apply', effects: fx, when: readWhen(box) })) box.querySelector('.fx-rows').innerHTML = ''; });
   $('load-demo').addEventListener('click', () => act({ type: 'game.demo' }));
   $('reset-game').addEventListener('click', () => act({ type: 'game.reset', confirm: $('reset-confirm').value.trim().toUpperCase() }));

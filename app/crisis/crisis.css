@@ -1130,3 +1130,11 @@ body *:not(.lbl) { letter-spacing: normal !important; }
 .cto label { font-weight: 700; }
 .qto { font-size: 13px; padding: 4px 8px; background: rgba(245,194,27,.12); border-left: 3px solid var(--gold); }
 .aibox .aiguess { grid-column: 1 / -1; color: var(--muted); font-style: italic; }
+/* Preview on the map */
+.prevbar { position: absolute; z-index: 14; top: calc(var(--topH, 0px) + 64px); left: calc(50% + 200px); transform: translateX(-50%); width: min(520px, calc(100% - 480px)); max-height: calc(100% - var(--topH, 0px) - var(--botH, 0px) - 100px); overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; background: rgba(22, 26, 33, 0.88); border: 2px solid var(--gold); box-shadow: 0 16px 44px rgba(0,0,0,.5); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); pointer-events: auto; }
+.prevbar[hidden] { display: none; }
+.pvhead b { display: block; font-size: 17px; color: var(--gold); }
+.pvhead span { font-size: 13px; color: var(--muted); }
+.prevbar ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.prevbar .fl { width: 18px; height: 12px; display: inline-block; vertical-align: -1px; }
+@media (max-width: 900px) { .prevbar { left: 50%; width: calc(100% - 24px); } }

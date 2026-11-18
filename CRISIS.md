@@ -124,6 +124,12 @@ Staff no longer have to build effects by hand for most requests.
 - **The backroom:** a crisis note can be addressed to someone who is not a delegate (the "To:" line on the paper). Crisis staff answer as that person, and the reply arrives as "Reply from Adolf Hitler". Backroom figures: Hitler, Göring, Canaris, Stalin, Beria, Mussolini, Emperor Hirohito, King George VI, Lord Halifax, President Lebrun, Cordell Hull, President Mościcki, Józef Beck, President Kallio, Aimo Cajander, Chiang Kai-shek, Mao Zedong, Franco, İnönü, Horthy, King Carol II, Per Albin Hansson and Pope Pius XII.
 - **New codes:** the roster changed, so every delegate has a new access code (see Access codes on the staff map). Old delegate logins for removed names stop working.
 
+## Preview, backups and load
+
+- **Preview on the map:** request cards, passed directives, "Make something happen" and hand-made effects all have a **Preview** button. It runs the same game rules on a copy of the game in the staff browser and shows the result on the staff map, with a list of everything that would change (moves, new or destroyed units, regions changing hands, new features, wars and treaties, money, news). **Do it** carries it out; **Back** returns everything as it was. Nothing is saved during a preview, and the projector and delegates never see it. Battles in a preview show one possible dice roll; the real roll happens on Do it.
+- **Backups:** saved automatically every 3 minutes of changes and before any reset, demo load or restore (newest 40 kept, in the same Supabase table). The **Game** pop-up lists them with Restore, can save one now with a name, and can download the whole game as a file or restore from such a file. A restore backs up the current game first.
+- **Server load:** screens check a version number and only download the game when it changed; they poll every 1.5 seconds while things are happening, 2.5 seconds when quiet and 8 seconds in hidden tabs. A local load test of 24 screens, 5 delegates passing notes, 3 people typing one directive and steady crisis notes for a minute had no errors (4 to 15 ms per request), though it ran on server memory rather than Supabase.
+
 ## Game clock
 
 - **The date runs by itself** on every screen. At normal speed 12 real hours take the war from 3 September 1939, 17:00 to 1 December 1941, which is about 27 game hours per real minute (a game day every 53 seconds).
