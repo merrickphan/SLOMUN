@@ -1320,7 +1320,7 @@ function staffDrawer() {
   return `<aside class="sdrawer" id="sdrawer"><div class="shead"><button type="button" class="dbtn" id="sd-toggle" aria-expanded="true" aria-label="Hide requests">‹</button><h2>Requests</h2><span class="pill pending num" id="q-count"></span>
       <div class="seg small" role="group" aria-label="Filter requests"><button type="button" data-qf="pending" aria-pressed="true">Waiting</button><button type="button" data-qf="all" aria-pressed="false">All</button></div>
       <select id="q-country" aria-label="Filter by country"><option value="">All</option>${ORDER.map((k) => `<option value="${k}">${POWERS[k].short}</option>`).join('')}</select></div>
-    <div class="sdbody"><p class="formnote" id="ai-mode"></p><div id="queue" class="queue-list"></div></div></aside>`;
+    <div class="sdbody"><div id="queue" class="queue-list"></div></div></aside>`;
 }
 const modal = (k, title, body, wide) => `<div class="smodal" id="m-${k}" hidden role="dialog" aria-modal="true" aria-labelledby="mt-${k}"><div class="mbox${wide ? ' wide' : ''}"><header><h2 id="mt-${k}">${title}</h2><button type="button" class="dbtn" data-close aria-label="Close">✕</button></header><div class="mbody">${body}</div></div></div>`;
 function staffModals(p) {
@@ -1332,10 +1332,10 @@ function staffModals(p) {
             <label class="check"><input type="checkbox" id="cu-flash" checked> Breaking news flash on every screen</label>
             <label class="check"><input type="checkbox" id="cu-reset" checked> Restart the countdown at <input type="number" id="cu-min" min="1" max="60" value="15" style="width:56px"> minutes</label>
             <button type="submit" class="dbtn gold">Publish to the room</button></form>`)
-    + modal('ev', 'Make something happen', `<p class="formnote">Describe any event in plain words. To place units, pins or buildings yourself, just click the map instead.</p>
-          <textarea id="ev-text" maxlength="1500" placeholder="For example: Hitler orders Rundstedt's panzers to take Warsaw within ten days, and rations fuel for the Luftwaffe."></textarea>
-          <div class="row"><button type="button" class="dbtn gold" id="ev-preview">Preview</button></div><div id="ev-result"></div>
-          <div id="free-fx">${fxEditor('free', false, 'Or build the effects by hand')}</div><button type="button" class="dbtn" id="free-apply">Apply the hand-made effects</button><button type="button" class="dbtn gold" id="free-prev">Set it up on the map by hand</button>`, true)
+    + modal('ev', 'Make something happen', `<p class="formnote">Make the changes on the map by hand (move or spawn forces, build, place figurines and spies, give regions, battles), then press Go. Add a headline if the room should hear about it.</p>
+          <label class="formnote" for="ev-head">News wire headline (optional)<input type="text" id="ev-head" maxlength="200" placeholder="For example: Soviet troops cross into eastern Poland"></label>
+          <label class="check"><input type="checkbox" id="ev-flash"> Also show it as breaking news on every screen</label>
+          <div class="row"><button type="button" class="dbtn gold" id="free-prev">Make changes</button></div>`)
     + modal('battle', 'Battle calculator', '<p class="formnote">Tip: click units on the map and choose "Attacker" or "Defender". Battles in approved crisis notes roll by themselves.</p><div id="battle"></div>', true)
     + modal('rels', 'Wars, treaties and conditions', '<div id="rels"></div>')
     + modal('feat', 'Map features, spies and scheduled events', '<p class="formnote">Click any feature on the map to change it, or click the map to build one. Spies show on the map as dark pins.</p><div id="featlist"></div>', true)
@@ -1350,7 +1350,6 @@ function staffModals(p) {
     + modal('codes', 'Access codes', `<p class="formnote">Print these and hand one to each delegate. The staff and projector codes are set in the Vercel project settings.</p><div class="row"><button type="button" class="dbtn" onclick="window.print()">Print</button></div>
           <div class="codes-wrap"><table class="codes"><thead><tr><th>Delegate</th><th>Country</th><th>Code</th></tr></thead><tbody>${(p.codes || []).map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(POWERS[c.country].label)}</td><td class="code">${esc(c.code)}</td></tr>`).join('')}</tbody></table></div>`)
     + modal('game', 'Game', `<p class="storage">Storage: ${p.storage === 'supabase' ? 'Supabase database. The game survives restarts.' : '<b>Server memory only.</b> Fine for testing, but the game resets whenever the server restarts. Connect Supabase before the conference.'}</p>
-          <p class="storage">Assistant: ${p.ai === 'claude' ? 'Claude is reading notes and suggesting effects.' : '<b>Keyword matching only.</b> Add ANTHROPIC_API_KEY in Vercel to have Claude suggest effects for every note.'}</p>
           <h3 class="formnote" style="margin:8px 0 0">Backups</h3>
           <p class="formnote">A backup is saved automatically every 3 minutes while the game changes, and before any reset or restore. The newest 40 are kept. Restoring backs up the current game first, so a restore can be undone too.</p>
           <div class="row"><input type="text" id="bk-label" maxlength="80" placeholder="Name (optional), e.g. Before lunch"><button type="button" class="dbtn gold" id="bk-save">Save a backup now</button><a class="dbtn" href="/api/crisis/backup?download=1" download>Download the game as a file</a><label class="dbtn" style="cursor:pointer">Restore from a file<input type="file" id="bk-file" accept="application/json,.json" hidden></label></div>
@@ -2382,16 +2381,6 @@ async function assist(body) {
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'The assistant is unavailable right now.'); return j;
 }
 // Ask for suggestions on anything new, two at a time. Results are saved on the server, so every staff screen shares them.
-function pumpAssistant() {
-  if (!STATE) return;
-  const want = [...STATE.queue.filter((q) => q.status === 'pending' && (!q.ai || q.ai.v !== S.AI_VERSION)).map((q) => ({ kind: 'request', id: q.id })),
-    ...(STATE.directives || []).filter((d) => d.status === 'passed' && !d.carried && !d.ai).map((d) => ({ kind: 'directive', id: d.id }))];
-  for (const w of want) {
-    if (aiBusy >= 2) break; if (aiAsked[w.id] && Date.now() - aiAsked[w.id] < 50000) continue;
-    aiAsked[w.id] = Date.now(); aiBusy++; delete aiErr[w.id];
-    assist(w).catch((e) => { aiErr[w.id] = e.message; queueSig = ''; chairSig = ''; renderStaff(); }).finally(() => { aiBusy--; });
-  }
-}
 const uName = (id) => STATE.units.find((u) => u.id === id)?.name || id;
 const pl = (c) => POWERS[c]?.label || c || '?';
 const whereTxt = (to) => (to === '@here' ? 'the marked spot' : REGION[to]?.name || to || 'the map');
@@ -2427,11 +2416,6 @@ function planList(key, b, editable) {
   return items;
 }
 const keptEffects = (key, b) => (b?.effects || []).filter((_, i) => !(aiOff[key] || new Set()).has(i));
-function aiBlock(q) {
-  if (!q.ai || q.ai.v !== S.AI_VERSION) return `<div class="aibox wait">${aiErr[q.id] ? `${esc(aiErr[q.id])} <button type="button" class="dbtn" data-retry="${q.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading this request…'}</div>`;
-  const A = planList(q.id, q.ai.approve, true), R = planList('r' + q.id, q.ai.reject, false);
-  return `<div class="aibox"><small class="aiguess">The assistant's guess before you reply. Your reply overrides it.</small><div><b>If approved</b><ul>${A || `<li class="none">${PROPS_AI === 'claude' ? 'Reply only, nothing changes on the map.' : '<b class="warn">Nothing will change.</b> Keyword mode only understands spies, sharing intel, wars and treaties. Add effects below, or set ANTHROPIC_API_KEY so Claude handles any plan.'}</li>`}</ul></div><div><b>If rejected</b><ul>${R || '<li class="none">Nothing happens.</li>'}</ul></div>${q.ai.approve?.staff_note ? `<small>${esc(q.ai.approve.staff_note)}</small>` : ''}</div>`;
-}
 let qFilter = 'pending', qCountry = '';
 function qDetail(q) {
   const d = q.detail || {}; let s = '';
@@ -2464,17 +2448,14 @@ function renderStaff() {
   $('q-count').textContent = `${pending} waiting`; $('sdrawer').classList.toggle('has', pending > 0);
   if ($('cu-now')) $('cu-now').innerHTML = `<span class="card-title">Now showing: Crisis Update ${STATE.update.no}</span><b>${esc(STATE.update.title)}</b> ${esc(STATE.update.text)}`;
   const dn = (STATE.directives || []).filter((d) => d.status === 'chair' || (d.status === 'passed' && !d.carried)).length; $('stc-dir').textContent = dn; $('stc-dir').hidden = !dn;
-  $('ai-mode').textContent = PROPS_AI === 'claude' ? 'Claude suggests what each request does. Drop any effect with ✕, write a reply to change the outcome, or add your own effects. You can undo the last decision for 10 minutes.' : 'Keyword matching only (no ANTHROPIC_API_KEY). Wars, peace and alliances are detected; add other effects by hand.';
   const list = Q.filter((q) => (qFilter === 'all' || q.status === 'pending') && (!qCountry || q.country === qCountry));
   const qsig = JSON.stringify([qFilter, qCountry, list.map((q) => [q.id, q.status, q.ai?.v || 0, aiErr[q.id] || '', [...(aiOff[q.id] || [])]])]);
   if (qsig !== queueSig) { queueSig = qsig; keepFx($('queue'), () => keepInputs($('queue'), () => {
     $('queue').innerHTML = list.map((q) => `<div class="qcard${q.status !== 'pending' ? ' done' : ''}" data-q="${q.id}">
       <div class="qtop">${flag(q.country)}<b>${esc(q.from)}</b>${POWERS[q.country].label} · ${esc(q.time)}<span class="pill type">${TYPE_PILL[q.type] || q.type}</span><span class="pill ${q.vis}">${q.vis}</span>${q.status !== 'pending' ? `<span class="pill ${q.status}">${esc(q.outcome || q.status)}</span>` : ''}</div>
       ${q.detail?.to ? `<div class="qto">To <b>${esc(q.detail.to)}</b> (backroom) · ${esc(S.backroomNamed(q.detail.to)?.title || '')}. Reply as them.</div>` : ''}<div class="qtitle">${esc(q.title)}</div>${qDetail(q) ? `<div class="qdetail">${qDetail(q)}</div>` : ''}${qSpot(q) ? `<button type="button" class="dbtn small" data-show="${q.id}">Show on map</button>` : ''}
-      ${q.status === 'pending' ? `${aiBlock(q)}
-        <textarea id="r-${q.id}" maxlength="800" aria-label="Reply to ${esc(q.from)}" placeholder="Your reply decides what happens. Write it, then Approve or Reject: the assistant carries out exactly what you wrote, even if it is not what it suggested."></textarea>
-        ${fxEditor(q.id, false, 'Add your own effects').replace('class="fx"', `class="fx" data-country="${q.country}" data-vis="${q.vis}" data-here="${q.detail?.at ? 1 : 0}"`)}
-        <div class="qbtns"><button type="button" class="dbtn green" data-dec="approve" data-q="${q.id}">Approve</button><button type="button" class="dbtn red" data-dec="reject" data-q="${q.id}">Reject</button><button type="button" class="dbtn gold" data-prev="${q.id}" title="Set up what happens on the map by hand, then Go">Stage on map</button>${q.type === 'fleet' ? `<label class="check"><input type="checkbox" id="sec-${q.id}"${q.vis === 'private' ? ' checked' : ''}> Keep the move off the projector</label>` : ''}</div>`
+      ${q.status === 'pending' ? `<textarea id="r-${q.id}" maxlength="800" aria-label="Reply to ${esc(q.from)}" placeholder="Reply to ${esc(q.from)}${q.detail?.to ? ' as ' + esc(q.detail.to) : ''} (optional)"></textarea>
+        <div class="qbtns"><button type="button" class="dbtn gold" data-prev="${q.id}" title="Make the changes on the map by hand, then press Go">Make changes</button><button type="button" class="dbtn green" data-dec="approve" data-q="${q.id}">Approve</button><button type="button" class="dbtn red" data-dec="reject" data-q="${q.id}">Reject</button>${q.type === 'fleet' ? `<label class="check"><input type="checkbox" id="sec-${q.id}"${q.vis === 'private' ? ' checked' : ''}> Keep the move off the projector</label>` : ''}</div>`
       : `<div class="qresult">Reply: <b>${esc(q.reply || '')}</b>${q.effects ? `<br>Effects: ${q.effects.map(esc).join(', ')}` : ''}</div>`}
     </div>`).join('') || '<p class="formnote">Nothing waiting. New requests appear here a second or two after delegates send them.</p>';
   })); }
@@ -2485,7 +2466,6 @@ function renderStaff() {
   renderProj(); renderStaffMessages(); refreshBattleLists(); renderFeatList(); renderRels(); renderBattleTray();
   const mc = (STATE.messages || []).length; $('stc-msgs').textContent = mc; $('stc-msgs').hidden = !mc;
   const cd = $('cu-date'); if (cd && !cd.value && document.activeElement !== cd) cd.value = STATE.update?.date || '';
-  pumpAssistant();
 }
 function renderChair() {
   const rows = (STATE.directives || []).filter((d) => d.status !== 'drafting');
@@ -2494,8 +2474,7 @@ function renderChair() {
     <small class="formnote">Sponsors ${d.sponsors.map(esc).join(', ')} · ${d.signed.length} signatures${d.vote ? ' · ' + esc(d.vote) : ''}</small>
     ${d.status === 'chair' ? `<div class="qbtns"><button type="button" class="dbtn gold" data-ch="floor" data-d="${d.id}">Put it on the floor</button><button type="button" class="dbtn" data-ch="back" data-d="${d.id}">Send back</button></div>` : ''}
     ${d.status === 'floor' ? `<div class="votes"><label>For <input type="number" min="0" id="vf-${d.id}" value="0"></label><label>Against <input type="number" min="0" id="va-${d.id}" value="0"></label><button type="button" class="dbtn gold" data-ch="vote" data-d="${d.id}">Record placard vote</button></div>` : ''}
-    ${d.status === 'passed' && !d.carried ? `${d.ai ? `<div class="aibox"><div><b>Carrying it out will</b><ul>${planList('d' + d.id, d.ai, true) || '<li class="none">Nothing on the map. Add effects by hand if needed.</li>'}</ul></div>${d.ai.staff_note ? `<small>${esc(d.ai.staff_note)}</small>` : ''}</div>` : `<div class="aibox wait">${aiErr[d.id] ? `${esc(aiErr[d.id])} <button type="button" class="dbtn" data-retry="${d.id}">Try again</button>` : '<i class="spin"></i> The assistant is reading the clauses…'}</div>`}
-      ${fxEditor('dir-' + d.id, false, 'Add your own effects')}<div class="qbtns"><button type="button" class="dbtn gold" data-ch="carry" data-d="${d.id}">Carry out the directive</button><button type="button" class="dbtn" data-ch="preview" data-d="${d.id}">Stage on map</button></div>` : ''}
+    ${d.status === 'passed' && !d.carried ? `<div class="qbtns"><button type="button" class="dbtn gold" data-ch="preview" data-d="${d.id}">Make changes</button><button type="button" class="dbtn" data-ch="carry" data-d="${d.id}">Mark carried out (no map changes)</button></div>` : ''}
     ${d.carried ? `<small class="formnote">Carried out: ${d.carried.map(esc).join(', ') || 'no map changes'}</small>` : ''}
   </div>`).join('') || '<p class="formnote">No directives yet. They appear here once delegates send them for signatures.</p>';
 }
@@ -2509,27 +2488,18 @@ function renderRels() {
 }
 const qSpot = (q) => q.detail?.at || (q.type === 'fleet' && STATE.units.find((u) => u.id === q.detail?.unit)?.at) || null;
 async function decideQ(q, ok, btn) {
-  const p = await buildDecision(q, ok, btn); if (!p) return;
+  const p = decisionFor(q, ok); btn.closest('.qcard')?.querySelectorAll('[data-dec],[data-prev]').forEach((x) => (x.disabled = true));
   const done = await act(p, { quiet: true });
   if (done) notify({ kind: ok ? 'approved' : 'rejected', title: ok ? 'Approved and sent back' : 'Rejected and sent back', body: `${q.from}: ${q.title}` });
-  if (!done) { btn.closest('.qcard')?.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = false)); btn.textContent = ok ? 'Approve' : 'Reject'; }
+  if (!done) btn.closest('.qcard')?.querySelectorAll('[data-dec],[data-prev]').forEach((x) => (x.disabled = false));
 }
-// Everything an Approve or Reject would send, including the assistant's reading of the chair's reply.
-async function buildDecision(q, ok, btn) {
-  const card = btn.closest('.qcard'); const reply = ($('r-' + q.id)?.value || '').trim(); const box = card.querySelector('.fx');
-  const manual = readFx(box); const key = ok ? q.id : 'r' + q.id;
-  // Don't approve on an empty plan just because the assistant hasn't answered yet.
-  if ((!q.ai || q.ai.v !== S.AI_VERSION) && !manual.length && !reply && !aiErr[q.id]) { toast('The assistant is still reading this request. Give it a few seconds, or add effects by hand.'); return; }
-  let b = (ok ? q.ai?.approve : q.ai?.reject) || { effects: [], headline: null, flash: null, reply: '' };
-  b = { ...b, effects: keptEffects(key, b) };
-  card.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = true));
-  if (reply && PROPS_AI === 'claude') {
-    btn.textContent = 'Matching effects to your reply…';
-    try { const j = await assist({ kind: 'request', id: q.id, decision: ok ? 'approve' : 'reject', reply }); if (j.result) b = j.result; } catch (e) { toast(e.message + ' Using the earlier suggestion.'); }
-  }
+// What Approve or Reject sends: the reply, plus the game's own handling for moves, builds, spies and money.
+function decisionFor(q, ok) {
+  const reply = ($('r-' + q.id)?.value || '').trim();
   const dec = !ok ? (q.type === 'spy' ? 'spy-fail' : 'reject') : q.type === 'fleet' ? ($('sec-' + q.id)?.checked ? 'move-secret' : 'move-public') : q.type === 'spy' ? 'spy-ok' : 'approve';
-  return { type: 'decide', id: q.id, dec, reply: reply || b.reply || '', effects: [...(b.effects || []), ...manual], headline: b.headline, flash: b.flash, when: readWhen(box) };
+  return { type: 'decide', id: q.id, dec, reply, effects: [] };
 }
+async function buildDecision(q, ok, btn) { return decisionFor(q, ok); }
 /* ---------- Stage on the map: set things up by hand on a copy of the game, then Go ---------- */
 // While staging, every staff map edit (drag a unit, spawn forces, place figurines or spies, give regions, battles)
 // changes only a copy of the game in this browser. Go sends the finished result to every screen at once.
@@ -2624,10 +2594,6 @@ function previewDiff(a, b) {
   if ((b.scheduled || []).length > (a.scheduled || []).length) L.push(`${(b.scheduled || []).length - (a.scheduled || []).length} effect(s) scheduled for a later crisis update`);
   return L;
 }
-let evPlan = null;
-function renderEvPlan() {
-  $('ev-result').innerHTML = evPlan ? `<div class="aibox"><div><b>This will</b><ul>${planList('ev', evPlan, true) || '<li class="none">The assistant found nothing to change. Try describing it differently.</li>'}</ul></div>${evPlan.staff_note ? `<small>${esc(evPlan.staff_note)}</small>` : ''}</div><div class="row"><button type="button" class="dbtn gold" id="ev-go">Make it happen</button><button type="button" class="dbtn" id="ev-prev">Stage on map</button><button type="button" class="dbtn" id="ev-cancel">Cancel</button></div>` : '';
-}
 
 /* ---------- Backups (staff) ---------- */
 async function backupCall(body) {
@@ -2667,9 +2633,8 @@ function bindStaff() {
     const re = e.target.closest('[data-retry]'); if (re) { delete aiAsked[re.dataset.retry]; delete aiErr[re.dataset.retry]; queueSig = ''; renderStaff(); return; }
     const sh = e.target.closest('[data-show]'); if (sh) { const q = STATE.queue.find((x) => x.id === sh.dataset.show); const at = q && qSpot(q); if (at && mapGlobe) mapGlobe.pulse(at, q.from); return; }
     const pv = e.target.closest('[data-prev]');
-    if (pv) { const q = STATE.queue.find((x) => x.id === pv.dataset.prev); const ab = pv.parentElement.querySelector('[data-dec="approve"]'); if (!q || !ab) return; pv.disabled = true;
-      buildDecision(q, true, ab).then((p) => { pv.closest('.qcard')?.querySelectorAll('[data-dec]').forEach((x) => (x.disabled = false)); ab.textContent = 'Approve'; pv.disabled = false;
-        if (p) previewOnMap(`${q.from}: ${q.title}`, p, async (effects, base) => { if (await act({ type: 'decide', id: q.id, dec: 'manual', reply: base.reply || '', effects, headline: base.headline, flash: base.flash }, { quiet: true })) notify({ kind: 'approved', title: 'Approved and carried out', body: `${q.from}: ${q.title}` }); }); }); return; }
+    if (pv) { const q = STATE.queue.find((x) => x.id === pv.dataset.prev); if (!q) return;
+      previewOnMap(`${q.from}: ${q.title}`, decisionFor(q, true), async (effects) => { if (await act({ type: 'decide', id: q.id, dec: 'manual', reply: ($('r-' + q.id)?.value || '').trim(), effects }, { quiet: true })) notify({ kind: 'approved', title: 'Approved and carried out', body: `${q.from}: ${q.title}` }); }); return; }
     const b = e.target.closest('[data-dec]'); if (!b) return; const q = STATE.queue.find((x) => x.id === b.dataset.q); if (q) decideQ(q, b.dataset.dec === 'approve', b);
   });
   bindFx($('view-staff-root'));
@@ -2682,26 +2647,13 @@ function bindStaff() {
     if (b.dataset.ch === 'back') act({ type: 'chair.back', id });
     if (b.dataset.ch === 'preview') {
       const d = STATE.directives.find((x) => x.id === id); const box = b.closest('.chair-row').querySelector('.fx'); const cb = b.parentElement.querySelector('[data-ch="carry"]');
-      previewOnMap(`directive ${d.no || ''}: ${d.title}`, { type: 'effects.apply', effects: [...keptEffects('d' + id, d.ai), ...readFx(box)], headline: d.ai?.headline, flash: d.ai?.flash }, (effects, base) => act({ type: 'effects.apply', directive: id, effects, headline: base.headline, flash: base.flash, empty: true }).then((ok) => ok && (chairSig = '')), 'dir');
+      previewOnMap(`directive ${d.no || ''}: ${d.title}`, null, (effects) => act({ type: 'effects.apply', directive: id, effects, empty: true }).then((ok) => ok && (chairSig = '')), 'dir');
     }
     if (b.dataset.ch === 'carry') {
       const d = STATE.directives.find((x) => x.id === id); const box = b.closest('.chair-row').querySelector('.fx');
-      const fx = [...keptEffects('d' + id, d.ai), ...readFx(box)];
-      b.disabled = true; act({ type: 'effects.apply', directive: id, effects: fx, headline: d.ai?.headline, flash: d.ai?.flash, when: readWhen(box), empty: true }).then((ok) => { b.disabled = false; if (ok) chairSig = ''; });
+      b.disabled = true; act({ type: 'effects.apply', directive: id, effects: [], empty: true }).then((ok) => { b.disabled = false; if (ok) chairSig = ''; });
     }
     if (b.dataset.ch === 'vote') act({ type: 'chair.vote', id, for: $('vf-' + id).value, against: $('va-' + id).value });
-  });
-  $('ev-preview').addEventListener('click', async (e) => {
-    const t = $('ev-text').value.trim(); if (!t) { toast('Describe what happens first.'); return; }
-    e.target.disabled = true; e.target.textContent = 'Reading…';
-    try { const j = await assist({ kind: 'event', text: t }); evPlan = j.result; aiOff.ev = new Set(); renderEvPlan(); } catch (err) { toast(err.message); }
-    e.target.disabled = false; e.target.textContent = 'Preview';
-  });
-  $('ev-result').addEventListener('click', async (e) => {
-    const off = e.target.closest('[data-off]'); if (off) { const i = +off.dataset.off.split(':')[1]; const set = (aiOff.ev = aiOff.ev || new Set()); set.has(i) ? set.delete(i) : set.add(i); renderEvPlan(); return; }
-    if (e.target.id === 'ev-cancel') { evPlan = null; renderEvPlan(); }
-    if (e.target.id === 'ev-prev' && evPlan) { const plan = evPlan; previewOnMap('make something happen', { type: 'effects.apply', effects: keptEffects('ev', plan), headline: plan.headline, flash: plan.flash }, (effects, base) => act({ type: 'effects.apply', effects, headline: base.headline, flash: base.flash }).then((ok) => { if (ok) { evPlan = null; $('ev-text').value = ''; renderEvPlan(); } }), 'ev'); }
-    if (e.target.id === 'ev-go') { if (await act({ type: 'effects.apply', effects: keptEffects('ev', evPlan), headline: evPlan.headline, flash: evPlan.flash })) { evPlan = null; $('ev-text').value = ''; renderEvPlan(); } }
   });
   $('rels').addEventListener('click', (e) => {
     const u = e.target.closest('[data-unrel]'), us = e.target.closest('[data-unstat]');
@@ -2724,8 +2676,7 @@ function bindStaff() {
   $('replay-flash').addEventListener('click', () => act({ type: 'flash' }));
   $('cd-restart').addEventListener('click', () => act({ type: 'countdown', minutes: 15 }));
   $('clear-arrows').addEventListener('click', () => act({ type: 'arrows.clear' }));
-  $('free-prev').addEventListener('click', () => previewOnMap('set things up by hand', null, (effects) => act({ type: 'effects.apply', effects }), 'ev'));
-  $('free-apply').addEventListener('click', async () => { const box = $('free-fx').querySelector('.fx'); const fx = readFx(box); if (!fx.length) { toast('Add at least one effect first.'); return; } if (await act({ type: 'effects.apply', effects: fx, when: readWhen(box) })) box.querySelector('.fx-rows').innerHTML = ''; });
+  $('free-prev').addEventListener('click', () => previewOnMap('make something happen', null, (effects) => { const head = $('ev-head').value.trim(), fl = $('ev-flash').checked; return act({ type: 'effects.apply', effects, headline: head || null, flash: fl && head ? { head, deck: '' } : null, empty: true }).then((ok) => { if (ok) { $('ev-head').value = ''; $('ev-flash').checked = false; } }); }, 'ev'));
   $('load-demo').addEventListener('click', () => act({ type: 'game.demo' }));
   $('reset-game').addEventListener('click', () => act({ type: 'game.reset', confirm: $('reset-confirm').value.trim().toUpperCase() }));
 }
