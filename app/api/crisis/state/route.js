@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/crisis/session';
-import { load } from '@/lib/crisis/store';
+import { load, currentVersion } from '@/lib/crisis/store';
 import { viewFor } from '@/lib/crisis/engine';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +12,8 @@ export async function GET(req) {
   const sp = new URL(req.url).searchParams;
   const as = sess.role === 'staff' ? sp.get('as') || undefined : undefined;
   try {
+    // Most polls find nothing new: answer from the version number alone, without loading the game.
+    if (sp.get('v') && +sp.get('v') === (await currentVersion())) return NextResponse.json({ version: +sp.get('v'), unchanged: true, now: Date.now() }, { headers: H });
     const s = await load();
     if (sp.get('v') && +sp.get('v') === s.version) return NextResponse.json({ version: s.version, unchanged: true, now: Date.now() }, { headers: H });
     return NextResponse.json(viewFor(s, sess, as), { headers: H });

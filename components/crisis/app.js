@@ -1195,6 +1195,7 @@ class Globe {
 const SPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11h18M6 11l2-6h8l2 6"/><circle cx="8" cy="16" r="3"/><circle cx="16" cy="16" r="3"/><path d="M11 16h2"/></svg>';
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const $ = (id) => document.getElementById(id);
+let lastChange = Date.now();
 let EDIT = false, STAFFMAP = false, placing = null, VIEW, ROLE, AS, STATE = null, VER = 0, SKEW = 0, lastFlashId, MEE = null, ME = null;
 let selected = { type: 'country', id: 'Poland' };
 /* ---------- Pop-up notices and the crisis staff verdict card ---------- */
@@ -1337,10 +1338,14 @@ function staffModals(p) {
           <div class="codes-wrap"><table class="codes"><thead><tr><th>Delegate</th><th>Country</th><th>Code</th></tr></thead><tbody>${(p.codes || []).map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(POWERS[c.country].label)}</td><td class="code">${esc(c.code)}</td></tr>`).join('')}</tbody></table></div>`)
     + modal('game', 'Game', `<p class="storage">Storage: ${p.storage === 'supabase' ? 'Supabase database. The game survives restarts.' : '<b>Server memory only.</b> Fine for testing, but the game resets whenever the server restarts. Connect Supabase before the conference.'}</p>
           <p class="storage">Assistant: ${p.ai === 'claude' ? 'Claude is reading notes and suggesting effects.' : '<b>Keyword matching only.</b> Add ANTHROPIC_API_KEY in Vercel to have Claude suggest effects for every note.'}</p>
+          <h3 class="formnote" style="margin:8px 0 0">Backups</h3>
+          <p class="formnote">A backup is saved automatically every 3 minutes while the game changes, and before any reset or restore. The newest 40 are kept. Restoring backs up the current game first, so a restore can be undone too.</p>
+          <div class="row"><input type="text" id="bk-label" maxlength="80" placeholder="Name (optional), e.g. Before lunch"><button type="button" class="dbtn gold" id="bk-save">Save a backup now</button><a class="dbtn" href="/api/crisis/backup?download=1" download>Download the game as a file</a><label class="dbtn" style="cursor:pointer">Restore from a file<input type="file" id="bk-file" accept="application/json,.json" hidden></label></div>
+          <div class="codes-wrap"><table class="codes" id="bk-list"><tbody><tr><td class="formnote">Loading backups…</td></tr></tbody></table></div>
           <div class="row"><button type="button" class="dbtn" id="load-demo">Load demo requests</button></div>
           <div class="row"><input type="text" id="reset-confirm" placeholder="Type RESET" aria-label="Type RESET to confirm"><button type="button" class="dbtn red" id="reset-game">Reset the whole game</button></div>`);
 }
-function openModal(k) { document.querySelectorAll('.smodal').forEach((m) => (m.hidden = m.id !== 'm-' + k)); if (k === 'battle') syncBattleSelects(); if (k === 'gallery') startGallery(); if (k === 'cu' && $('cu-date')) $('cu-date').value = S.gameDateText(gameNow()); if (k === 'clock') syncClockUI(true); }
+function openModal(k) { document.querySelectorAll('.smodal').forEach((m) => (m.hidden = m.id !== 'm-' + k)); if (k === 'battle') syncBattleSelects(); if (k === 'gallery') startGallery(); if (k === 'game') loadBackups(); if (k === 'cu' && $('cu-date')) $('cu-date').value = S.gameDateText(gameNow()); if (k === 'clock') syncClockUI(true); }
 const gameNow = () => S.gameTime(STATE?.clock, Date.now() + SKEW);
 function syncClockUI(fill) {
   if (!$('clk-now') || !STATE?.clock) return; const c = STATE.clock;
@@ -1486,7 +1491,7 @@ async function fetchState() {
   const r = await fetch('/api/crisis/state?' + q, { cache: 'no-store' });
   if (r.status === 401) { location.href = '/crisis'; return; }
   const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Server error');
-  SKEW = j.now - Date.now(); if (!j.unchanged) applyState(j);
+  SKEW = j.now - Date.now(); if (!j.unchanged) { lastChange = Date.now(); applyState(j); }
 }
 async function act(payload, opt = {}) {
   try {
@@ -2001,7 +2006,7 @@ function buildClauses() {
 }
 function editDoc(k, text) {
   docPending[k] = text; $('dc-save').textContent = 'Saving…'; if (k === 'title') $('dc-name').textContent = text || 'Untitled directive';
-  clearTimeout(docTimers[k]); docTimers[k] = setTimeout(() => sendDoc(k), 450);
+  clearTimeout(docTimers[k]); docTimers[k] = setTimeout(() => sendDoc(k), 900);
 }
 async function sendDoc(k) {
   if (!(k in docPending) || !LAPID) return; const text = docPending[k]; delete docPending[k];
@@ -2488,7 +2493,31 @@ function renderEvPlan() {
   $('ev-result').innerHTML = evPlan ? `<div class="aibox"><div><b>This will</b><ul>${planList('ev', evPlan, true) || '<li class="none">The assistant found nothing to change. Try describing it differently.</li>'}</ul></div>${evPlan.staff_note ? `<small>${esc(evPlan.staff_note)}</small>` : ''}</div><div class="row"><button type="button" class="dbtn gold" id="ev-go">Make it happen</button><button type="button" class="dbtn" id="ev-cancel">Cancel</button></div>` : '';
 }
 
+/* ---------- Backups (staff) ---------- */
+async function backupCall(body) {
+  const r = await fetch('/api/crisis/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(j.error || 'That did not work.', 'error'); return null; } if (j.view) { SKEW = j.view.now - Date.now(); applyState(j.view); } if (j.message) toast(j.message, 'approved'); return j;
+}
+async function loadBackups() {
+  const t = $('bk-list'); if (!t) return;
+  try {
+    const r = await fetch('/api/crisis/backup', { cache: 'no-store' }); const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    const fmt = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    t.innerHTML = '<tbody>' + (j.backups.map((b) => `<tr><td><b>${esc(b.label)}</b><br><small class="formnote">${fmt(b.at)} · Crisis update ${b.update ?? '?'}${b.title ? ': ' + esc(b.title) : ''}</small></td><td style="text-align:right"><button type="button" class="dbtn" data-restore="${esc(b.id)}">Restore</button></td></tr>`).join('') || '<tr><td class="formnote">No backups yet. One is saved within 3 minutes of the next change.</td></tr>') + '</tbody>';
+  } catch (e) { t.innerHTML = `<tbody><tr><td class="formnote">Could not load backups: ${esc(e.message || 'server error')}</td></tr></tbody>`; }
+}
 function bindStaff() {
+  $('bk-save')?.addEventListener('click', async () => { if (await backupCall({ do: 'save', label: $('bk-label').value })) { $('bk-label').value = ''; loadBackups(); } });
+  $('bk-list')?.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-restore]'); if (!b) return;
+    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Click again to restore'; b.classList.add('red'); setTimeout(() => { b.dataset.sure = ''; b.textContent = 'Restore'; b.classList.remove('red'); }, 4000); return; }
+    b.disabled = true; if (await backupCall({ do: 'restore', id: b.dataset.restore })) loadBackups(); b.disabled = false;
+  });
+  $('bk-file')?.addEventListener('change', async (e) => {
+    const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+    let state; try { state = JSON.parse(await f.text()); } catch { toast('That file is not a saved game.', 'error'); return; }
+    if (await backupCall({ do: 'import', state })) loadBackups();
+  });
   $('clk-toggle')?.addEventListener('click', () => act({ type: 'clock', do: STATE.clock?.running ? 'pause' : 'run' }).then(() => syncClockUI(true)));
   $('clk-speed')?.addEventListener('change', (e) => act({ type: 'clock', do: 'speed', k: +e.target.value }));
   $('clk-set')?.addEventListener('click', () => act({ type: 'clock', do: 'set', date: $('clk-date').value, time: $('clk-time').value }).then(() => syncClockUI(true)));
@@ -2657,8 +2686,11 @@ export function start(root, props) {
     if (stopped) return;
     try { await fetchState(); failures = 0; $('conn').className = 'conn'; $('conn').lastChild.textContent = 'Live'; }
     catch (e) { failures++; if (failures > 1) { $('conn').className = 'conn bad'; $('conn').lastChild.textContent = 'Reconnecting'; $('conn').title = e.message; if (failures === 3 && ROLE === 'staff') toast('Server problem: ' + e.message); } }
-    timer = setTimeout(poll, document.hidden ? 4000 : 1500);
+    // Poll quickly while things are happening, slower when the game is quiet, and rarely in a hidden tab.
+    const quiet = Date.now() - lastChange > 20000;
+    timer = setTimeout(poll, document.hidden ? 8000 : quiet ? 2500 : 1500);
   };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !stopped) { clearTimeout(timer); poll(); } });
   const first = poll();
 
   if (VIEW !== 'staff') (async () => {
