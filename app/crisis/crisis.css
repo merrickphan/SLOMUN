@@ -1141,3 +1141,7 @@ body *:not(.lbl) { letter-spacing: normal !important; }
 .ftile.placeable { cursor: pointer; transition: border-color .15s, transform .12s var(--ease); }
 .ftile.placeable:hover, .ftile.placeable:focus-visible { border-color: var(--gold); transform: translateY(-2px); outline: none; }
 .prevbar .check { font-size: 13px !important; }
+/* Staging: a slim bar instead of a panel */
+.prevbar { width: auto; max-width: calc(100% - 24px); flex-direction: row; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-width: 1px; max-height: none; overflow: visible; }
+.pvcount { font-size: 14px; color: var(--gold); white-space: nowrap; }
+.pvsecret { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--muted); white-space: nowrap; cursor: pointer; }

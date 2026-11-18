@@ -2541,16 +2541,16 @@ function showStage(prev) {
   UNITS = sim.units || []; FEATS = sim.features || []; CONTROL = sim.control || {}; MARKERS = sim.markers || [];
   AGENTS = Object.entries(sim.agents || {}).flatMap(([owner, l]) => l.map((g) => ({ ...g, owner })));
   mapGlobe.sync(prev); mapGlobe.addProps(); mapGlobe.repaintOcc(selected.type === 'country' ? selected.id : null); mapGlobe.addPins(); if (EDIT) renderEdit();
+  // A slim bar: how many changes, a secret switch, and the buttons. The full list shows on hover.
   const L = previewDiff(REAL, sim); const bar = $('prevbar'); bar.hidden = false;
-  bar.innerHTML = `<div class="pvhead"><b>Staging: ${esc(STAGE.label)}</b><span>Only you see this. Drag units to move them, click the map to spawn forces, build or give regions, or place a figurine from Figurines. Press Go to send it to every screen.</span></div>
-    <ul>${L.map((x) => `<li>${x}</li>`).join('') || '<li class="formnote">No map changes yet.</li>'}</ul>
-    <label class="check"><input type="checkbox" id="pv-pub"${STAGE.pub ? ' checked' : ''}> The projector shows these changes (unticked: secret, staff and the owners only)</label>
-    <div class="row"><button type="button" class="dbtn gold" id="pv-go">Go</button><button type="button" class="dbtn" id="pv-reset">Start over</button><button type="button" class="dbtn" data-modal="gallery">Figurines</button><button type="button" class="dbtn" id="pv-back">Cancel</button></div>`;
+  bar.title = L.length ? L.map((x) => x.replace(/<[^>]+>/g, '')).join('\n') : 'No changes yet';
+  bar.innerHTML = `<b class="pvcount">${L.length ? `${L.length} change${L.length === 1 ? '' : 's'} ready` : 'Staging'}</b>
+    <label class="pvsecret" title="Secret: only staff and the owning side see these changes"><input type="checkbox" id="pv-pub"${STAGE.pub ? '' : ' checked'}> Secret</label>
+    <button type="button" class="dbtn gold" id="pv-go">Go</button><button type="button" class="dbtn" id="pv-reset">Start over</button><button type="button" class="dbtn" id="pv-back">Cancel</button>`;
   $('pv-go').addEventListener('click', goStage);
   $('pv-back').addEventListener('click', () => exitStage(true));
   $('pv-reset').addEventListener('click', () => { const prev = Object.fromEntries(UNITS.map((u) => [u.id, u])); STAGE.sim = JSON.parse(JSON.stringify(REAL)); STAGE.payload = null; showStage(prev); });
-  $('pv-pub').addEventListener('change', (e) => (STAGE.pub = e.target.checked));
-  bar.querySelector('[data-modal]').addEventListener('click', () => openModal('gallery'));
+  $('pv-pub').addEventListener('change', (e) => (STAGE.pub = !e.target.checked));
 }
 // Apply a staff map action to the staged copy instead of the server.
 function stageAction(payload) {
