@@ -1205,3 +1205,5 @@ body *:not(.lbl) { letter-spacing: normal !important; }
 .spchanges .fl { width: 16px; height: 11px; display: inline-block; vertical-align: -1px; }
 .spnone { margin: 0; }
 @media (max-width: 1200px) { .staffmap.staging .prevbar { max-width: none; left: 50%; } }
+img.fl { object-fit: cover; display: block; }
+.chip img.fl, .tok img.fl, .npc img.fl, .codes img.fl, .wgroup img.fl, .ccdl img.fl, .spunit img.fl, .prevbar img.fl, .spchanges img.fl { display: inline-block; vertical-align: -1px; }

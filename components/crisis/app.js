@@ -783,6 +783,14 @@ const FLAG_ALIAS = {
   'Mesopotamia': 'Iraq', 'Libya': 'Italy',
 };
 function flagKeyOf(name) { const o = ownerOf(name); if (FLAG_SVG[o]) return o; const a = FLAG_ALIAS[name]; if (a) return FLAG_SVG[a] ? a : FLAG_X[a] ? a : null; return FLAG_X[name] ? name : null; }
+// Real flags (1939 versions) downloaded from Wikimedia Commons and the flag-icons set, saved as images in
+// public/crisis/flags. [file name, width / height]. Germany is left out on purpose and uses the drawn tricolor above.
+const FLAG_PNG = {"United States":["united-states",1.9],"United Kingdom":["united-kingdom",1.3333],"France":["france",1.5],"Poland":["poland",1.6],"Italy":["italy",1.5],"USSR":["ussr",2],"Finland":["finland",1.6364],"Japan":["japan",1.4286],"Afghanistan":["afghanistan",1.5],"Albania":["albania",1.4],"Andorra":["andorra",1.4286],"Argentina":["argentina",1.6],"Australia":["australia",2],"Belgium":["belgium",1.1538],"Bhutan":["bhutan",1.5],"Bolivia":["bolivia",1.4667],"Brazil":["brazil",1.4286],"Brunei":["brunei",2],"Bulgaria":["bulgaria",1.6667],"Canada":["canada",2],"Chile":["chile",1.5],"China":["china",1.5],"Colombia":["colombia",1.5],"Costa Rica":["costa-rica",1.6667],"Cuba":["cuba",2],"Denmark":["denmark",1.3214],"Dominican Republic":["dominican-republic",1.5],"Ecuador":["ecuador",1.5],"Egypt":["egypt",1.5],"El Salvador":["el-salvador",1.7725],"Estonia":["estonia",1.3333],"Greece":["greece",1.5],"Guatemala":["guatemala",1.3333],"Haiti":["haiti",1.6667],"Honduras":["honduras",1.3333],"Hungary":["hungary",1.3333],"Iran":["iran",3],"Iraq":["iraq",2],"Ireland":["ireland",2],"Latvia":["latvia",1.3333],"Liberia":["liberia",1.9],"Lithuania":["lithuania",1.6667],"Luxembourg":["luxembourg",1.6667],"Mexico":["mexico",1.75],"Mongolia":["mongolia",1.6667],"Nepal":["nepal",0.8203],"Netherlands":["netherlands",1.5],"New Zealand":["new-zealand",2],"Nicaragua":["nicaragua",1.6667],"Norway":["norway",1.375],"Panama":["panama",1.5],"Paraguay":["paraguay",1.8182],"Peru":["peru",1.5],"Philippines":["philippines",2],"Portugal":["portugal",1.3333],"Romania":["romania",1.5],"Saudi Arabia":["saudi-arabia",1.5],"Siam":["siam",1.5],"Spain":["spain",1.5],"Sweden":["sweden",1.6],"Switzerland":["switzerland",1],"Tibet":["tibet",1.6],"Turkey":["turkey",1.5],"Uruguay":["uruguay",1.5],"Yemen":["yemen",2],"Yugoslavia":["yugoslavia",1.5]};
+const FLAG_IMG = {};
+function loadFlagImages() {
+  return Promise.all(Object.entries(FLAG_PNG).map(([k, [slug]]) => new Promise((res) => { const i = new Image(); i.onload = () => { FLAG_IMG[k] = i; res(); }; i.onerror = () => res(); i.src = `/crisis/flags/${slug}.png`; })));
+}
+const flagAR = (k) => FLAG_PNG[k]?.[1] || 1.5;
 // Flags drawn straight onto the map canvases (parsed once from the SVG above; drawing SVG images would block WebGL in some browsers).
 const FLAG_OPS = {};
 function flagOps(owner) {
@@ -808,6 +816,7 @@ function flagOps(owner) {
   return (FLAG_OPS[owner] = ops);
 }
 function drawFlag(ctx, owner, x, y, w, h) {
+  if (FLAG_IMG[owner]) { ctx.drawImage(FLAG_IMG[owner], x, y, w, h); return; }
   ctx.save(); ctx.translate(x, y); ctx.scale(w / 30, h / 20);
   const ga = ctx.globalAlpha;
   for (const o of flagOps(owner)) { ctx.globalAlpha = ga * o.alpha; if (o.fill && o.fill !== 'none') { ctx.fillStyle = o.fill; ctx.fill(o.path); } if (o.stroke && o.stroke !== 'none') { ctx.strokeStyle = o.stroke; ctx.lineWidth = o.sw; ctx.lineCap = o.cap; ctx.stroke(o.path); } }
@@ -822,12 +831,13 @@ function flagFill(ctx, owner, rings, X, Y, alpha) {
   for (const ring of rings) {
     let lo0 = 1e9, la0 = 1e9, lo1 = -1e9, la1 = -1e9; for (const [lo, la] of ring) { if (lo < lo0) lo0 = lo; if (lo > lo1) lo1 = lo; if (la < la0) la0 = la; if (la > la1) la1 = la; }
     const bw = lo1 - lo0, bh = la1 - la0; if (bw <= 0 || bh <= 0) continue; const mid = (la0 + la1) / 2, c = cosAt(mid);
-    const h = Math.max(bh, bw * c / 1.5), w = h * 1.5 / c; const x0 = lo0 + (bw - w) / 2, top = mid + h / 2;
+    const ar = flagAR(owner); const h = Math.max(bh, bw * c / ar), w = h * ar / c; const x0 = lo0 + (bw - w) / 2, top = mid + h / 2;
     ctx.save(); all(); ctx.clip('evenodd'); ctx.beginPath(); ring.forEach(([lo, la], i) => (i ? ctx.lineTo(X(lo), Y(la)) : ctx.moveTo(X(lo), Y(la)))); ctx.closePath(); ctx.clip();
     ctx.globalAlpha = alpha; drawFlag(ctx, owner, X(x0), Y(top), X(x0 + w) - X(x0), Y(top - h) - Y(top)); ctx.restore();
   }
 }
-const flag = (owner, cls = 'fl') => `<svg class="${cls}" viewBox="0 0 30 20" preserveAspectRatio="none" aria-hidden="true">${FLAG_SVG[ownerOf(owner)] || FLAG_X[flagKeyOf(owner)] || `<rect width="30" height="20" fill="${colorOf(owner)}"/>`}</svg>`;
+const flag = (owner, cls = 'fl') => { const k = FLAG_SVG[ownerOf(owner)] ? ownerOf(owner) : flagKeyOf(owner); return k && FLAG_PNG[k] ? `<img class="${cls}" src="/crisis/flags/${FLAG_PNG[k][0]}.png" alt="" aria-hidden="true" draggable="false">` : flagSvg(owner, cls); };
+const flagSvg = (owner, cls = 'fl') => `<svg class="${cls}" viewBox="0 0 30 20" preserveAspectRatio="none" aria-hidden="true">${FLAG_SVG[ownerOf(owner)] || FLAG_X[flagKeyOf(owner)] || `<rect width="30" height="20" fill="${colorOf(owner)}"/>`}</svg>`;
 const D2R = Math.PI / 180;
 const UNIT_SCALE = 0.00357; // size of the 3D unit figures on the globe
 const PROP_K = UNIT_SCALE / 0.0105; // trenches, forts, factories and their smoke shrink with the units
@@ -2900,7 +2910,7 @@ export function start(root, props) {
         fetch('/crisis/geo.json').then((r) => r.json()).then(async (g) => { RSHAPE = await fetch('/crisis/regions.json').then((r) => r.json()); return g; }),
         ...['marble.webp', 'water.png', 'topo.jpg', TEXK > 1 ? 'world8k.webp' : 'world.webp', TEXK > 1 ? 'wwater8k.png' : 'wwater.png', 'clouds.jpg'].map((f) => loadImg('/crisis/' + f)),
       ]);
-      A = geo; imgs = { marble, water, topo, world, wwater, clouds }; await first;
+      A = geo; imgs = { marble, water, topo, world, wwater, clouds }; await Promise.race([loadFlagImages(), new Promise((r) => setTimeout(r, 8000))]); await first;
       if (stopped) return;
       if (VIEW === 'map') {
         patchCanvas = document.createElement('canvas'); patchCanvas.width = TW * TEXK; patchCanvas.height = TH * TEXK; paintTexture(patchCanvas, imgs);
