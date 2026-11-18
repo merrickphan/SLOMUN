@@ -51,7 +51,7 @@ function worldBase() {
   // Tints and borders go on their own layer, then the sharp coastline mask trims everything that spills into the sea.
   const lay = document.createElement('canvas'); lay.width = WW; lay.height = WH; const l = lay.getContext('2d');
   const path = (rings) => { l.beginPath(); for (const r of rings) { r.forEach(([x, y], i) => i ? l.lineTo(X(x), Y(y)) : l.moveTo(X(x), Y(y))); l.closePath(); } };
-  for (const [n, rings] of Object.entries(G)) { if (POWERS[ownerOf(n)]) { flagFill(l, ownerOf(n), rings, X, Y, 0.5); continue; } path(rings); l.fillStyle = worldColor(n); l.globalAlpha = 0.34; l.fill('evenodd'); }
+  for (const [n, rings] of Object.entries(G)) { const k = flagKeyOf(n); if (k) { flagFill(l, k, rings, X, Y, 0.5); continue; } path(rings); l.fillStyle = worldColor(n); l.globalAlpha = 0.34; l.fill('evenodd'); }
   l.globalAlpha = 1; l.lineJoin = 'round'; l.lineCap = 'round';
   for (const rings of Object.values(G)) { path(rings); l.strokeStyle = 'rgba(10,20,40,0.4)'; l.lineWidth = 2 * TEXK; l.stroke(); l.strokeStyle = 'rgba(225,240,255,0.5)'; l.lineWidth = 0.8 * TEXK; l.stroke(); }
   l.globalCompositeOperation = 'destination-out'; l.drawImage(imgs.wwater, 0, 0, WW, WH);
@@ -96,7 +96,7 @@ function paintTexture(canvas, imgs, sel) {
   ctx.globalAlpha = 0.95; ctx.drawImage(sea, 0, 0); ctx.globalAlpha = 1;
   // See-through country colors.
   for (const [name, g] of Object.entries(A.geo)) {
-    if (POWERS[ownerOf(name)]) { flagFill(ctx, ownerOf(name), g.r, tx, ty, 0.3); continue; }
+    { const k = flagKeyOf(name); if (k) { flagFill(ctx, k, g.r, tx, ty, 0.3); continue; } }
     ringPath(ctx, g.r);
     ctx.save(); ctx.clip('evenodd');
     ctx.fillStyle = colorOf(name);
@@ -720,11 +720,70 @@ const FLAG_SVG = {
   'United States': '<rect width="30" height="20" fill="#fff"/>' + [0, 2, 4, 6, 8, 10, 12].map(i => `<rect y="${i * 1.54}" width="30" height="1.54" fill="#B22234"/>`).join('') + '<rect width="13" height="10.8" fill="#3C3B6E"/>' + [2, 5, 8, 11].flatMap(x => [2.2, 5.4, 8.6].map(y => `<circle cx="${x}" cy="${y}" r=".75" fill="#fff"/>`)).join(''),
   'Japan': '<rect width="30" height="20" fill="#fff"/><circle cx="15" cy="10" r="6" fill="#BC002D"/>',
 };
+// Flags for every other country on the map in 1939 (simplified, same 30 x 20 frame as above).
+const H3 = (a, b, c) => `<rect width="30" height="20" fill="${a}"/><rect y="6.67" width="30" height="6.67" fill="${b}"/><rect y="13.33" width="30" height="6.67" fill="${c}"/>`;
+const V3 = (a, b, c) => `<rect width="10" height="20" fill="${a}"/><rect x="10" width="10" height="20" fill="${b}"/><rect x="20" width="10" height="20" fill="${c}"/>`;
+const NORDIC = (bg, cross, edge) => `<rect width="30" height="20" fill="${bg}"/>${edge ? `<path d="M11,0V20M0,10H30" stroke="${edge}" stroke-width="5"/>` : ''}<path d="M11,0V20M0,10H30" stroke="${cross}" stroke-width="${edge ? 2.6 : 3.4}"/>`;
+const UNION = '<rect width="15" height="10" fill="#012169"/><path d="M0,0L15,10M15,0L0,10" stroke="#fff" stroke-width="2"/><path d="M0,0L15,10M15,0L0,10" stroke="#C8102E" stroke-width=".8"/><path d="M7.5,0V10M0,5H15" stroke="#fff" stroke-width="3"/><path d="M7.5,0V10M0,5H15" stroke="#C8102E" stroke-width="1.7"/>';
+const STRIPES = (n, a, b) => Array.from({ length: n }, (_, i) => `<rect y="${(i * 20 / n).toFixed(2)}" width="30" height="${(20 / n + 0.05).toFixed(2)}" fill="${i % 2 ? b : a}"/>`).join('');
+const FLAG_X = {
+  'Afghanistan': V3('#111', '#C8102E', '#007A3D'), 'Albania': '<rect width="30" height="20" fill="#E41E20"/><path d="M15,4l4,3-1,4 3,2-3,2-3-2-3,2-3-2 3-2-1-4z" fill="#111"/>',
+  'Andorra': V3('#10069F', '#FEDD00', '#D50032'), 'Argentina': H3('#74ACDF', '#fff', '#74ACDF') + '<circle cx="15" cy="10" r="2" fill="#F6B40E"/>',
+  'Australia': '<rect width="30" height="20" fill="#012169"/>' + UNION + STAR(7.5, 15, 2.2, '#fff') + STAR(23, 5, 1.2, '#fff') + STAR(20, 10, 1.2, '#fff') + STAR(25, 12, 1.2, '#fff') + STAR(23, 17, 1.2, '#fff'),
+  'Belgium': V3('#111', '#FDDA24', '#EF3340'), 'Bhutan': '<path d="M0,20L30,0V20z" fill="#FF4E12"/><path d="M0,0H30L0,20z" fill="#FFD520"/>',
+  'Bolivia': H3('#D52B1E', '#F9E300', '#007934'), 'Brazil': '<rect width="30" height="20" fill="#009C3B"/><path d="M15,2L28,10L15,18L2,10z" fill="#FFDF00"/><circle cx="15" cy="10" r="4.2" fill="#002776"/>',
+  'Brunei': '<rect width="30" height="20" fill="#F7E017"/><path d="M0,3L30,11V17L0,9z" fill="#fff"/><path d="M0,9L30,17V20H28L0,13z" fill="#111"/>',
+  'Bulgaria': H3('#fff', '#00966E', '#D62612'), 'Canada': '<rect width="30" height="20" fill="#C8102E"/>' + UNION + '<rect x="20" y="9" width="4" height="5" fill="#E6D5A8"/>',
+  'Chile': '<rect width="30" height="20" fill="#fff"/><rect y="10" width="30" height="10" fill="#D52B1E"/><rect width="10" height="10" fill="#0039A6"/>' + STAR(5, 5, 2.2, '#fff'),
+  'China': '<rect width="30" height="20" fill="#FE0000"/><rect width="15" height="10" fill="#000095"/><circle cx="7.5" cy="5" r="2.6" fill="#fff"/><circle cx="7.5" cy="5" r="1.6" fill="#000095"/><circle cx="7.5" cy="5" r="1.2" fill="#fff"/>',
+  'Colombia': '<rect width="30" height="20" fill="#FCD116"/><rect y="10" width="30" height="5" fill="#003893"/><rect y="15" width="30" height="5" fill="#CE1126"/>',
+  'Costa Rica': '<rect width="30" height="20" fill="#002B7F"/><rect y="3.3" width="30" height="13.4" fill="#fff"/><rect y="6.7" width="30" height="6.6" fill="#CE1126"/>',
+  'Cuba': STRIPES(5, '#002A8F', '#fff') + '<path d="M0,0L12,10L0,20z" fill="#CF142B"/>' + STAR(4, 10, 2.4, '#fff'),
+  'Denmark': NORDIC('#C8102E', '#fff'), 'Dominican Republic': '<rect width="30" height="20" fill="#fff"/><rect width="13" height="8.5" fill="#002D62"/><rect x="17" width="13" height="8.5" fill="#CE1126"/><rect y="11.5" width="13" height="8.5" fill="#CE1126"/><rect x="17" y="11.5" width="13" height="8.5" fill="#002D62"/>',
+  'Ecuador': '<rect width="30" height="20" fill="#FFD100"/><rect y="10" width="30" height="5" fill="#0072CE"/><rect y="15" width="30" height="5" fill="#EF3340"/>',
+  'Egypt': '<rect width="30" height="20" fill="#0B8F3A"/><circle cx="14" cy="10" r="5" fill="#fff"/><circle cx="15.6" cy="10" r="4.2" fill="#0B8F3A"/>' + STAR(17.5, 7, 1, '#fff') + STAR(19, 10, 1, '#fff') + STAR(17.5, 13, 1, '#fff'),
+  'El Salvador': H3('#0F47AF', '#fff', '#0F47AF'), 'Estonia': H3('#0072CE', '#111', '#fff'),
+  'Greece': STRIPES(9, '#0D5EAF', '#fff') + '<rect width="11" height="11.1" fill="#0D5EAF"/><path d="M5.5,0V11.1M0,5.55H11" stroke="#fff" stroke-width="2.2"/>',
+  'Guatemala': V3('#4997D0', '#fff', '#4997D0'), 'Haiti': '<rect width="30" height="10" fill="#00209F"/><rect y="10" width="30" height="10" fill="#D21034"/>',
+  'Honduras': H3('#0073CF', '#fff', '#0073CF'), 'Hungary': H3('#CE2939', '#fff', '#477050'),
+  'Iran': H3('#239F40', '#fff', '#DA0000') + '<circle cx="15" cy="10" r="1.8" fill="#E8B23A"/>', 'Iraq': '<rect width="30" height="20" fill="#fff"/><rect width="30" height="6.67" fill="#111"/><rect y="13.33" width="30" height="6.67" fill="#007A3D"/><path d="M0,0L9,10L0,20z" fill="#CE1126"/>',
+  'Ireland': V3('#169B62', '#fff', '#FF883E'), 'Latvia': '<rect width="30" height="20" fill="#9E3039"/><rect y="8" width="30" height="4" fill="#fff"/>',
+  'Liberia': STRIPES(11, '#BF0A30', '#fff') + '<rect width="10" height="9.1" fill="#002868"/>' + STAR(5, 4.5, 2.4, '#fff'),
+  'Lithuania': H3('#FDB913', '#006A44', '#C1272D'), 'Luxembourg': H3('#EF3340', '#fff', '#00A3E0'),
+  'Mexico': V3('#006847', '#fff', '#CE1126') + '<circle cx="15" cy="10" r="2" fill="#8C5A2B"/>', 'Mongolia': '<rect width="30" height="20" fill="#C4272F"/><path d="M6,5h2v10h-2z M5,3h4v1.5h-4z" fill="#F9CF02"/>',
+  'Nepal': '<rect width="30" height="20" fill="#DC143C"/><path d="M8,3l8,7h-8l8,7" fill="none" stroke="#003893" stroke-width="1.5"/><circle cx="11" cy="7.5" r="1.4" fill="#fff"/><circle cx="11" cy="14" r="1.6" fill="#fff"/>',
+  'Netherlands': H3('#AE1C28', '#fff', '#21468B'), 'New Zealand': '<rect width="30" height="20" fill="#012169"/>' + UNION + STAR(22, 5, 1.3, '#C8102E') + STAR(20, 10, 1.3, '#C8102E') + STAR(25, 9, 1.3, '#C8102E') + STAR(22, 16, 1.4, '#C8102E'),
+  'Nicaragua': H3('#0067C6', '#fff', '#0067C6'), 'Norway': NORDIC('#BA0C2F', '#00205B', '#fff'),
+  'Panama': '<rect width="30" height="20" fill="#fff"/><rect x="15" width="15" height="10" fill="#DA121A"/><rect y="10" width="15" height="10" fill="#072357"/>' + STAR(7.5, 5, 2, '#072357') + STAR(22.5, 15, 2, '#DA121A'),
+  'Paraguay': H3('#D52B1E', '#fff', '#0038A8'), 'Peru': V3('#D91023', '#fff', '#D91023'),
+  'Philippines': '<rect width="30" height="10" fill="#0038A8"/><rect y="10" width="30" height="10" fill="#CE1126"/><path d="M0,0L13,10L0,20z" fill="#fff"/><circle cx="4.5" cy="10" r="1.8" fill="#FCD116"/>',
+  'Portugal': '<rect width="30" height="20" fill="#DA291C"/><rect width="12" height="20" fill="#046A38"/><circle cx="12" cy="10" r="3.4" fill="#FFE900"/><circle cx="12" cy="10" r="2" fill="#DA291C"/>',
+  'Romania': V3('#002B7F', '#FCD116', '#CE1126'), 'Saudi Arabia': '<rect width="30" height="20" fill="#006C35"/><path d="M8,8h14M9,13h12" stroke="#fff" stroke-width="1.2"/>',
+  'Siam': '<rect width="30" height="20" fill="#A51931"/><rect y="3.33" width="30" height="13.34" fill="#F4F5F8"/><rect y="6.67" width="30" height="6.66" fill="#2D2A4A"/>',
+  'Spain': '<rect width="30" height="20" fill="#AA151B"/><rect y="5" width="30" height="10" fill="#F1BF00"/>', 'Sweden': NORDIC('#006AA7', '#FECC00'),
+  'Switzerland': '<rect width="30" height="20" fill="#DA291C"/><path d="M15,5V15M10,10H20" stroke="#fff" stroke-width="3"/>',
+  'Tibet': '<rect width="30" height="20" fill="#C8102E"/><path d="M15,13L0,0H8zM15,13L22,0H30zM15,13L30,10V20zM15,13L0,10V20z" fill="#00349C"/><path d="M8,20L15,10L22,20z" fill="#fff"/><circle cx="15" cy="8" r="2.6" fill="#FFD100"/>',
+  'Turkey': '<rect width="30" height="20" fill="#E30A17"/><circle cx="11" cy="10" r="5" fill="#fff"/><circle cx="12.3" cy="10" r="4" fill="#E30A17"/>' + STAR(17, 10, 2.2, '#fff'),
+  'Union of South Africa': H3('#E77817', '#fff', '#00247D'), 'Uruguay': STRIPES(9, '#fff', '#0038A8') + '<rect width="11" height="11.1" fill="#fff"/><circle cx="5.5" cy="5.5" r="3" fill="#FCD116"/>',
+  'Venezuela': H3('#FFCC00', '#00247D', '#CF142B'), 'Yemen': '<rect width="30" height="20" fill="#C8102E"/><path d="M8,10h14" stroke="#fff" stroke-width="1.5"/>',
+  'Yugoslavia': H3('#0C4076', '#fff', '#C6363C'),
+};
+// Map names that fly another country's flag (colonies, mandates, puppet or renamed states).
+const FLAG_ALIAS = {
+  'Belgian Congo': 'Belgium', 'Burundi': 'Belgium', 'Rwanda': 'Belgium', 'Chinese warlords': 'China', 'Xinjiang': 'China', 'Dutch East Indies': 'Netherlands', 'Suriname': 'Netherlands',
+  'Cambodia': 'France', 'French Somaliland': 'France', 'Laos': 'France', 'Cochin China': 'France', 'Togo': 'France', 'French Guiana': 'France', 'Guadeloupe': 'France',
+  'Equatorial Guinea': 'Spain', 'Rio De Oro': 'Spain', 'Spanish Sahara': 'Spain', 'Guinea-Bissau': 'Portugal', 'Angola': 'Portugal', 'Mozambique': 'Portugal',
+  'Puerto Rico': 'United States', 'Hejaz': 'Saudi Arabia', 'Hail': 'Saudi Arabia', "Emirate of Bin Shal'an": 'Saudi Arabia', 'Samoa': 'New Zealand',
+  'Bahamas': 'United Kingdom', 'Belize': 'United Kingdom', 'Ceylon': 'United Kingdom', 'Fiji': 'United Kingdom', 'Gambia, The': 'United Kingdom', 'Guyana': 'United Kingdom', 'Jamaica': 'United Kingdom',
+  'Malawi': 'United Kingdom', 'Sudan': 'United Kingdom', 'Trinidad': 'United Kingdom', 'Dominion of Newfoundland': 'United Kingdom', 'India': 'United Kingdom', 'Israel': 'United Kingdom',
+  'Mesopotamia': 'Iraq', 'Libya': 'Italy',
+};
+function flagKeyOf(name) { const o = ownerOf(name); if (FLAG_SVG[o]) return o; const a = FLAG_ALIAS[name]; if (a) return FLAG_SVG[a] ? a : FLAG_X[a] ? a : null; return FLAG_X[name] ? name : null; }
 // Flags drawn straight onto the map canvases (parsed once from the SVG above; drawing SVG images would block WebGL in some browsers).
 const FLAG_OPS = {};
 function flagOps(owner) {
   if (FLAG_OPS[owner]) return FLAG_OPS[owner];
-  const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${FLAG_SVG[owner] || ''}</svg>`, 'image/svg+xml');
+  const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${FLAG_SVG[owner] || FLAG_X[owner] || ''}</svg>`, 'image/svg+xml');
   return (FLAG_OPS[owner] = [...doc.documentElement.children].map((e) => { const a = (k, d) => e.getAttribute(k) ?? d; const t = e.tagName;
     const path = t === 'rect' ? (() => { const p = new Path2D(); p.rect(+a('x', 0), +a('y', 0), +a('width', 0), +a('height', 0)); return p; })() : t === 'circle' ? (() => { const p = new Path2D(); p.arc(+a('cx', 0), +a('cy', 0), +a('r', 0), 0, Math.PI * 2); return p; })() : new Path2D(a('d', ''));
     return { path, fill: a('fill', t === 'path' ? null : '#000'), stroke: a('stroke', null), sw: +a('stroke-width', 1), cap: a('stroke-linecap', 'butt') }; }));
@@ -734,25 +793,18 @@ function drawFlag(ctx, owner, x, y, w, h) {
   for (const o of flagOps(owner)) { if (o.fill && o.fill !== 'none') { ctx.fillStyle = o.fill; ctx.fill(o.path); } if (o.stroke) { ctx.strokeStyle = o.stroke; ctx.lineWidth = o.sw; ctx.lineCap = o.cap; ctx.stroke(o.path); } }
   ctx.restore();
 }
-// Fill a territory with its flag, clipped to its outline. Widths are corrected for latitude (the map is stretched
-// sideways toward the poles), and large countries get a grid of normal-sized flags instead of one giant stretched one.
+// One flag for each piece of land, clipped to the country's outline. The width is corrected for latitude, since
+// the map is stretched sideways toward the poles, so every flag keeps its real 3:2 shape on the globe.
 function flagFill(ctx, owner, rings, X, Y, alpha) {
-  let lo0 = 1e9, la0 = 1e9, lo1 = -1e9, la1 = -1e9; ctx.beginPath();
-  for (const r of rings) { r.forEach(([lo, la], i) => { if (lo < lo0) lo0 = lo; if (lo > lo1) lo1 = lo; if (la < la0) la0 = la; if (la > la1) la1 = la; i ? ctx.lineTo(X(lo), Y(la)) : ctx.moveTo(X(lo), Y(la)); }); ctx.closePath(); }
-  if (lo1 <= lo0 || la1 <= la0) return;
-  const cosAt = (la) => Math.max(0.3, Math.cos(la * Math.PI / 180));
-  const put = (lon, latTop, h) => { const w = h * 1.5 / cosAt(latTop - h / 2); drawFlag(ctx, owner, X(lon), Y(latTop), X(lon + w) - X(lon), Y(latTop - h) - Y(latTop)); return w; };
-  ctx.save(); ctx.clip('evenodd'); ctx.globalAlpha = alpha;
-  const bh = la1 - la0, bw = lo1 - lo0, mid = (la0 + la1) / 2;
-  if (bh <= 9 && bw * cosAt(mid) <= 14) {
-    // One flag covering the territory, at the right shape for its latitude.
-    const h = Math.max(bh, bw * cosAt(mid) / 1.5), w = h * 1.5 / cosAt(mid); put(lo0 + (bw - w) / 2, mid + h / 2, h);
-  } else {
-    // A grid of flags about 6 degrees tall, rows staggered like wallpaper.
-    const H = 6; let row = 0;
-    for (let top = la1 + 1; top > la0; top -= H, row++) { const w = H * 1.5 / cosAt(top - H / 2); for (let lon = lo0 - (row % 2 ? w / 2 : 0); lon < lo1; lon += w) put(lon, top, H); }
+  const all = () => { ctx.beginPath(); for (const r of rings) { r.forEach(([lo, la], i) => (i ? ctx.lineTo(X(lo), Y(la)) : ctx.moveTo(X(lo), Y(la)))); ctx.closePath(); } };
+  const cosAt = (la) => Math.max(0.25, Math.cos(la * Math.PI / 180));
+  for (const ring of rings) {
+    let lo0 = 1e9, la0 = 1e9, lo1 = -1e9, la1 = -1e9; for (const [lo, la] of ring) { if (lo < lo0) lo0 = lo; if (lo > lo1) lo1 = lo; if (la < la0) la0 = la; if (la > la1) la1 = la; }
+    const bw = lo1 - lo0, bh = la1 - la0; if (bw <= 0 || bh <= 0) continue; const mid = (la0 + la1) / 2, c = cosAt(mid);
+    const h = Math.max(bh, bw * c / 1.5), w = h * 1.5 / c; const x0 = lo0 + (bw - w) / 2, top = mid + h / 2;
+    ctx.save(); all(); ctx.clip('evenodd'); ctx.beginPath(); ring.forEach(([lo, la], i) => (i ? ctx.lineTo(X(lo), Y(la)) : ctx.moveTo(X(lo), Y(la)))); ctx.closePath(); ctx.clip();
+    ctx.globalAlpha = alpha; drawFlag(ctx, owner, X(x0), Y(top), X(x0 + w) - X(x0), Y(top - h) - Y(top)); ctx.restore();
   }
-  ctx.restore();
 }
 const flag = (owner, cls = 'fl') => `<svg class="${cls}" viewBox="0 0 30 20" preserveAspectRatio="none" aria-hidden="true">${FLAG_SVG[ownerOf(owner)] || `<rect width="30" height="20" fill="${colorOf(owner)}"/>`}</svg>`;
 const D2R = Math.PI / 180;
@@ -960,7 +1012,7 @@ class Globe {
     f.rotateY(Math.atan2(localNorth.x, localNorth.z) + Math.PI + (f.userData.heading || 0));
   }
   animateUnit(id, from, to, ms = 3200) {
-    const f = this.figs?.[id]; if (!f) return; const it = this.items?.find(x => x.kind === 'tok' && x.id === id); sfx('move');
+    const f = this.figs?.[id]; if (!f) return; const it = this.items?.find(x => x.kind === 'tok' && x.id === id);
     let dlon = to[0] - from[0]; if (dlon > 180) dlon -= 360; if (dlon < -180) dlon += 360;
     const t0 = performance.now(); const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const step = (now) => {
@@ -982,7 +1034,7 @@ class Globe {
     if (prev) for (const u of UNITS) { const p = prev[u.id]; if (p && (p.at[0] !== u.at[0] || p.at[1] !== u.at[1])) this.animateUnit(u.id, p.at, u.at); }
   }
   killFigure(id, u) {
-    const f = this.figs[id]; if (!f) return; this.unitGroup.remove(f); this.scene.add(f); delete this.figs[id]; if (u) sfx('boom');
+    const f = this.figs[id]; if (!f) return; this.unitGroup.remove(f); this.scene.add(f); delete this.figs[id];
     if (u) {
       const p = this.project(u.at[0], u.at[1], 0.01);
       if (p.ok) { const b = document.createElement('div'); b.className = 'boom' + (u.kind === 'fleet' ? ' sink' : ''); b.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`; b.innerHTML = `<i></i><span>${u.kind === 'fleet' ? 'Sunk' : u.kind === 'air' ? 'Shot down' : 'Destroyed'}</span>`; this.ov.appendChild(b); setTimeout(() => b.remove(), 2600); }
@@ -1145,30 +1197,6 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const $ = (id) => document.getElementById(id);
 let EDIT = false, STAFFMAP = false, placing = null, VIEW, ROLE, AS, STATE = null, VER = 0, SKEW = 0, lastFlashId, MEE = null, ME = null;
 let selected = { type: 'country', id: 'Poland' };
-/* ---------- Sound effects, made in the browser (no audio files) ---------- */
-let AC = null, MUTED = (() => { try { return localStorage.getItem('crisis-sound') === 'off'; } catch { return false; } })();
-const audio = () => { if (MUTED) return null; try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); return AC; } catch { return null; } };
-function noiseBuf(ac, sec) { const b = ac.createBuffer(1, Math.ceil(ac.sampleRate * sec), ac.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return b; }
-function tone(ac, freq, t, dur, vol, type = 'sine', to) { const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.setValueAtTime(freq, t); if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.05); }
-function hiss(ac, t, dur, vol, f0, f1, q = 1, type = 'bandpass') { const n = ac.createBufferSource(); n.buffer = noiseBuf(ac, dur); const fl = ac.createBiquadFilter(); fl.type = type; fl.Q.value = q; fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + dur); const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.15); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); n.connect(fl).connect(g).connect(ac.destination); n.start(t); n.stop(t + dur); }
-const SFX = {
-  send: (ac, t) => hiss(ac, t, 0.45, 0.25, 800, 4000, 0.8),                                  // paper whoosh
-  paper: (ac, t) => { hiss(ac, t, 0.18, 0.12, 2500, 1200, 0.7); hiss(ac, t + 0.12, 0.14, 0.08, 3000, 1800, 0.7); }, // paper rustle
-  mail: (ac, t) => { tone(ac, 880, t, 0.35, 0.12); tone(ac, 1318.5, t + 0.12, 0.5, 0.1); },   // soft two-note chime
-  ok: (ac, t) => { tone(ac, 523.3, t, 0.5, 0.1, 'triangle'); tone(ac, 659.3, t + 0.08, 0.5, 0.09, 'triangle'); tone(ac, 784, t + 0.16, 0.7, 0.09, 'triangle'); },
-  no: (ac, t) => { tone(ac, 196, t, 0.45, 0.16, 'square', 150); hiss(ac, t, 0.25, 0.25, 400, 120, 0.6, 'lowpass'); },
-  stamp: (ac, t) => { hiss(ac, t, 0.18, 0.5, 300, 80, 0.5, 'lowpass'); tone(ac, 90, t, 0.18, 0.25, 'sine', 50); },
-  move: (ac, t) => { hiss(ac, t, 2.4, 0.22, 140, 90, 0.9, 'lowpass'); tone(ac, 48, t, 2.4, 0.08, 'sawtooth', 40); }, // engines rumbling
-  boom: (ac, t) => { hiss(ac, t, 1.6, 0.6, 900, 60, 0.5, 'lowpass'); tone(ac, 70, t, 0.8, 0.35, 'sine', 30); },
-  news: (ac, t) => { for (let i = 0; i < 9; i++) hiss(ac, t + i * 0.07, 0.04, 0.2, 3500, 2500, 2); tone(ac, 1568, t + 0.7, 0.9, 0.12); }, // teleprinter and bell
-  pop: (ac, t) => tone(ac, 660, t, 0.18, 0.08, 'sine', 990),
-  tick: (ac, t) => tone(ac, 1200, t, 0.05, 0.06, 'square'),
-  open: (ac, t) => { tone(ac, 220, t, 0.12, 0.08, 'triangle', 330); hiss(ac, t + 0.05, 0.2, 0.08, 1500, 3000, 0.7); },
-};
-const sfxLast = {};
-function sfx(name) { const ac = audio(); if (!ac || !SFX[name]) return; const now = performance.now(); if (now - (sfxLast[name] || 0) < 250) return; sfxLast[name] = now; try { SFX[name](ac, ac.currentTime + 0.01); } catch {} }
-// Browsers only allow sound after a click: unlock it on the first one.
-document.addEventListener('pointerdown', () => { if (!MUTED) audio(); }, { once: true, capture: true });
 /* ---------- Pop-up notices and the crisis staff verdict card ---------- */
 const NI = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const NICON = {
@@ -1192,7 +1220,6 @@ function notify({ kind = 'info', title, body = '', action, ms = 5200 }) {
   if (CALM()) setTimeout(close, ms);
   if (action) n.querySelector('.nlink').addEventListener('click', () => { action.run(); close(); });
   box.prepend(n); while (box.children.length > 4) box.lastChild.remove();
-  sfx({ approved: 'ok', rejected: 'no', error: 'no', sent: 'send', note: 'mail', intel: 'mail' }[kind] || 'pop');
 }
 function toast(msg, kind = 'info') { notify({ kind, title: msg }); }
 // A paper plane that lifts off a button after something is sent.
@@ -1221,7 +1248,7 @@ function renderMailbox() {
     if (top.kind === 'bloc') mb.classList.replace('bloc', 'note');
   }
   $('mb-n').textContent = n; $('mb-n').hidden = n < 2;
-  if (n > was && !mb.hidden) { sfx('mail'); if (!CALM()) { mb.classList.remove('arrive'); void mb.offsetWidth; mb.classList.add('arrive'); } }
+  if (n > was && !mb.hidden && !CALM()) { mb.classList.remove('arrive'); void mb.offsetWidth; mb.classList.add('arrive'); }
 }
 function openMail() {
   const top = mailItems()[0]; if (!top) return;
@@ -1250,7 +1277,7 @@ function openLetter() {
   $('lt-out').textContent = q.outcome && q.outcome !== q.status ? 'Result: ' + q.outcome : ''; $('lt-out').hidden = !$('lt-out').textContent;
   const more = unreadLetters().length; $('lt-next').hidden = !more; $('lt-next').textContent = `Next reply (${more})`;
   el.className = 'letterpop ' + (ok ? 'ok' : 'no'); el.hidden = false; void el.offsetWidth; el.classList.add('opening');
-  sfx('paper'); letterTimer.forEach(clearTimeout); letterTimer = [setTimeout(() => { el.classList.add('open'); sfx(ok ? 'ok' : 'no'); }, CALM() ? 0 : 1050)];
+  letterTimer.forEach(clearTimeout); letterTimer = [setTimeout(() => el.classList.add('open'), CALM() ? 0 : 1050)];
   renderMailbox(); setTimeout(() => $('lt-close').focus({ preventScroll: true }), CALM() ? 0 : 1100);
 }
 function closeLetter(next) {
@@ -1375,7 +1402,7 @@ function skeleton(p) {
   const top = `<header class="topbar">
     <div class="brand"><img src="/images/crest.png" alt="SLOMUN crest"><div><b>Early WWII</b><span>${sub}</span></div></div>
     <div class="hud num" id="treasuries" aria-label="Treasuries"></div>
-    <div class="topnav">${nav}<button type="button" class="navlink sndbtn" id="snd-btn" aria-pressed="${!MUTED}" title="Sound effects">${MUTED ? 'Sound off' : 'Sound on'}</button><span class="conn" id="conn"><i></i><span>Live</span></span><button type="button" class="navlink" id="logout">Log out</button></div>
+    <div class="topnav">${nav}<span class="conn" id="conn"><i></i><span>Live</span></span><button type="button" class="navlink" id="logout">Log out</button></div>
   </header>`;
   let body = '';
   if (VIEW === 'map') body = `<section class="view map-view${STAFFMAP ? ' staffmap' : ''}" id="view-staff-root">${STAFFMAP ? staffBar() : ''}
@@ -1530,10 +1557,8 @@ function tickCountdown() {
   if (!STATE) return; const left = Math.max(0, Math.round((STATE.countdownEnd - (Date.now() + SKEW)) / 1000));
   const txt = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; document.querySelectorAll('.countdown b').forEach((e) => (e.textContent = txt));
   document.querySelectorAll('.date').forEach((e) => e.classList.toggle('urgent', left > 0 && left <= 60));
-  if (left > 0 && left <= 10 && left !== tickCountdown.last) { tickCountdown.last = left; sfx('tick'); }
 }
 function showFlash(f) {
-  sfx('news');
   $('bn-date').textContent = STATE?.update?.date || ''; $('bn-head').textContent = f.head; $('bn-deck').textContent = f.deck;
   const el = $('breaking'); el.hidden = true; void el.offsetWidth; el.hidden = false;
 }
@@ -1677,18 +1702,18 @@ function showCity(name) {
 /* Pop-up paper for writing, and the portfolio briefcase */
 function openCompose(id = 'compose') {
   const el = $(id); el.classList.remove('min', 'closing', 'sent'); $('c-restore').hidden = true;
-  if (id === 'compose') $('c-from').textContent = ` · From: ${MEE.name}`; sfx('paper');
+  if (id === 'compose') $('c-from').textContent = ` · From: ${MEE.name}`;
   el.hidden = true; void el.offsetWidth; el.hidden = false;
   setTimeout(() => (id === 'compose' ? $('f-text') : $('msg-text'))?.focus({ preventScroll: true }), CALM() ? 0 : 320);
 }
 function closeCompose(id = 'compose', sent) {
   const el = $(id); if (!el || el.hidden) return; el.classList.add(sent ? 'sent' : 'closing'); $('c-restore').hidden = true;
-  if (sent) { sfx('send'); const pl = document.createElement('span'); pl.className = 'plane big'; pl.innerHTML = NICON.sent; pl.style.left = '50%'; pl.style.top = '55%'; if (!CALM()) document.body.appendChild(pl); setTimeout(() => pl.remove(), 1200); }
+  if (sent) { const pl = document.createElement('span'); pl.className = 'plane big'; pl.innerHTML = NICON.sent; pl.style.left = '50%'; pl.style.top = '55%'; if (!CALM()) document.body.appendChild(pl); setTimeout(() => pl.remove(), 1200); }
   setTimeout(() => { el.hidden = true; el.classList.remove('closing', 'sent', 'min'); }, CALM() ? 0 : sent ? 520 : 220);
 }
 function minCompose(on) { const el = $('compose'); el.classList.toggle('min', on); $('c-restore').hidden = !on; if (!on) setTimeout(() => $('f-text')?.focus({ preventScroll: true }), 250); }
 function openBrief() {
-  renderPortfolio(); sfx('open'); const el = $('brief'); el.className = 'brief'; el.hidden = true; void el.offsetWidth; el.hidden = false; el.classList.add('opening');
+  renderPortfolio(); const el = $('brief'); el.className = 'brief'; el.hidden = true; void el.offsetWidth; el.hidden = false; el.classList.add('opening');
   setTimeout(() => el.classList.add('open'), CALM() ? 0 : 900); setTimeout(() => $('brief-close').focus({ preventScroll: true }), CALM() ? 0 : 950);
 }
 function closeBrief() { const el = $('brief'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'brief'; }, CALM() ? 0 : 240); }
@@ -1802,7 +1827,7 @@ function openReader(o) {
   const el = $('reader'), card = $('rd-card'), paper = $('rd-paper');
   card.className = 'rcard ' + (o.theme || 'plain'); paper.innerHTML = paperHTML(o); paper.style.clipPath = o.theme === 'note' ? tornClip() : '';
   card.style.setProperty('--tilt', '0deg');
-  el.className = 'reader'; el.hidden = true; void el.offsetWidth; el.hidden = false; paper.scrollTop = 0; sfx('paper'); if (o.stamp || o.theme === 'dossier' || o.theme === 'directive') setTimeout(() => sfx('stamp'), CALM() ? 0 : 600);
+  el.className = 'reader'; el.hidden = true; void el.offsetWidth; el.hidden = false; paper.scrollTop = 0;
   setTimeout(() => $('rd-close').focus({ preventScroll: true }), CALM() ? 0 : 500);
 }
 function closeReader() { const el = $('reader'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'reader'; }, CALM() ? 0 : 240); }
@@ -1932,7 +1957,7 @@ async function newDraft() {
   const d = (STATE.directives || []).find((x) => x.status === 'drafting' && x.owner === MEE.name); if (d) openLaptop(d.id);
 }
 function openLaptop(id) {
-  LAPID = id; const el = $('lap'); buildDocs(); sfx('open'); el.className = 'lap'; el.hidden = true; void el.offsetWidth; el.hidden = false;
+  LAPID = id; const el = $('lap'); buildDocs(); el.className = 'lap'; el.hidden = true; void el.offsetWidth; el.hidden = false;
   setTimeout(() => { const d = curDraft(); (d && !d.title ? $('dc-title') : $('dc-c0'))?.focus({ preventScroll: true }); }, CALM() ? 0 : 650);
 }
 function closeLaptop() { flushDoc(); const el = $('lap'); if (!el || el.hidden) return; el.classList.add('closing'); setTimeout(() => { el.hidden = true; el.className = 'lap'; LAPID = null; }, CALM() ? 0 : 260); }
@@ -2562,7 +2587,6 @@ export function start(root, props) {
   if (STAFFMAP) renderBattleShell();
   if (EDIT) bindEdit();
   let stopped = false, timer, failures = 0;
-  $('snd-btn').addEventListener('click', (e) => { MUTED = !MUTED; try { localStorage.setItem('crisis-sound', MUTED ? 'off' : 'on'); } catch {} e.currentTarget.textContent = MUTED ? 'Sound off' : 'Sound on'; e.currentTarget.setAttribute('aria-pressed', !MUTED); if (!MUTED) sfx('pop'); });
   $('logout').addEventListener('click', async () => { await fetch('/api/crisis/logout', { method: 'POST' }); location.href = '/crisis'; });
   $('view-as')?.addEventListener('change', (e) => { if (e.target.value) location.href = '/crisis/delegate?as=' + encodeURIComponent(e.target.value); });
   $('fs-btn')?.addEventListener('click', () => { document.documentElement.requestFullscreen?.().catch(() => toast('Full screen is not available here. Use the browser menu instead.')); });

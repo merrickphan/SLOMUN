@@ -131,11 +131,10 @@ Staff no longer have to build effects by hand for most requests.
 - **A new game starts with the clock running.** A game saved before the clock existed starts paused at 3 September 1939; press Start the clock.
 - **Crisis updates** fill in the current game date automatically. Staff can still type a different one.
 
-## Map look, speed and sound
+## Map look and speed
 
-- **Flags:** each major power's land shows its flag faintly instead of a plain color; neutral countries keep a soft color. Occupied regions show the occupier's flag with stripes in its color and a dashed edge.
+- **Flags:** every country's land shows its 1939 flag faintly, one flag per landmass at its true 3:2 shape; colonies and mandates show the ruling power's flag. Occupied regions show the occupier's flag with stripes in its color and a dashed edge.
 - **Speed:** the detailed Europe map and the world map are painted once. Occupation, the selected country and the fog of war live on light layers above them, so moves and occupations redraw a small image instead of the whole map.
-- **Sound effects** are generated in the browser (no files): paper for notes and files, a whoosh when sending, a chime for mail, a chord or low thud for approved or denied, engines when units move, explosions when units are destroyed, a teleprinter and bell for breaking news, and ticks in the last 10 seconds of the countdown. **Sound on / Sound off** in the top bar mutes them on that computer.
 - **Cities:** about 100 named cities are clickable for a card with who holds them, what they are known for, forces nearby and what is built there. Forces are built only in cities the country holds; ships need a port.
 
 ## Delegate screen
